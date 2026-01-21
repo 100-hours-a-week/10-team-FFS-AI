@@ -19,19 +19,6 @@ app/
 └── outfit/              # 코디 추천
 ```
 
-## 담당 영역
-
-| 도메인 | 담당 | 엔드포인트 |
-|--------|------|-----------|
-| closet | 팀원 | `POST /v1/closet/validate` |
-| closet | 팀원 | `POST /v1/closet/analyze` |
-| closet | 팀원 | `GET /v1/closet/tasks/{task_id}` |
-| embedding | 정환 | `POST /v1/closet/embedding` |
-| embedding | 정환 | `DELETE /v1/closet/{item_id}` |
-| outfit | 정환 | `POST /v1/closet/outfit` |
-
-> **참고**: 모든 API는 `/v1/closet` prefix 아래에 위치합니다.
-
 ## 설치 및 실행
 
 ### 1. 환경 설정
