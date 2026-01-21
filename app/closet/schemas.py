@@ -1,0 +1,1 @@
+# ValidateRequest, ValidateResponse, AnalyzeRequest 등

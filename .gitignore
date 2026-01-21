@@ -29,7 +29,7 @@ env/
 ENV/
 .venv
 
-# Environment Variables
+# Environment
 .env
 .env.local
 
@@ -43,6 +43,7 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+*.onnx
 
 # Logs
 *.log

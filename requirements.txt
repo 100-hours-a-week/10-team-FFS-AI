@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic-settings
+qdrant-client
+boto3
+torch
+transformers
+sentence-transformers
+python-dotenv
+httpx
+pillow
