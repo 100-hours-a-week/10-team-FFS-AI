@@ -1,0 +1,47 @@
+# KlosetLab AI Service - Ruff 설정
+# https://docs.astral.sh/ruff/configuration/
+
+# 대상 Python 버전
+target-version = "py311"
+
+# 줄 길이
+line-length = 88
+
+# 제외 경로
+exclude = [
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".git",
+    "models",
+]
+
+[lint]
+# 적용할 규칙
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort (import 정렬)
+    "B",      # flake8-bugbear
+    "UP",     # pyupgrade
+    "N",      # pep8-naming (네이밍 컨벤션)
+    "ANN",    # flake8-annotations (타입 힌트 강제)
+]
+
+# 무시할 규칙
+ignore = [
+    "E501",   # 줄 길이 (formatter가 처리)
+]
+
+# 자동 수정 허용
+fixable = ["ALL"]
+
+[lint.isort]
+# import 정렬 설정
+known-first-party = ["app"]
+
+[format]
+# 포맷터 설정
+quote-style = "double"
+indent-style = "space"

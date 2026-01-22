@@ -1,0 +1,28 @@
+# KlosetLab AI Service - Pre-commit 설정
+# 설치: pre-commit install
+# 수동 실행: pre-commit run --all-files
+
+repos:
+  # Ruff - 린터 + 포맷터
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.0
+    hooks:
+      # 린터 (자동 수정 포함)
+      - id: ruff
+        args: [--fix]
+      # 포맷터
+      - id: ruff-format
+
+  # 기타 유용한 훅
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      # 파일 끝 개행 추가
+      - id: end-of-file-fixer
+      # 줄 끝 공백 제거
+      - id: trailing-whitespace
+      # YAML 문법 체크
+      - id: check-yaml
+      # 큰 파일 커밋 방지 (모델 파일 실수 방지)
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
