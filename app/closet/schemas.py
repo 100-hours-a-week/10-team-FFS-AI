@@ -77,9 +77,7 @@ class ValidationResult(BaseModel):
 
     originUrl: str = Field(..., description="원본 이미지 URL")
     passed: bool = Field(..., description="검증 통과 여부")
-    errorCode: Optional[ValidationErrorCode] = Field(
-        None, description="실패 시 에러 코드"
-    )
+    error: Optional[ValidationErrorCode] = Field(None, description="실패 시 에러 코드")
 
 
 class ValidationSummary(BaseModel):
@@ -109,12 +107,12 @@ class ValidateResponse(BaseModel):
                     {
                         "originUrl": "https://s3.example.com/image4.jpg",
                         "passed": False,
-                        "errorCode": "DUPLICATE",
+                        "error": "DUPLICATE",
                     },
                     {
                         "originUrl": "https://s3.example.com/image5.jpg",
                         "passed": False,
-                        "errorCode": "NSFW",
+                        "error": "NSFW",
                     },
                 ],
             }

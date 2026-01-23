@@ -103,7 +103,7 @@ def _validate_single_image(image_url: str, user_id: int) -> ValidationResult:
         return ValidationResult(
             originUrl=image_url,
             passed=False,
-            errorCode=ValidationErrorCode.INVALID_FORMAT,
+            error=ValidationErrorCode.INVALID_FORMAT,
         )
 
     # Step 2: 파일 크기 검증
@@ -112,33 +112,33 @@ def _validate_single_image(image_url: str, user_id: int) -> ValidationResult:
         return ValidationResult(
             originUrl=image_url,
             passed=False,
-            errorCode=ValidationErrorCode.FILE_TOO_LARGE,
+            error=ValidationErrorCode.FILE_TOO_LARGE,
         )
 
     # Step 3: 중복/유사 이미지 검증 (Marqo-FashionSigLIP)
     similarity = _check_duplicate(image_url, user_id)
     if similarity >= SIMILARITY_THRESHOLD:
         return ValidationResult(
-            originUrl=image_url, passed=False, errorCode=ValidationErrorCode.DUPLICATE
+            originUrl=image_url, passed=False, error=ValidationErrorCode.DUPLICATE
         )
 
     # Step 4: 패션 도메인 검증 (LAION CLIP)
     if not _check_is_fashion(image_url):
         return ValidationResult(
-            originUrl=image_url, passed=False, errorCode=ValidationErrorCode.NOT_FASHION
+            originUrl=image_url, passed=False, error=ValidationErrorCode.NOT_FASHION
         )
 
     # Step 5: NSFW 검증 (WD14 Tagger)
     wd14_result = _check_with_wd14_tagger(image_url)
     if wd14_result["is_nsfw"]:
         return ValidationResult(
-            originUrl=image_url, passed=False, errorCode=ValidationErrorCode.NSFW
+            originUrl=image_url, passed=False, error=ValidationErrorCode.NSFW
         )
 
     # Step 6: 품질 검증
     if not _check_quality(image_url):
         return ValidationResult(
-            originUrl=image_url, passed=False, errorCode=ValidationErrorCode.TOO_BLURRY
+            originUrl=image_url, passed=False, error=ValidationErrorCode.TOO_BLURRY
         )
 
     # 모든 검증 통과
