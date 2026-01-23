@@ -1,8 +1,10 @@
 """
-Closet 모듈 스키마 정의
-- ValidateRequest/Response: 이미지 검증 API
-- AnalyzeRequest/Response: 이미지 분석 시작 API
-- TaskStatusResponse: 분석 상태 조회 API
+Closet 모듈 스키마 정의 (API 명세 v2 기준)
+
+담당 API:
+- ValidateRequest/Response: 이미지 어뷰징 체크 API (2.1)
+- AnalyzeRequest/Response: 이미지 분석 시작 API (2.2)
+- BatchStatusResponse: 분석 상태 조회 API (2.3)
 """
 
 from enum import Enum
@@ -14,36 +16,30 @@ from pydantic import BaseModel, Field
 # 공통 Enum 정의
 # ============================================================
 
-class ValidationStatus(str, Enum):
-    """검증 결과 상태"""
-    PASSED = "PASSED"
-    FAILED = "FAILED"
-
-
 class ValidationErrorCode(str, Enum):
     """검증 에러 코드"""
-    INVALID_FORMAT = "INVALID_FORMAT"       # 지원하지 않는 이미지 포맷
-    FILE_TOO_LARGE = "FILE_TOO_LARGE"       # 파일 크기 10MB 초과
-    EXACT_DUPLICATE = "EXACT_DUPLICATE"     # 완전 동일 이미지 존재
-    SIMILAR_ITEM = "SIMILAR_ITEM"           # 유사 아이템 존재 (similarity ≥ 0.95)
-    NOT_FASHION = "NOT_FASHION"             # 패션 아이템 아님
-    NSFW_DETECTED = "NSFW_DETECTED"         # 부적절 콘텐츠 감지
-    TOO_BLURRY = "TOO_BLURRY"               # 이미지 품질 불량
+    INVALID_FORMAT = "INVALID_FORMAT"   # 지원하지 않는 이미지 포맷
+    FILE_TOO_LARGE = "FILE_TOO_LARGE"   # 파일 크기 10MB 초과
+    DUPLICATE = "DUPLICATE"             # 동일/유사 이미지 존재
+    NOT_FASHION = "NOT_FASHION"         # 패션 아이템 아님
+    NSFW = "NSFW"                       # 부적절 콘텐츠 감지
+    TOO_BLURRY = "TOO_BLURRY"           # 이미지 품질 불량
+
+
+class BatchStatus(str, Enum):
+    """배치 작업 상태"""
+    ACCEPTED = "ACCEPTED"     # 작업 수락됨 (analyze 응답용)
+    RUNNING = "RUNNING"       # 실행 중
+    COMPLETED = "COMPLETED"   # 완료
+    FAILED = "FAILED"         # 실패
 
 
 class TaskStatus(str, Enum):
-    """작업 상태"""
-    PROCESSING = "PROCESSING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-
-
-class ProgressStatus(str, Enum):
-    """진행 상태"""
-    PENDING = "PENDING"
-    IN_PROGRESS = "IN_PROGRESS"
-    DONE = "DONE"
-    FAILED = "FAILED"
+    """개별 작업 상태"""
+    PREPROCESSING = "PREPROCESSING"   # 배경 제거 진행 중
+    ANALYZING = "ANALYZING"           # AI 분석 진행 중
+    COMPLETED = "COMPLETED"           # 완료
+    FAILED = "FAILED"                 # 실패
 
 
 # ============================================================
@@ -52,7 +48,7 @@ class ProgressStatus(str, Enum):
 
 class ValidateRequest(BaseModel):
     """이미지 검증 요청"""
-    userId: str = Field(..., description="사용자 고유 식별자 (UUID 권장)")
+    userId: int = Field(..., description="사용자 ID")
     images: list[str] = Field(
         ..., 
         description="검증할 이미지 URL 목록",
@@ -62,10 +58,11 @@ class ValidateRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "userId": "user12345",
+                "userId": 123,
                 "images": [
-                    "https://s3.example.com/temp/image1.jpg",
-                    "https://s3.example.com/temp/image2.jpg"
+                    "https://s3.example.com/image1.jpg",
+                    "https://s3.example.com/image2.jpg",
+                    "https://s3.example.com/image3.jpg"
                 ]
             }
         }
@@ -74,7 +71,7 @@ class ValidateRequest(BaseModel):
 class ValidationResult(BaseModel):
     """개별 이미지 검증 결과"""
     originUrl: str = Field(..., description="원본 이미지 URL")
-    status: ValidationStatus = Field(..., description="검증 결과 (PASSED/FAILED)")
+    passed: bool = Field(..., description="검증 통과 여부")
     errorCode: Optional[ValidationErrorCode] = Field(
         None, 
         description="실패 시 에러 코드"
@@ -91,8 +88,6 @@ class ValidationSummary(BaseModel):
 class ValidateResponse(BaseModel):
     """이미지 검증 응답"""
     success: bool = Field(..., description="요청 성공 여부")
-    validationId: str = Field(..., description="검증 ID")
-    processingTimeMs: int = Field(..., description="처리 시간 (ms)")
     validationSummary: ValidationSummary = Field(..., description="검증 결과 요약")
     validationResults: list[ValidationResult] = Field(..., description="개별 검증 결과")
 
@@ -100,16 +95,17 @@ class ValidateResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "success": True,
-                "validationId": "val_01ARZ3NDEKTSV4RRFFQ69G5FAV",
-                "processingTimeMs": 1200,
                 "validationSummary": {
-                    "total": 10,
-                    "passed": 7,
-                    "failed": 3
+                    "total": 5,
+                    "passed": 3,
+                    "failed": 2
                 },
                 "validationResults": [
-                    {"originUrl": "https://s3.example.com/temp/image1.jpg", "status": "PASSED"},
-                    {"originUrl": "https://s3.example.com/temp/image2.jpg", "status": "FAILED", "errorCode": "DUPLICATE"}
+                    {"originUrl": "https://s3.example.com/image1.jpg", "passed": True},
+                    {"originUrl": "https://s3.example.com/image2.jpg", "passed": True},
+                    {"originUrl": "https://s3.example.com/image3.jpg", "passed": True},
+                    {"originUrl": "https://s3.example.com/image4.jpg", "passed": False, "errorCode": "DUPLICATE"},
+                    {"originUrl": "https://s3.example.com/image5.jpg", "passed": False, "errorCode": "NSFW"}
                 ]
             }
         }
@@ -119,75 +115,90 @@ class ValidateResponse(BaseModel):
 # 2. Analyze API - POST /v1/closet/analyze
 # ============================================================
 
+class FileInfo(BaseModel):
+    """파일 정보"""
+    fileId: int = Field(..., description="파일 ID")
+    objectKey: str = Field(..., description="S3 객체 키")
+    presignedUrl: str = Field(..., description="S3 presigned URL")
+
+
 class AnalyzeImageItem(BaseModel):
     """분석할 개별 이미지 정보"""
-    originUrl: str = Field(..., description="원본 이미지 URL")
-    uploadUrl: str = Field(..., description="S3 업로드된 이미지 URL")
-    imageKey: str = Field(..., description="S3 이미지 키")
     sequence: int = Field(..., description="이미지 순서", ge=0)
+    targetImage: str = Field(..., description="원본 이미지 URL")
+    taskId: str = Field(..., description="개별 작업 ID (UUID)")
+    fileInfo: FileInfo = Field(..., description="파일 정보")
 
 
 class AnalyzeRequest(BaseModel):
     """이미지 분석 시작 요청"""
-    userId: str = Field(..., description="사용자 식별자")
-    images: list[AnalyzeImageItem] = Field(..., description="분석할 이미지 목록 (검증 통과된 것만)")
+    userId: int = Field(..., description="사용자 ID")
+    batchId: str = Field(..., description="배치 작업 ID (UUID)")
+    images: list[AnalyzeImageItem] = Field(..., description="분석할 이미지 목록")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "userId": "user_12345",
+                "userId": 123,
+                "batchId": "123e4567-e89b-12d3-a456-426614174000",
                 "images": [
                     {
-                        "originUrl": "https://s3.example.com/temp/image1.jpg",
-                        "uploadUrl": "https://s3.example.com/uploads/user_12345/image1.jpg",
-                        "imageKey": "uploads/user_12345/image1.jpg",
-                        "sequence": 0
+                        "sequence": 0,
+                        "targetImage": "https://s3.example.com/image1.jpg",
+                        "taskId": "123e4567-e89b-12d3-a456-426614174001",
+                        "fileInfo": {
+                            "fileId": 45,
+                            "objectKey": "sample1.jpg",
+                            "presignedUrl": "https://s3.example.com/sample-upload1.jpg"
+                        }
+                    },
+                    {
+                        "sequence": 1,
+                        "targetImage": "https://s3.example.com/image2.jpg",
+                        "taskId": "123e4567-e89b-12d3-a456-426614174002",
+                        "fileInfo": {
+                            "fileId": 46,
+                            "objectKey": "sample2.jpg",
+                            "presignedUrl": "https://s3.example.com/sample-upload2.jpg"
+                        }
                     }
                 ]
             }
         }
 
 
-class TaskIdItem(BaseModel):
-    """개별 이미지의 작업 ID"""
-    originUrl: str = Field(..., description="원본 이미지 URL")
-    taskId: str = Field(..., description="작업 식별자")
+class BatchMeta(BaseModel):
+    """배치 작업 메타 정보"""
+    total: int = Field(..., description="전체 이미지 수")
+    completed: int = Field(..., description="완료된 이미지 수")
+    processing: int = Field(..., description="처리 중인 이미지 수")
+    isFinished: bool = Field(..., description="전체 작업 완료 여부")
 
 
 class AnalyzeResponse(BaseModel):
     """이미지 분석 시작 응답 (202 Accepted)"""
-    taskId: str = Field(..., description="전체 작업 식별자")
-    status: TaskStatus = Field(default=TaskStatus.PROCESSING, description="작업 상태")
-    queued: int = Field(..., description="대기 중인 이미지 수")
-    taskIds: list[TaskIdItem] = Field(..., description="개별 이미지 작업 ID 목록")
+    batchId: str = Field(..., description="배치 작업 ID")
+    status: BatchStatus = Field(default=BatchStatus.ACCEPTED, description="상태")
+    meta: BatchMeta = Field(..., description="메타 정보")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "taskId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-                "status": "PROCESSING",
-                "queued": 7,
-                "taskIds": [
-                    {"originUrl": "https://s3.example.com/temp/image1.jpg", "taskId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"}
-                ]
+                "batchId": "123e4567-e89b-12d3-a456-426614174000",
+                "status": "ACCEPTED",
+                "meta": {
+                    "total": 3,
+                    "completed": 0,
+                    "processing": 3,
+                    "isFinished": False
+                }
             }
         }
 
 
 # ============================================================
-# 3. Task Status API - GET /v1/closet/tasks/{taskId}
+# 3. Batch Status API - GET /v1/closet/batches/{batchId}
 # ============================================================
-
-class ProgressInfo(BaseModel):
-    """개별 이미지 진행 상태"""
-    backgroundRemoval: ProgressStatus = Field(..., description="배경 제거 진행 상태")
-    analysis: ProgressStatus = Field(..., description="AI 분석 진행 상태")
-
-
-class BackgroundRemovalResult(BaseModel):
-    """배경 제거 결과"""
-    imageKey: str = Field(..., description="처리된 이미지 S3 키")
-
 
 class AnalysisAttributes(BaseModel):
     """AI 분석 속성 결과"""
@@ -202,55 +213,46 @@ class AnalysisResult(BaseModel):
     attributes: AnalysisAttributes = Field(..., description="분석된 속성들")
 
 
-class TaskResultItem(BaseModel):
+class BatchResultItem(BaseModel):
     """개별 이미지 작업 결과"""
-    taskId: str = Field(..., description="작업 식별자")
-    originUrl: str = Field(..., description="원본 이미지 URL")
-    status: TaskStatus = Field(..., description="작업 상태")
-    progress: ProgressInfo = Field(..., description="진행 상태")
-    backgroundRemoval: Optional[BackgroundRemovalResult] = Field(
-        None, 
-        description="배경 제거 결과 (완료 시)"
-    )
-    analysis: Optional[AnalysisResult] = Field(
-        None, 
-        description="AI 분석 결과 (완료 시)"
-    )
+    taskId: str = Field(..., description="개별 작업 ID")
+    status: TaskStatus = Field(..., description="작업 상태 (PREPROCESSING/ANALYZING/COMPLETED/FAILED)")
+    fileId: Optional[int] = Field(None, description="처리된 파일 ID (전처리 완료 시)")
+    analysis: Optional[AnalysisResult] = Field(None, description="AI 분석 결과 (완료 시)")
 
 
-class TaskMeta(BaseModel):
-    """작업 메타 정보"""
-    total: int = Field(..., description="전체 이미지 수")
-    completed: int = Field(..., description="완료된 이미지 수")
-    processing: int = Field(..., description="처리 중인 이미지 수")
-    isFinished: bool = Field(..., description="전체 작업 완료 여부")
-
-
-class TaskStatusResponse(BaseModel):
-    """작업 상태 조회 응답"""
-    taskId: str = Field(..., description="전체 작업 식별자")
-    status: TaskStatus = Field(..., description="전체 작업 상태")
-    meta: TaskMeta = Field(..., description="작업 메타 정보")
-    results: list[TaskResultItem] = Field(..., description="개별 이미지 결과 목록")
+class BatchStatusResponse(BaseModel):
+    """배치 상태 조회 응답"""
+    batchId: str = Field(..., description="배치 작업 ID")
+    status: BatchStatus = Field(..., description="배치 상태 (RUNNING/COMPLETED/FAILED)")
+    meta: BatchMeta = Field(..., description="메타 정보")
+    results: list[BatchResultItem] = Field(..., description="개별 작업 결과 목록")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "taskId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-                "status": "PROCESSING",
+                "batchId": "123e4567-e89b-12d3-a456-426614174000",
+                "status": "RUNNING",
                 "meta": {
-                    "total": 7,
-                    "completed": 3,
-                    "processing": 4,
+                    "total": 3,
+                    "completed": 1,
+                    "processing": 2,
                     "isFinished": False
                 },
                 "results": [
                     {
-                        "taskId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-                        "originUrl": "https://s3.example.com/temp/image1.jpg",
+                        "taskId": "123e4567-e89b-12d3-a456-426614174001",
+                        "status": "PREPROCESSING"
+                    },
+                    {
+                        "taskId": "123e4567-e89b-12d3-a456-426614174002",
+                        "status": "ANALYZING",
+                        "fileId": 46
+                    },
+                    {
+                        "taskId": "123e4567-e89b-12d3-a456-426614174003",
                         "status": "COMPLETED",
-                        "progress": {"backgroundRemoval": "DONE", "analysis": "DONE"},
-                        "backgroundRemoval": {"imageKey": "uploads/user_12345/image1.jpg"},
+                        "fileId": 47,
                         "analysis": {
                             "attributes": {
                                 "category": "상의",
@@ -274,14 +276,12 @@ class ErrorResponse(BaseModel):
     success: bool = Field(default=False)
     errorCode: str = Field(..., description="에러 코드")
     message: str = Field(..., description="에러 메시지")
-    detail: Optional[str] = Field(None, description="상세 정보")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "success": False,
                 "errorCode": "INVALID_FORMAT",
-                "message": "지원하지 않는 이미지 포맷입니다.",
-                "detail": "jpg, png, webp 형식만 지원합니다."
+                "message": "지원하지 않는 이미지 포맷입니다."
             }
         }
