@@ -2,16 +2,18 @@
 Closet 서비스 - 이미지 검증 및 분석 비즈니스 로직 (API 명세 v2 기준)
 
 주요 기능:
-1. 이미지 검증 (Validate): 포맷, 크기, 중복/유사(Marqo-FashionSigLIP), 패션 여부(LAION CLIP), NSFW(WD14)
+1. 이미지 검증 (Validate): 포맷, 크기, 중복/유사(Marqo-FashionSigLIP), 패션 여부(LAION CLIP), NSFW(Falconsai)
 2. 이미지 분석 (Analyze): 배경 제거, AI 속성 분석
 3. 작업 상태 관리: 비동기 작업 진행 상태 추적
 
-AI 모델:
-- Marqo-FashionSigLIP: 중복/유사 이미지 검증 (임베딩 기반)
+AI 모델 (RunPod Serverless에서 실행):
+- Falconsai/nsfw_image_detection: NSFW 검증
 - LAION CLIP-ViT-B-32-laion2b-s34b-b79k: 도메인 탐지 (패션 여부)
-- WD14 Tagger: NSFW 검증
+- Marqo-FashionSigLIP: 중복/유사 이미지 검증 (임베딩 기반)
 """
 
+import logging
+import os
 import time
 from typing import Optional
 
@@ -36,6 +38,8 @@ from app.closet.schemas import (
     ValidationSummary,
 )
 
+logger = logging.getLogger(__name__)
+
 # ============================================================
 # 설정 상수
 # ============================================================
@@ -45,6 +49,14 @@ MAX_FILE_SIZE_MB = 10
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 MIN_IMAGE_SIZE = 100  # 최소 100x100
 SIMILARITY_THRESHOLD = 0.95  # 유사도 임계값
+
+# RunPod 설정 (환경변수에서 로드)
+RUNPOD_API_KEY = os.getenv("RUNPOD_API_KEY", "")
+RUNPOD_ENDPOINT_ID = os.getenv("RUNPOD_ENDPOINT_ID", "")
+RUNPOD_BASE_URL = f"https://api.runpod.ai/v2/{RUNPOD_ENDPOINT_ID}"
+
+# Mock 모드 (RunPod 없이 테스트용)
+USE_MOCK_VALIDATOR = os.getenv("USE_MOCK_VALIDATOR", "true").lower() == "true"
 
 
 # ============================================================
@@ -61,30 +73,118 @@ _task_store: dict[str, dict] = {}  # taskId -> task info
 # ============================================================
 
 
-def validate_images(request: ValidateRequest) -> ValidateResponse:
+async def validate_images(request: ValidateRequest) -> ValidateResponse:
     """
-    이미지 검증 메인 함수
+    이미지 검증 메인 함수 (비동기)
 
     검증 순서:
-    1. 포맷 검증
-    2. 파일 크기 검증
-    3. 중복/유사 이미지 검증 (Marqo-FashionSigLIP)
-    4. 패션 도메인 검증 (LAION CLIP-ViT-B-32-laion2b-s34b-b79k)
-    5. NSFW 검증 (WD14 Tagger)
-    6. 품질 검증 (라플라시안)
+    1. 포맷 검증 (로컬)
+    2. 파일 크기 검증 (로컬)
+    3. RunPod 호출 (NSFW, 패션, 임베딩)
+    4. 중복/유사 이미지 검증 (Qdrant)
+    5. 품질 검증 (로컬)
     """
     results: list[ValidationResult] = []
     passed_count = 0
     failed_count = 0
 
-    for image_url in request.images:
-        result = _validate_single_image(image_url, request.userId)
-        results.append(result)
+    # Step 1-2: 로컬 사전 검증 (포맷, 크기)
+    pre_validated_urls = []
+    pre_validation_errors = {}  # url -> error
 
-        if result.passed:
-            passed_count += 1
-        else:
+    for image_url in request.images:
+        # 포맷 검증
+        if not _check_format(image_url):
+            pre_validation_errors[image_url] = ValidationErrorCode.INVALID_FORMAT
+            continue
+
+        # 파일 크기 검증
+        file_size = _get_file_size(image_url)
+        if file_size is None or file_size > MAX_FILE_SIZE_BYTES:
+            pre_validation_errors[image_url] = ValidationErrorCode.FILE_TOO_LARGE
+            continue
+
+        pre_validated_urls.append(image_url)
+
+    # Step 3: RunPod 호출 (NSFW, 패션, 임베딩)
+    runpod_results = {}
+    if pre_validated_urls:
+        ai_results = await call_runpod_validate(pre_validated_urls)
+        for ai_result in ai_results:
+            runpod_results[ai_result["url"]] = ai_result
+
+    # Step 4-5: 최종 결과 생성
+    for image_url in request.images:
+        # 사전 검증 실패
+        if image_url in pre_validation_errors:
+            results.append(
+                ValidationResult(
+                    originUrl=image_url,
+                    passed=False,
+                    error=pre_validation_errors[image_url],
+                )
+            )
             failed_count += 1
+            continue
+
+        # RunPod 결과 확인
+        ai_result = runpod_results.get(image_url, {})
+
+        # NSFW 검증
+        nsfw_info = ai_result.get("nsfw", {})
+        if nsfw_info.get("is_nsfw", False):
+            results.append(
+                ValidationResult(
+                    originUrl=image_url,
+                    passed=False,
+                    error=ValidationErrorCode.NSFW,
+                )
+            )
+            failed_count += 1
+            continue
+
+        # 패션 도메인 검증
+        fashion_info = ai_result.get("fashion", {})
+        if not fashion_info.get("is_fashion", True):
+            results.append(
+                ValidationResult(
+                    originUrl=image_url,
+                    passed=False,
+                    error=ValidationErrorCode.NOT_FASHION,
+                )
+            )
+            failed_count += 1
+            continue
+
+        # 중복/유사 이미지 검증
+        embedding = ai_result.get("embedding", [])
+        similarity = _check_duplicate(image_url, request.userId, embedding)
+        if similarity >= SIMILARITY_THRESHOLD:
+            results.append(
+                ValidationResult(
+                    originUrl=image_url,
+                    passed=False,
+                    error=ValidationErrorCode.DUPLICATE,
+                )
+            )
+            failed_count += 1
+            continue
+
+        # 품질 검증
+        if not _check_quality(image_url):
+            results.append(
+                ValidationResult(
+                    originUrl=image_url,
+                    passed=False,
+                    error=ValidationErrorCode.TOO_BLURRY,
+                )
+            )
+            failed_count += 1
+            continue
+
+        # 모든 검증 통과
+        results.append(ValidationResult(originUrl=image_url, passed=True))
+        passed_count += 1
 
     return ValidateResponse(
         success=True,
@@ -93,56 +193,6 @@ def validate_images(request: ValidateRequest) -> ValidateResponse:
         ),
         validationResults=results,
     )
-
-
-def _validate_single_image(image_url: str, user_id: int) -> ValidationResult:
-    """개별 이미지 검증"""
-
-    # Step 1: 포맷 검증
-    if not _check_format(image_url):
-        return ValidationResult(
-            originUrl=image_url,
-            passed=False,
-            error=ValidationErrorCode.INVALID_FORMAT,
-        )
-
-    # Step 2: 파일 크기 검증
-    file_size = _get_file_size(image_url)
-    if file_size is None or file_size > MAX_FILE_SIZE_BYTES:
-        return ValidationResult(
-            originUrl=image_url,
-            passed=False,
-            error=ValidationErrorCode.FILE_TOO_LARGE,
-        )
-
-    # Step 3: 중복/유사 이미지 검증 (Marqo-FashionSigLIP)
-    similarity = _check_duplicate(image_url, user_id)
-    if similarity >= SIMILARITY_THRESHOLD:
-        return ValidationResult(
-            originUrl=image_url, passed=False, error=ValidationErrorCode.DUPLICATE
-        )
-
-    # Step 4: 패션 도메인 검증 (LAION CLIP)
-    if not _check_is_fashion(image_url):
-        return ValidationResult(
-            originUrl=image_url, passed=False, error=ValidationErrorCode.NOT_FASHION
-        )
-
-    # Step 5: NSFW 검증 (WD14 Tagger)
-    wd14_result = _check_with_wd14_tagger(image_url)
-    if wd14_result["is_nsfw"]:
-        return ValidationResult(
-            originUrl=image_url, passed=False, error=ValidationErrorCode.NSFW
-        )
-
-    # Step 6: 품질 검증
-    if not _check_quality(image_url):
-        return ValidationResult(
-            originUrl=image_url, passed=False, error=ValidationErrorCode.TOO_BLURRY
-        )
-
-    # 모든 검증 통과
-    return ValidationResult(originUrl=image_url, passed=True)
 
 
 # ============================================================
@@ -169,69 +219,36 @@ def _get_file_size(image_url: str) -> Optional[int]:
         return None
 
 
-def _check_duplicate(image_url: str, user_id: int) -> float:
+def _check_duplicate(image_url: str, user_id: int, embedding: list[float]) -> float:
     """
-    중복/유사 이미지 검증 (Marqo-FashionSigLIP 기반)
+    중복/유사 이미지 검증
 
-    Marqo-FashionSigLIP 모델로 이미지 임베딩 생성 후
-    Qdrant에서 유사 이미지 검색
+    RunPod에서 생성된 임베딩을 Qdrant에서 검색하여 유사 이미지 확인
+
+    Args:
+        image_url: 이미지 URL
+        user_id: 사용자 ID
+        embedding: RunPod에서 생성된 임베딩 벡터
 
     Returns:
         float: 최대 유사도 (0.0 ~ 1.0)
-        - similarity >= 0.53: 중복으로 판단 (DUPLICATE)
     """
-    # TODO: Marqo-FashionSigLIP 연동
-    # 1. 이미지 다운로드
-    # 2. Marqo-FashionSigLIP으로 임베딩 생성
-    # 3. Qdrant에서 user_id 필터로 유사 검색
-    # 4. 최대 유사도 반환
+    if not embedding:
+        return 0.0
 
-    # 임시 구현
+    # TODO: Qdrant에서 user_id 필터로 유사 검색
+    # from qdrant_client import QdrantClient
+    # client = QdrantClient(...)
+    # results = client.search(
+    #     collection_name="fashion_embeddings",
+    #     query_vector=embedding,
+    #     query_filter={"must": [{"key": "user_id", "match": {"value": user_id}}]},
+    #     limit=1
+    # )
+    # return results[0].score if results else 0.0
+
+    # 임시 구현 (Qdrant 연동 전)
     return 0.0
-
-
-def _check_with_wd14_tagger(image_url: str) -> dict:
-    """
-    NSFW 검증 (WD14 Tagger)
-
-    WD14 Tagger는 이미지에서 태그를 추출하여:
-    - NSFW 관련 태그로 부적절 콘텐츠 감지
-
-    Note: 패션 여부는 LAION CLIP으로 별도 처리
-
-    Returns:
-        {
-            "is_nsfw": bool,     # NSFW인지
-            "tags": list[str],   # 감지된 태그들
-            "confidence": float  # 신뢰도
-        }
-    """
-    # TODO: WD14 Tagger 연동
-    # 1. 이미지 다운로드 및 전처리
-    # 2. WD14 Tagger 모델로 태그 추출
-    # 3. NSFW 태그 확인 (rating: questionable, explicit 등)
-
-    # 임시 구현
-    return {"is_nsfw": False, "tags": [], "confidence": 0.0}
-
-
-def _check_is_fashion(image_url: str) -> bool:
-    """
-    패션 도메인 탐지 (LAION CLIP-ViT-B-32-laion2b-s34b-b79k)
-
-    LAION CLIP 모델을 사용하여 이미지가 패션 도메인인지 판별
-    - 정확도와 VRAM 효율성 측면에서 최적의 성능
-
-    Returns:
-        bool: 패션 아이템인지 여부
-    """
-    # TODO: LAION CLIP 연동
-    # 1. 이미지 다운로드 및 전처리
-    # 2. LAION CLIP-ViT-B-32-laion2b-s34b-b79k 모델로 분류
-    # 3. 패션 도메인 여부 반환
-
-    # 임시 구현
-    return True
 
 
 def _check_quality(image_url: str) -> bool:
@@ -241,6 +258,89 @@ def _check_quality(image_url: str) -> bool:
     # 2. 블러 점수 계산
     # 3. 해상도 확인
     return True  # 임시: 품질 양호
+
+
+# ============================================================
+# RunPod API 호출
+# ============================================================
+
+
+async def call_runpod_validate(image_urls: list[str]) -> list[dict]:
+    """
+    RunPod Serverless로 이미지 검증 요청
+
+    Args:
+        image_urls: 검증할 이미지 URL 목록
+
+    Returns:
+        검증 결과 목록
+        [
+            {
+                "url": "...",
+                "nsfw": {"is_nsfw": false, "score": 0.1},
+                "fashion": {"is_fashion": true, "score": 0.8},
+                "embedding": [0.1, 0.2, ...]
+            }
+        ]
+    """
+    if USE_MOCK_VALIDATOR:
+        return _mock_validate(image_urls)
+
+    if not RUNPOD_API_KEY or not RUNPOD_ENDPOINT_ID:
+        logger.warning("RunPod 설정이 없습니다. Mock 모드로 실행합니다.")
+        return _mock_validate(image_urls)
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                f"{RUNPOD_BASE_URL}/runsync",
+                headers={
+                    "Authorization": f"Bearer {RUNPOD_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "input": {
+                        "action": "validate",
+                        "images": image_urls,
+                    }
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get("status") == "COMPLETED":
+                return data.get("output", {}).get("results", [])
+            else:
+                logger.error(f"RunPod 작업 실패: {data}")
+                return _mock_validate(image_urls)
+
+    except Exception as e:
+        logger.error(f"RunPod 호출 실패: {e}")
+        return _mock_validate(image_urls)
+
+
+def _mock_validate(image_urls: list[str]) -> list[dict]:
+    """
+    Mock 검증 결과 (테스트용)
+    """
+    results = []
+    for url in image_urls:
+        # URL에 특정 키워드가 있으면 테스트용으로 실패 처리
+        is_nsfw = "nsfw" in url.lower()
+        is_fashion = "food" not in url.lower() and "landscape" not in url.lower()
+
+        results.append(
+            {
+                "url": url,
+                "nsfw": {"is_nsfw": is_nsfw, "score": 0.9 if is_nsfw else 0.05},
+                "fashion": {
+                    "is_fashion": is_fashion,
+                    "score": 0.85 if is_fashion else 0.15,
+                },
+                "embedding": [0.1] * 768 if is_fashion and not is_nsfw else [],
+            }
+        )
+    return results
 
 
 # ============================================================

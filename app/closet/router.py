@@ -51,7 +51,7 @@ router = APIRouter(prefix="/v1/closet", tags=["closet"])
     - 파일 크기 (10MB 이하)
     - 중복/유사 이미지 (Marqo-FashionSigLIP)
     - 패션 도메인 (LAION CLIP)
-    - NSFW (WD14 Tagger)
+    - NSFW (Falconsai)
     - 품질 (블러 검출)
 
     제한사항:
@@ -61,7 +61,7 @@ router = APIRouter(prefix="/v1/closet", tags=["closet"])
 async def validate(request: ValidateRequest) -> ValidateResponse:
     """이미지 검증 엔드포인트"""
     try:
-        return validate_images(request)
+        return await validate_images(request)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
