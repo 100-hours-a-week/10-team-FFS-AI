@@ -78,6 +78,7 @@ class ValidationResult(BaseModel):
     originUrl: str = Field(..., description="원본 이미지 URL")
     passed: bool = Field(..., description="검증 통과 여부")
     error: Optional[ValidationErrorCode] = Field(None, description="실패 시 에러 코드")
+    embedding: Optional[list[float]] = Field(None, description="임베딩 벡터 (저장용)")
 
 
 class ValidationSummary(BaseModel):
@@ -282,6 +283,13 @@ class BatchStatusResponse(BaseModel):
                 ],
             }
         }
+
+
+# ============================================================
+# 4. 내부 사용 (analyze 완료 후 Qdrant 저장)
+# ============================================================
+# Note: 임베딩 저장은 analyze API 내부에서 자동 처리
+# 별도 API 엔드포인트 없음
 
 
 # ============================================================

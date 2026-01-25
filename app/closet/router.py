@@ -133,3 +133,30 @@ async def get_batch(batch_id: str) -> BatchStatusResponse:
         )
 
     return result
+
+
+# ============================================================
+# 4. 아이템 삭제 API (Qdrant 동기화)
+# ============================================================
+
+
+@router.delete(
+    "/{clothes_id}",
+    status_code=status.HTTP_200_OK,
+    summary="옷 아이템 삭제",
+    description="""
+    백엔드에서 옷 아이템 삭제 시 호출 - Qdrant에서 임베딩 삭제
+
+    Note: 임베딩 저장은 analyze API 완료 시 자동 처리됨
+    """,
+)
+async def delete_item(clothes_id: int):
+    """아이템 삭제 엔드포인트 - Qdrant 동기화"""
+    from app.closet.service import delete_item_from_qdrant
+
+    success = delete_item_from_qdrant(clothes_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="아이템 삭제 실패"
+        )
+    return {"success": True, "clothesId": clothes_id}

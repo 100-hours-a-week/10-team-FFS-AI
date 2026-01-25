@@ -2,6 +2,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -10,6 +11,8 @@ from app.closet.router import router as closet_router
 from app.core.database import check_health, close_databases, init_databases
 from app.embedding.router import router as embedding_router
 from app.outfit.router import router as outfit_router
+
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,

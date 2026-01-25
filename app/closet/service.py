@@ -37,6 +37,7 @@ from app.closet.schemas import (
     ValidationResult,
     ValidationSummary,
 )
+from app.core.qdrant import QdrantService
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +45,10 @@ logger = logging.getLogger(__name__)
 # 설정 상수
 # ============================================================
 
-ALLOWED_FORMATS = {"jpg", "jpeg", "png", "webp"}
+ALLOWED_FORMATS = {"jpg", "jpeg", "png"}  # webp 제외
 MAX_FILE_SIZE_MB = 10
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
-MIN_IMAGE_SIZE = 100  # 최소 100x100
+MIN_IMAGE_RESOLUTION = 512  # 최소 512x512
 SIMILARITY_THRESHOLD = 0.95  # 유사도 임계값
 
 # RunPod 설정 (환경변수에서 로드)
@@ -93,12 +94,12 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
     pre_validation_errors = {}  # url -> error
 
     for image_url in request.images:
-        # 포맷 검증
+        # 포맷 검증 (jpg, png만 허용)
         if not _check_format(image_url):
             pre_validation_errors[image_url] = ValidationErrorCode.INVALID_FORMAT
             continue
 
-        # 파일 크기 검증
+        # 파일 크기 검증 (10MB 이하)
         file_size = _get_file_size(image_url)
         if file_size is None or file_size > MAX_FILE_SIZE_BYTES:
             pre_validation_errors[image_url] = ValidationErrorCode.FILE_TOO_LARGE
@@ -108,9 +109,13 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
 
     # Step 3: RunPod 호출 (NSFW, 패션, 임베딩)
     runpod_results = {}
+    print(f"[DEBUG] pre_validated_urls: {len(pre_validated_urls)}개")
     if pre_validated_urls:
+        print(f"[DEBUG] RunPod 호출 시작: {len(pre_validated_urls)}개 URL")
         ai_results = await call_runpod_validate(pre_validated_urls)
+        print(f"[DEBUG] RunPod 호출 완료: {len(ai_results)}개 결과")
         for ai_result in ai_results:
+            print(f"[DEBUG] AI Result: {ai_result}")  # 상세 결과 출력
             runpod_results[ai_result["url"]] = ai_result
 
     # Step 4-5: 최종 결과 생성
@@ -129,6 +134,19 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
 
         # RunPod 결과 확인
         ai_result = runpod_results.get(image_url, {})
+
+        # 0. RunPod 에러 체크 (다운로드 실패 등)
+        if ai_result.get("error"):
+            logger.error(f"RunPod 에러: {ai_result.get('error')}")
+            results.append(
+                ValidationResult(
+                    originUrl=image_url,
+                    passed=False,
+                    error=ValidationErrorCode.TOO_BLURRY,  # 임시로 품질 에러로 처리 (또는 새 코드 추가)
+                )
+            )
+            failed_count += 1
+            continue
 
         # NSFW 검증
         nsfw_info = ai_result.get("nsfw", {})
@@ -158,6 +176,8 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
 
         # 중복/유사 이미지 검증
         embedding = ai_result.get("embedding", [])
+
+        # 중복 검사 (Qdrant)
         similarity = _check_duplicate(image_url, request.userId, embedding)
         if similarity >= SIMILARITY_THRESHOLD:
             results.append(
@@ -165,6 +185,7 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
                     originUrl=image_url,
                     passed=False,
                     error=ValidationErrorCode.DUPLICATE,
+                    embedding=embedding,  # 중복일 때도 임베딩 반환 (디버깅용)
                 )
             )
             failed_count += 1
@@ -183,7 +204,13 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
             continue
 
         # 모든 검증 통과
-        results.append(ValidationResult(originUrl=image_url, passed=True))
+        results.append(
+            ValidationResult(
+                originUrl=image_url,
+                passed=True,
+                embedding=embedding,  # 중요: 클라이언트가 저장할 수 있도록 임베딩 반환
+            )
+        )
         passed_count += 1
 
     return ValidateResponse(
@@ -204,8 +231,20 @@ def _check_format(image_url: str) -> bool:
     """이미지 포맷 검증 (확장자 기반)"""
     # URL에서 확장자 추출
     url_path = image_url.split("?")[0]  # 쿼리스트링 제거
-    extension = url_path.rsplit(".", 1)[-1].lower()
-    return extension in ALLOWED_FORMATS
+
+    # 파일명 추출 (경로의 마지막 부분)
+    filename = url_path.split("/")[-1]
+
+    # 파일명에 확장자가 있는 경우만 체크
+    if "." in filename:
+        extension = filename.rsplit(".", 1)[-1].lower()
+        result = extension in ALLOWED_FORMATS
+        logger.info(f"포맷 체크: {filename}, 확장자: {extension}, 결과: {result}")
+        return result
+
+    # 확장자가 없으면 일단 통과 (RunPod에서 다운로드 시도)
+    logger.info(f"포맷 체크: {filename}, 확장자 없음, 통과")
+    return True
 
 
 def _get_file_size(image_url: str) -> Optional[int]:
@@ -217,6 +256,12 @@ def _get_file_size(image_url: str) -> Optional[int]:
             return int(content_length) if content_length else None
     except Exception:
         return None
+
+
+# Qdrant 서비스 초기화
+# qdrant_service = QdrantService() <--- Global variable initialized at module level (moved down)
+
+qdrant_service = QdrantService()
 
 
 def _check_duplicate(image_url: str, user_id: int, embedding: list[float]) -> float:
@@ -236,28 +281,91 @@ def _check_duplicate(image_url: str, user_id: int, embedding: list[float]) -> fl
     if not embedding:
         return 0.0
 
-    # TODO: Qdrant에서 user_id 필터로 유사 검색
-    # from qdrant_client import QdrantClient
-    # client = QdrantClient(...)
-    # results = client.search(
-    #     collection_name="fashion_embeddings",
-    #     query_vector=embedding,
-    #     query_filter={"must": [{"key": "user_id", "match": {"value": user_id}}]},
-    #     limit=1
-    # )
-    # return results[0].score if results else 0.0
+    # Qdrant 유사 검색
+    results = qdrant_service.search_similar(
+        vector=embedding, user_id=user_id, limit=1, score_threshold=0.0
+    )
 
-    # 임시 구현 (Qdrant 연동 전)
+    if results:
+        best_match = results[0]
+        logger.info(f"유사 이미지 발견: ID {best_match.id}, 점수 {best_match.score}")
+        return float(best_match.score)
+
     return 0.0
 
 
+def save_embedding(
+    user_id: int, clothes_id: int, embedding: list[float], metadata: dict
+) -> bool:
+    """
+    임베딩 저장 (Qdrant) - 내부 전용
+
+    Note: analyze API 완료 시 자동 호출됨 (외부 API 아님)
+
+    Args:
+        user_id: 사용자 ID
+        clothes_id: 옷 ID
+        embedding: 임베딩 벡터
+        metadata: 메타데이터 (category, color, material)
+
+    Returns:
+        성공 여부
+    """
+    if not embedding:
+        return False
+
+    payload = {"user_id": user_id, **metadata}
+
+    return qdrant_service.upsert_item(id=clothes_id, vector=embedding, payload=payload)
+
+
+def delete_item_from_qdrant(clothes_id: int) -> bool:
+    """
+    아이템 삭제 (Qdrant)
+
+    Args:
+        clothes_id: 삭제할 옷 ID
+
+    Returns:
+        성공 여부
+    """
+    return qdrant_service.delete_item(clothes_id)
+
+
 def _check_quality(image_url: str) -> bool:
-    """이미지 품질 검증 (블러, 해상도 등)"""
-    # TODO: 라플라시안 분산으로 블러 검출
-    # 1. 이미지 로드
-    # 2. 블러 점수 계산
-    # 3. 해상도 확인
-    return True  # 임시: 품질 양호
+    """
+    이미지 품질 검증 (해상도)
+
+    최소 해상도: 512x512 픽셀
+
+    Note: 블러 검출은 구현 안 함
+    - 고도화 시 고려: Super Resolution (Real-ESRGAN 등)으로 흐릿한 사진 선명화
+    """
+    try:
+        import io
+
+        from PIL import Image
+
+        # 이미지 다운로드
+        with httpx.Client(timeout=10, verify=False) as client:
+            response = client.get(image_url)
+            response.raise_for_status()
+            image = Image.open(io.BytesIO(response.content))
+            width, height = image.size
+
+            # 최소 해상도 체크
+            if width < MIN_IMAGE_RESOLUTION or height < MIN_IMAGE_RESOLUTION:
+                logger.info(
+                    f"해상도 부족: {width}x{height} (최소: {MIN_IMAGE_RESOLUTION}x{MIN_IMAGE_RESOLUTION})"
+                )
+                return False
+
+            logger.info(f"품질 양호: {width}x{height}")
+            return True
+
+    except Exception as e:
+        logger.error(f"품질 검증 실패: {image_url}, 에러: {e}")
+        return True  # 에러 시 통과 (너그럽게)
 
 
 # ============================================================
@@ -283,7 +391,9 @@ async def call_runpod_validate(image_urls: list[str]) -> list[dict]:
             }
         ]
     """
+    logger.info(f"USE_MOCK_VALIDATOR: {USE_MOCK_VALIDATOR}")
     if USE_MOCK_VALIDATOR:
+        logger.info("Mock 모드로 실행")
         return _mock_validate(image_urls)
 
     if not RUNPOD_API_KEY or not RUNPOD_ENDPOINT_ID:
