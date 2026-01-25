@@ -57,7 +57,12 @@ NON_FASHION_PROMPTS = [
 def download_image(image_url: str, timeout: float = 30.0) -> Image.Image | None:
     """URL에서 이미지 다운로드"""
     try:
-        with httpx.Client(timeout=timeout) as client:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        with httpx.Client(
+            timeout=timeout, follow_redirects=True, verify=False, headers=headers
+        ) as client:
             response = client.get(image_url)
             response.raise_for_status()
             image = Image.open(io.BytesIO(response.content))
@@ -135,6 +140,7 @@ class NSFWValidator:
 
         try:
             results = self._classifier(image)
+            print(f"[DEBUG] NSFW Model Output: {results}")  # 모델 원본 출력
             # [{"label": "nsfw", "score": 0.95}, {"label": "normal", "score": 0.05}]
 
             nsfw_score = 0.0

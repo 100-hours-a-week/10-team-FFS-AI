@@ -57,3 +57,6 @@ logs/
 # Cache
 .cache/
 .pytest_cache/
+
+# Qdrant Storage
+qdrant_storage/
