@@ -1,5 +1,4 @@
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,7 +19,7 @@ class Settings(BaseSettings):
 
     qdrant_host: str = Field(alias="QDRANT_HOST")
     qdrant_port: int = Field(alias="QDRANT_PORT")
-    qdrant_api_key: Optional[str] = Field(default=None, alias="QDRANT_API_KEY")
+    qdrant_api_key: str | None = Field(default=None, alias="QDRANT_API_KEY")
     qdrant_collection_name: str = Field(alias="QDRANT_COLLECTION_NAME")
     qdrant_use_https: bool = Field(default=True, alias="QDRANT_USE_HTTPS")
     qdrant_prefer_grpc: bool = Field(default=False, alias="QDRANT_PREFER_GRPC")
@@ -28,28 +27,24 @@ class Settings(BaseSettings):
     redis_host: str = Field(alias="REDIS_HOST")
     redis_port: int = Field(alias="REDIS_PORT")
     redis_db: int = Field(alias="REDIS_DB")
-    redis_password: Optional[str] = Field(default=None, alias="REDIS_PASSWORD")
+    redis_password: str | None = Field(default=None, alias="REDIS_PASSWORD")
     redis_max_connections: int = Field(default=10, alias="REDIS_MAX_CONNECTIONS")
 
-    aws_access_key_id: Optional[str] = Field(default=None, alias="AWS_ACCESS_KEY_ID")
-    aws_secret_access_key: Optional[str] = Field(
+    aws_access_key_id: str | None = Field(default=None, alias="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str | None = Field(
         default=None, alias="AWS_SECRET_ACCESS_KEY"
     )
     aws_region: str = Field(default="ap-northeast-2", alias="AWS_REGION")
-    s3_bucket_name: str = Field(
-        default="klosetlab-ai-storage", alias="S3_BUCKET_NAME"
-    )
+    s3_bucket_name: str = Field(default="klosetlab-ai-storage", alias="S3_BUCKET_NAME")
 
     hf_home: str = Field(default="./models", alias="HF_HOME")
-    upstage_api_key: Optional[str] = Field(default=None, alias="UPSTAGE_API_KEY")
-    embedding_model: str = Field(
-        default="embedding-passage", alias="EMBEDDING_MODEL"
-    )
+    upstage_api_key: str | None = Field(default=None, alias="UPSTAGE_API_KEY")
+    embedding_model: str = Field(default="embedding-passage", alias="EMBEDDING_MODEL")
     caption_model: str = Field(
         default="Salesforce/blip-image-captioning-base", alias="CAPTION_MODEL"
     )
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     return Settings()

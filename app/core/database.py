@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from qdrant_client import AsyncQdrantClient
 from redis.asyncio import ConnectionPool, Redis
@@ -9,9 +8,9 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-_qdrant_client: Optional[AsyncQdrantClient] = None
-_redis_pool: Optional[ConnectionPool] = None
-_redis_client: Optional[Redis] = None
+_qdrant_client: AsyncQdrantClient | None = None
+_redis_pool: ConnectionPool | None = None
+_redis_client: Redis | None = None
 
 
 async def get_qdrant_client() -> AsyncQdrantClient:
@@ -52,31 +51,34 @@ async def init_databases() -> None:
         from qdrant_client.http import models as qdrant_models
 
         collections = await _qdrant_client.get_collections()
-        logger.info(f"✓ Qdrant connected successfully. Collections: {len(collections.collections)}")
+        logger.info(
+            f"Qdrant connected successfully. Collections: {len(collections.collections)}"
+        )
 
         collection_exists = any(
             col.name == settings.qdrant_collection_name
             for col in collections.collections
         )
         if not collection_exists:
-            logger.info(f"Creating collection '{settings.qdrant_collection_name}' (dim: 4096)")
+            logger.info(f"Creating collection '{settings.qdrant_collection_name}'")
             await _qdrant_client.create_collection(
                 collection_name=settings.qdrant_collection_name,
                 vectors_config=qdrant_models.VectorParams(
-                    size=4096,
-                    distance=qdrant_models.Distance.COSINE
-                )
+                    size=4096, distance=qdrant_models.Distance.COSINE
+                ),
             )
-            logger.info(f"✓ Collection '{settings.qdrant_collection_name}' created")
+            logger.info(f"Collection '{settings.qdrant_collection_name}' created")
         else:
-            logger.info(f"✓ Collection '{settings.qdrant_collection_name}' found")
+            logger.info(f"Collection '{settings.qdrant_collection_name}' found")
 
     except Exception as e:
-        logger.error(f"✗ Failed to connect to Qdrant: {e}")
+        logger.error(f"Failed to connect to Qdrant: {e}")
         raise
 
     try:
-        logger.info(f"Connecting to Redis at {settings.redis_host}:{settings.redis_port}")
+        logger.info(
+            f"Connecting to Redis at {settings.redis_host}:{settings.redis_port}"
+        )
 
         _redis_pool = ConnectionPool(
             host=settings.redis_host,
@@ -91,12 +93,12 @@ async def init_databases() -> None:
 
         pong = await _redis_client.ping()
         if pong:
-            logger.info(f"✓ Redis connected successfully (DB: {settings.redis_db})")
+            logger.info(f"Redis connected successfully (DB: {settings.redis_db})")
         else:
             raise ConnectionError("Redis PING failed")
 
     except Exception as e:
-        logger.error(f"✗ Failed to connect to Redis: {e}")
+        logger.error(f"Failed to connect to Redis: {e}")
         if _redis_client:
             await _redis_client.close()
             _redis_client = None
@@ -105,7 +107,7 @@ async def init_databases() -> None:
             _redis_pool = None
         raise
 
-    logger.info("✓ All database connections initialized successfully")
+    logger.info("All database connections initialized successfully")
 
 
 async def close_databases() -> None:
@@ -114,7 +116,7 @@ async def close_databases() -> None:
     if _qdrant_client:
         try:
             await _qdrant_client.close()
-            logger.info("✓ Qdrant connection closed")
+            logger.info("Qdrant connection closed")
         except Exception as e:
             logger.error(f"Error closing Qdrant connection: {e}")
         finally:
@@ -123,7 +125,7 @@ async def close_databases() -> None:
     if _redis_client:
         try:
             await _redis_client.close()
-            logger.info("✓ Redis connection closed")
+            logger.info("Redis connection closed")
         except Exception as e:
             logger.error(f"Error closing Redis connection: {e}")
         finally:
@@ -132,7 +134,7 @@ async def close_databases() -> None:
     if _redis_pool:
         try:
             await _redis_pool.disconnect()
-            logger.info("✓ Redis connection pool closed")
+            logger.info("Redis connection pool closed")
         except Exception as e:
             logger.error(f"Error closing Redis pool: {e}")
         finally:
@@ -140,17 +142,12 @@ async def close_databases() -> None:
 
 
 async def check_health() -> dict[str, str]:
-    """Check health of all database connections.
-
-    Returns:
-        dict: Health status of each database service
-    """
     health_status = {}
 
     # Check Qdrant
     try:
         if _qdrant_client:
-            _qdrant_client.get_collections()
+            await _qdrant_client.get_collections()
             health_status["qdrant"] = "connected"
         else:
             health_status["qdrant"] = "not_initialized"

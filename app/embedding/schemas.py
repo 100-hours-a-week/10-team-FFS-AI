@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic import Field
 
 from app.common.schemas import BaseSchema
@@ -7,11 +5,11 @@ from app.common.schemas import BaseSchema
 
 class ClothingMetadata(BaseSchema):
     category: str = Field(..., description="의류 카테고리 (예: 상의, 하의)")
-    color: List[str] = Field(..., description="의류 색상 목록")
-    material: List[str] = Field(..., description="의류 소재 목록")
-    style_tags: List[str] = Field(default=[], description="스타일 태그 목록")
+    color: list[str] = Field(..., description="의류 색상 목록")
+    material: list[str] = Field(..., description="의류 소재 목록")
+    style_tags: list[str] = Field(default=[], description="스타일 태그 목록")
     gender: str = Field(..., description="성별 (예: 남성, 여성, 공용)")
-    season: List[str] = Field(..., description="추천 계절 목록")
+    season: list[str] = Field(..., description="추천 계절 목록")
     formality: str = Field(..., description="포멀도 (예: 포멀, 캐주얼)")
     fit: str = Field(..., description="핏 (예: 오버핏, 슬림핏)")
 

@@ -1,10 +1,12 @@
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from app.core.database import check_health, close_databases, init_databases
+from app.embedding.router import router as embedding_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("start server")
     try:
         await init_databases()
@@ -38,20 +40,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-from app.embedding.router import router as embedding_router
-
 app.include_router(embedding_router)
 
 
 @app.get("/")
-async def root():
-    return {
-        "status": "running"
-    }
+async def root() -> dict[str, str]:
+    return {"status": "running"}
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> JSONResponse:
     health_status = await check_health()
 
     all_connected = all(status == "connected" for status in health_status.values())
