@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     hf_home: str = Field(default="./models", alias="HF_HOME")
     upstage_api_key: Optional[str] = Field(default=None, alias="UPSTAGE_API_KEY")
     embedding_model: str = Field(
-        default="solar-embedding-1-large-query", alias="EMBEDDING_MODEL"
+        default="embedding-passage", alias="EMBEDDING_MODEL"
     )
     caption_model: str = Field(
         default="Salesforce/blip-image-captioning-base", alias="CAPTION_MODEL"
