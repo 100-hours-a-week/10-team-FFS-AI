@@ -2,6 +2,7 @@ fastapi
 uvicorn
 pydantic-settings
 qdrant-client
+redis>=5.0.0
 boto3
 torch
 transformers
@@ -9,3 +10,4 @@ sentence-transformers
 python-dotenv
 httpx
 pillow
+tenacity
