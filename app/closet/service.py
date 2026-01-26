@@ -13,14 +13,11 @@ AI 모델 (RunPod Serverless에서 실행):
 """
 
 import logging
-import os
 import time
 
 import httpx
 
 from app.closet.schemas import (
-    AnalysisAttributes,
-    AnalysisResult,
     # Analyze API
     AnalyzeRequest,
     AnalyzeResponse,
@@ -29,6 +26,10 @@ from app.closet.schemas import (
     BatchStatus,
     # Batch Status API
     BatchStatusResponse,
+    Category,
+    ExtraAttributes,
+    MajorAttributes,
+    MetaData,
     TaskStatus,
     # Validate API
     ValidateRequest,
@@ -37,7 +38,11 @@ from app.closet.schemas import (
     ValidationResult,
     ValidationSummary,
 )
-from app.core.qdrant import QdrantService
+from app.config import get_settings
+
+# 1. Remove import
+# (Handled by the range replacement or explicit target)
+
 
 logger = logging.getLogger(__name__)
 
@@ -52,11 +57,14 @@ MIN_IMAGE_RESOLUTION = 512  # 최소 512x512
 SIMILARITY_THRESHOLD = 0.95  # 유사도 임계값
 
 # AI Model Server 설정 (환경변수에서 로드)
-AI_MODEL_SERVER_URL = os.getenv("AI_MODEL_SERVER_URL", "")
+# AI_MODEL_SERVER_URL = os.getenv("AI_MODEL_SERVER_URL", "")
 
 
 # Mock 모드 (AI 서버 없이 테스트용)
-USE_MOCK_VALIDATOR = os.getenv("USE_MOCK_VALIDATOR", "true").lower() == "true"
+# USE_MOCK_VALIDATOR = os.getenv("USE_MOCK_VALIDATOR", "true").lower() == "true"
+
+# 설정 로드
+settings = get_settings()
 
 
 # ============================================================
@@ -175,23 +183,6 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
             failed_count += 1
             continue
 
-        # 중복/유사 이미지 검증
-        embedding = ai_result.get("embedding", [])
-
-        # 중복 검사 (Qdrant)
-        similarity = _check_duplicate(image_url, request.user_id, embedding)
-        if similarity >= SIMILARITY_THRESHOLD:
-            results.append(
-                ValidationResult(
-                    origin_url=image_url,
-                    passed=False,
-                    error=ValidationErrorCode.DUPLICATE,
-                    embedding=embedding,  # 중복일 때도 임베딩 반환 (디버깅용)
-                )
-            )
-            failed_count += 1
-            continue
-
         # 품질 검증
         if not _check_quality(image_url):
             results.append(
@@ -209,7 +200,7 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
             ValidationResult(
                 originUrl=image_url,
                 passed=True,
-                embedding=embedding,  # 중요: 클라이언트가 저장할 수 있도록 임베딩 반환
+                # embedding 제거 (User Request)
             )
         )
         passed_count += 1
@@ -257,80 +248,6 @@ def _get_file_size(image_url: str) -> int | None:
             return int(content_length) if content_length else None
     except Exception:
         return None
-
-
-# Qdrant 서비스 초기화
-# qdrant_service = QdrantService() <--- Global variable initialized at module level (moved down)
-
-qdrant_service = QdrantService()
-
-
-def _check_duplicate(image_url: str, user_id: int, embedding: list[float]) -> float:
-    """
-    중복/유사 이미지 검증
-
-    AI 서버에서 생성된 임베딩을 Qdrant에서 검색하여 유사 이미지 확인
-
-    Args:
-        image_url: 이미지 URL
-        user_id: 사용자 ID
-        embedding: AI 서버에서 생성된 임베딩 벡터
-
-    Returns:
-        float: 최대 유사도 (0.0 ~ 1.0)
-    """
-    if not embedding:
-        return 0.0
-
-    # Qdrant 유사 검색
-    results = qdrant_service.search_similar(
-        vector=embedding, user_id=user_id, limit=1, score_threshold=0.0
-    )
-
-    if results:
-        best_match = results[0]
-        logger.info(f"유사 이미지 발견: ID {best_match.id}, 점수 {best_match.score}")
-        return float(best_match.score)
-
-    return 0.0
-
-
-def save_embedding(
-    user_id: int, clothes_id: int, embedding: list[float], metadata: dict
-) -> bool:
-    """
-    임베딩 저장 (Qdrant) - 내부 전용
-
-    Note: analyze API 완료 시 자동 호출됨 (외부 API 아님)
-
-    Args:
-        user_id: 사용자 ID
-        clothes_id: 옷 ID
-        embedding: 임베딩 벡터
-        metadata: 메타데이터 (category, color, material)
-
-    Returns:
-        성공 여부
-    """
-    if not embedding:
-        return False
-
-    payload = {"user_id": user_id, **metadata}
-
-    return qdrant_service.upsert_item(id=clothes_id, vector=embedding, payload=payload)
-
-
-def delete_item_from_qdrant(clothes_id: int) -> bool:
-    """
-    아이템 삭제 (Qdrant)
-
-    Args:
-        clothes_id: 삭제할 옷 ID
-
-    Returns:
-        성공 여부
-    """
-    return qdrant_service.delete_item(clothes_id)
 
 
 def _check_quality(image_url: str) -> bool:
@@ -392,19 +309,19 @@ async def call_ai_model_server(image_urls: list[str]) -> list[dict]:
             }
         ]
     """
-    logger.info(f"USE_MOCK_VALIDATOR: {USE_MOCK_VALIDATOR}")
-    if USE_MOCK_VALIDATOR:
+    logger.info(f"USE_MOCK_VALIDATOR: {settings.use_mock_validator}")
+    if settings.use_mock_validator:
         logger.info("Mock 모드로 실행")
         return _mock_validate(image_urls)
 
-    if not AI_MODEL_SERVER_URL:
+    if not settings.ai_model_server_url:
         logger.warning("AI_MODEL_SERVER_URL 설정이 없습니다. Mock 모드로 실행합니다.")
         return _mock_validate(image_urls)
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"{AI_MODEL_SERVER_URL}/validate",  # 표준화된 REST API 엔드포인트
+                f"{settings.ai_model_server_url}/validate",  # 표준화된 REST API 엔드포인트
                 headers={"Content-Type": "application/json"},
                 json={"images": image_urls},  # input 래퍼 없이 직접 전송
             )
@@ -460,6 +377,15 @@ async def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
 
     batch_id = request.batch_id
 
+    # 중복 배치 ID 체크 (409)
+    if batch_id in _batch_store:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"이미 처리 중인 배치입니다: {batch_id}",
+        )
+
     # 배치 정보 저장
     _batch_store[batch_id] = {
         "user_id": request.user_id,
@@ -471,6 +397,7 @@ async def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     }
 
     # 개별 작업 정보 저장 및 백그라운드 작업 시작
+    initial_results = []
     for image in request.images:
         task_id = image.task_id
         _task_store[task_id] = {
@@ -489,19 +416,31 @@ async def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
             "created_at": time.time(),
         }
 
+        # 초기 results 배열 생성
+        initial_results.append(
+            BatchResultItem(
+                task_id=task_id,
+                status=TaskStatus.PREPROCESSING,
+                file_id=None,
+                major=None,
+                extra=None,
+            )
+        )
+
         # 백그라운드 작업 시작 (Fire and forget)
         asyncio.create_task(process_image_task(task_id))
         logger.info(f"백그라운드 작업 시작: task_id={task_id}")
 
     return AnalyzeResponse(
         batch_id=batch_id,
-        status=BatchStatus.ACCEPTED,
+        status=BatchStatus.IN_PROGRESS,
         meta=BatchMeta(
             total=len(request.images),
             completed=0,
             processing=len(request.images),
             is_finished=False,
         ),
+        results=initial_results,
     )
 
 
@@ -563,27 +502,37 @@ def get_batch_status(batch_id: str) -> BatchStatusResponse | None:
 def _build_batch_result_item(task_id: str, task: dict) -> BatchResultItem:
     """BatchResultItem 빌드"""
 
-    analysis = None
+    major = None
+    extra = None
+
     if task.get("analysis_result"):
         attrs = task["analysis_result"]
-        attributes = AnalysisAttributes(
-            caption=attrs.get("caption", ""),
+
+        major = MajorAttributes(
             category=attrs.get("category", ""),
             color=attrs.get("color", []),
             material=attrs.get("material", []),
             style_tags=attrs.get("style_tags", []),
+        )
+
+        meta = MetaData(
             gender=attrs.get("gender", ""),
             season=attrs.get("season", []),
             formality=attrs.get("formality", ""),
             fit=attrs.get("fit", ""),
         )
-        analysis = AnalysisResult(attributes=attributes)
+
+        extra = ExtraAttributes(
+            meta_data=meta,
+            caption=attrs.get("caption", ""),
+        )
 
     return BatchResultItem(
         task_id=task_id,
         status=task["status"],
         file_id=task.get("file_id"),
-        analysis=analysis,
+        major=major,
+        extra=extra,
     )
 
 
@@ -702,7 +651,7 @@ async def _analyze_image_attributes(file_id: int, sequence: int = 0) -> dict:
 
     return {
         "caption": "골드 버튼 디테일이 들어간 캐주얼한 스타일의 빨간색 니트입니다.",
-        "category": "상의",
+        "category": Category.TOP,
         "color": ["빨강"],
         "material": ["니트"],
         "style_tags": ["캐주얼", "따뜻한"],

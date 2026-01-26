@@ -128,6 +128,23 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
                 }
             },
         },
+        409: {
+            "model": ErrorResponse,
+            "description": "중복 요청 (이미 처리 중)",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "errorCode": "ALREADY_PROCESSING",
+                        "message": "이미 처리 중인 배치작업입니다",
+                    }
+                }
+            },
+        },
+        500: {
+            "model": ErrorResponse,
+            "description": "서버 오류",
+        },
     },
     summary="이미지 분석 시작",
     description="""
@@ -168,6 +185,32 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
                         "success": False,
                         "errorCode": "BATCH_NOT_FOUND",
                         "message": "배치를 찾을 수 없습니다.",
+                    }
+                }
+            },
+        },
+        410: {
+            "model": ErrorResponse,
+            "description": "작업 만료",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "errorCode": "BATCH_EXPIRED",
+                        "message": "만료된 배치 작업입니다.",
+                    }
+                }
+            },
+        },
+        500: {
+            "model": ErrorResponse,
+            "description": "서버 오류",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "errorCode": "SERVER_ERROR",
+                        "message": "서버 내부 오류가 발생했습니다.",
                     }
                 }
             },

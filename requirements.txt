@@ -11,3 +11,5 @@ python-dotenv
 httpx
 pillow
 tenacity
+imagehash
+numpy
