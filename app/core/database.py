@@ -49,6 +49,8 @@ async def init_databases() -> None:
             prefer_grpc=settings.qdrant_prefer_grpc,
         )
 
+        from qdrant_client.http import models as qdrant_models
+
         collections = await _qdrant_client.get_collections()
         logger.info(f"✓ Qdrant connected successfully. Collections: {len(collections.collections)}")
 
@@ -57,10 +59,15 @@ async def init_databases() -> None:
             for col in collections.collections
         )
         if not collection_exists:
-            logger.warning(
-                f"Collection '{settings.qdrant_collection_name}' does not exist. "
-                f"It will be created when first used."
+            logger.info(f"Creating collection '{settings.qdrant_collection_name}' (dim: 4096)")
+            await _qdrant_client.create_collection(
+                collection_name=settings.qdrant_collection_name,
+                vectors_config=qdrant_models.VectorParams(
+                    size=4096,
+                    distance=qdrant_models.Distance.COSINE
+                )
             )
+            logger.info(f"✓ Collection '{settings.qdrant_collection_name}' created")
         else:
             logger.info(f"✓ Collection '{settings.qdrant_collection_name}' found")
 

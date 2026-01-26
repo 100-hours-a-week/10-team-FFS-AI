@@ -38,6 +38,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from app.embedding.router import router as embedding_router
+
+app.include_router(embedding_router)
+
 
 @app.get("/")
 async def root():
