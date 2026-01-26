@@ -15,12 +15,12 @@ AI 모델 (RunPod Serverless에서 실행):
 import logging
 import os
 import time
-from typing import Optional
 
 import httpx
 
 from app.closet.schemas import (
     AnalysisAttributes,
+    AnalysisResult,
     # Analyze API
     AnalyzeRequest,
     AnalyzeResponse,
@@ -51,12 +51,11 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 MIN_IMAGE_RESOLUTION = 512  # 최소 512x512
 SIMILARITY_THRESHOLD = 0.95  # 유사도 임계값
 
-# RunPod 설정 (환경변수에서 로드)
-RUNPOD_API_KEY = os.getenv("RUNPOD_API_KEY", "")
-RUNPOD_ENDPOINT_ID = os.getenv("RUNPOD_ENDPOINT_ID", "")
-RUNPOD_BASE_URL = f"https://api.runpod.ai/v2/{RUNPOD_ENDPOINT_ID}"
+# AI Model Server 설정 (환경변수에서 로드)
+AI_MODEL_SERVER_URL = os.getenv("AI_MODEL_SERVER_URL", "")
 
-# Mock 모드 (RunPod 없이 테스트용)
+
+# Mock 모드 (AI 서버 없이 테스트용)
 USE_MOCK_VALIDATOR = os.getenv("USE_MOCK_VALIDATOR", "true").lower() == "true"
 
 
@@ -107,16 +106,18 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
 
         pre_validated_urls.append(image_url)
 
-    # Step 3: RunPod 호출 (NSFW, 패션, 임베딩)
-    runpod_results = {}
-    print(f"[DEBUG] pre_validated_urls: {len(pre_validated_urls)}개")
+    # Step 3: AI Model Server 호출 (NSFW, 패션, 임베딩)
+    ai_results = {}
+    logger.info(f"[DEBUG] pre_validated_urls: {len(pre_validated_urls)}개")
+
     if pre_validated_urls:
-        print(f"[DEBUG] RunPod 호출 시작: {len(pre_validated_urls)}개 URL")
-        ai_results = await call_runpod_validate(pre_validated_urls)
-        print(f"[DEBUG] RunPod 호출 완료: {len(ai_results)}개 결과")
-        for ai_result in ai_results:
-            print(f"[DEBUG] AI Result: {ai_result}")  # 상세 결과 출력
-            runpod_results[ai_result["url"]] = ai_result
+        logger.info(f"[DEBUG] AI 서버 호출 시작: {len(pre_validated_urls)}개 URL")
+        ai_response_list = await call_ai_model_server(pre_validated_urls)
+        logger.info(f"[DEBUG] AI 서버 호출 완료: {len(ai_response_list)}개 결과")
+
+        for ai_result in ai_response_list:
+            logger.info(f"[DEBUG] AI Result: {ai_result}")  # 상세 결과 출력
+            ai_results[ai_result["url"]] = ai_result
 
     # Step 4-5: 최종 결과 생성
     for image_url in request.images:
@@ -124,7 +125,7 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
         if image_url in pre_validation_errors:
             results.append(
                 ValidationResult(
-                    originUrl=image_url,
+                    origin_url=image_url,
                     passed=False,
                     error=pre_validation_errors[image_url],
                 )
@@ -132,15 +133,15 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
             failed_count += 1
             continue
 
-        # RunPod 결과 확인
-        ai_result = runpod_results.get(image_url, {})
+        # AI 서버 결과 확인
+        ai_result = ai_results.get(image_url, {})
 
-        # 0. RunPod 에러 체크 (다운로드 실패 등)
+        # 0. AI 서버 에러 체크 (다운로드 실패 등)
         if ai_result.get("error"):
-            logger.error(f"RunPod 에러: {ai_result.get('error')}")
+            logger.error(f"AI 서버 에러: {ai_result.get('error')}")
             results.append(
                 ValidationResult(
-                    originUrl=image_url,
+                    origin_url=image_url,
                     passed=False,
                     error=ValidationErrorCode.TOO_BLURRY,  # 임시로 품질 에러로 처리 (또는 새 코드 추가)
                 )
@@ -153,7 +154,7 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
         if nsfw_info.get("is_nsfw", False):
             results.append(
                 ValidationResult(
-                    originUrl=image_url,
+                    origin_url=image_url,
                     passed=False,
                     error=ValidationErrorCode.NSFW,
                 )
@@ -166,7 +167,7 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
         if not fashion_info.get("is_fashion", True):
             results.append(
                 ValidationResult(
-                    originUrl=image_url,
+                    origin_url=image_url,
                     passed=False,
                     error=ValidationErrorCode.NOT_FASHION,
                 )
@@ -178,11 +179,11 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
         embedding = ai_result.get("embedding", [])
 
         # 중복 검사 (Qdrant)
-        similarity = _check_duplicate(image_url, request.userId, embedding)
+        similarity = _check_duplicate(image_url, request.user_id, embedding)
         if similarity >= SIMILARITY_THRESHOLD:
             results.append(
                 ValidationResult(
-                    originUrl=image_url,
+                    origin_url=image_url,
                     passed=False,
                     error=ValidationErrorCode.DUPLICATE,
                     embedding=embedding,  # 중복일 때도 임베딩 반환 (디버깅용)
@@ -195,7 +196,7 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
         if not _check_quality(image_url):
             results.append(
                 ValidationResult(
-                    originUrl=image_url,
+                    origin_url=image_url,
                     passed=False,
                     error=ValidationErrorCode.TOO_BLURRY,
                 )
@@ -215,10 +216,10 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
 
     return ValidateResponse(
         success=True,
-        validationSummary=ValidationSummary(
+        validation_summary=ValidationSummary(
             total=len(request.images), passed=passed_count, failed=failed_count
         ),
-        validationResults=results,
+        validation_results=results,
     )
 
 
@@ -242,12 +243,12 @@ def _check_format(image_url: str) -> bool:
         logger.info(f"포맷 체크: {filename}, 확장자: {extension}, 결과: {result}")
         return result
 
-    # 확장자가 없으면 일단 통과 (RunPod에서 다운로드 시도)
+    # 확장자가 없으면 일단 통과 (AI 서버에서 다운로드 시도)
     logger.info(f"포맷 체크: {filename}, 확장자 없음, 통과")
     return True
 
 
-def _get_file_size(image_url: str) -> Optional[int]:
+def _get_file_size(image_url: str) -> int | None:
     """파일 크기 조회 (HEAD 요청)"""
     try:
         with httpx.Client() as client:
@@ -268,12 +269,12 @@ def _check_duplicate(image_url: str, user_id: int, embedding: list[float]) -> fl
     """
     중복/유사 이미지 검증
 
-    RunPod에서 생성된 임베딩을 Qdrant에서 검색하여 유사 이미지 확인
+    AI 서버에서 생성된 임베딩을 Qdrant에서 검색하여 유사 이미지 확인
 
     Args:
         image_url: 이미지 URL
         user_id: 사용자 ID
-        embedding: RunPod에서 생성된 임베딩 벡터
+        embedding: AI 서버에서 생성된 임베딩 벡터
 
     Returns:
         float: 최대 유사도 (0.0 ~ 1.0)
@@ -369,13 +370,13 @@ def _check_quality(image_url: str) -> bool:
 
 
 # ============================================================
-# RunPod API 호출
+# AI Model Server API 호출
 # ============================================================
 
 
-async def call_runpod_validate(image_urls: list[str]) -> list[dict]:
+async def call_ai_model_server(image_urls: list[str]) -> list[dict]:
     """
-    RunPod Serverless로 이미지 검증 요청
+    AI Model Server로 이미지 검증 요청 (GCP 등)
 
     Args:
         image_urls: 검증할 이미지 URL 목록
@@ -396,36 +397,25 @@ async def call_runpod_validate(image_urls: list[str]) -> list[dict]:
         logger.info("Mock 모드로 실행")
         return _mock_validate(image_urls)
 
-    if not RUNPOD_API_KEY or not RUNPOD_ENDPOINT_ID:
-        logger.warning("RunPod 설정이 없습니다. Mock 모드로 실행합니다.")
+    if not AI_MODEL_SERVER_URL:
+        logger.warning("AI_MODEL_SERVER_URL 설정이 없습니다. Mock 모드로 실행합니다.")
         return _mock_validate(image_urls)
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
-                f"{RUNPOD_BASE_URL}/runsync",
-                headers={
-                    "Authorization": f"Bearer {RUNPOD_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "input": {
-                        "action": "validate",
-                        "images": image_urls,
-                    }
-                },
+                f"{AI_MODEL_SERVER_URL}/validate",  # 표준화된 REST API 엔드포인트
+                headers={"Content-Type": "application/json"},
+                json={"images": image_urls},  # input 래퍼 없이 직접 전송
             )
             response.raise_for_status()
             data = response.json()
 
-            if data.get("status") == "COMPLETED":
-                return data.get("output", {}).get("results", [])
-            else:
-                logger.error(f"RunPod 작업 실패: {data}")
-                return _mock_validate(image_urls)
+            # 응답 구조: {"results": [...]}
+            return data.get("results", [])
 
     except Exception as e:
-        logger.error(f"RunPod 호출 실패: {e}")
+        logger.error(f"AI 서버 호출 실패: {e}")
         return _mock_validate(image_urls)
 
 
@@ -458,19 +448,21 @@ def _mock_validate(image_urls: list[str]) -> list[dict]:
 # ============================================================
 
 
-def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
+async def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     """
     이미지 분석 작업 시작 (비동기)
 
     작업 내용:
-    1. 배경 제거 (rembg)
+    1. 패션 아이템 Segmentation (객체 분리)
     2. AI 속성 분석 (카테고리, 색상, 소재, 스타일)
     """
-    batch_id = request.batchId
+    import asyncio
+
+    batch_id = request.batch_id
 
     # 배치 정보 저장
     _batch_store[batch_id] = {
-        "user_id": request.userId,
+        "user_id": request.user_id,
         "status": BatchStatus.ACCEPTED,
         "total": len(request.images),
         "completed": 0,
@@ -478,18 +470,18 @@ def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         "created_at": time.time(),
     }
 
-    # 개별 작업 정보 저장
+    # 개별 작업 정보 저장 및 백그라운드 작업 시작
     for image in request.images:
-        task_id = image.taskId
+        task_id = image.task_id
         _task_store[task_id] = {
             "batch_id": batch_id,
-            "user_id": request.userId,
+            "user_id": request.user_id,
             "sequence": image.sequence,
-            "target_image": image.targetImage,
+            "target_image": image.target_image,
             "file_info": {
-                "file_id": image.fileUploadInfo.fileId,
-                "object_key": image.fileUploadInfo.objectKey,
-                "presigned_url": image.fileUploadInfo.presignedUrl,
+                "file_id": image.file_upload_info.file_id,
+                "object_key": image.file_upload_info.object_key,
+                "presigned_url": image.file_upload_info.presigned_url,
             },
             "status": TaskStatus.PREPROCESSING,
             "file_id": None,
@@ -497,17 +489,18 @@ def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
             "created_at": time.time(),
         }
 
-        # TODO: 백그라운드 작업 큐에 추가 (Celery, asyncio 등)
-        # _enqueue_task(task_id)
+        # 백그라운드 작업 시작 (Fire and forget)
+        asyncio.create_task(process_image_task(task_id))
+        logger.info(f"백그라운드 작업 시작: task_id={task_id}")
 
     return AnalyzeResponse(
-        batchId=batch_id,
+        batch_id=batch_id,
         status=BatchStatus.ACCEPTED,
         meta=BatchMeta(
             total=len(request.images),
             completed=0,
             processing=len(request.images),
-            isFinished=False,
+            is_finished=False,
         ),
     )
 
@@ -517,7 +510,7 @@ def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
 # ============================================================
 
 
-def get_batch_status(batch_id: str) -> Optional[BatchStatusResponse]:
+def get_batch_status(batch_id: str) -> BatchStatusResponse | None:
     """배치 상태 조회"""
 
     if batch_id not in _batch_store:
@@ -543,7 +536,7 @@ def get_batch_status(batch_id: str) -> Optional[BatchStatusResponse]:
             processing_count += 1
 
     # 결과를 sequence 순으로 정렬
-    results.sort(key=lambda x: _task_store.get(x.taskId, {}).get("sequence", 0))
+    results.sort(key=lambda x: _task_store.get(x.task_id, {}).get("sequence", 0))
 
     total = batch["total"]
     is_finished = completed_count == total
@@ -555,13 +548,13 @@ def get_batch_status(batch_id: str) -> Optional[BatchStatusResponse]:
         overall_status = BatchStatus.IN_PROGRESS
 
     return BatchStatusResponse(
-        batchId=batch_id,
+        batch_id=batch_id,
         status=overall_status,
         meta=BatchMeta(
             total=total,
             completed=completed_count,
             processing=processing_count,
-            isFinished=is_finished,
+            is_finished=is_finished,
         ),
         results=results,
     )
@@ -570,21 +563,27 @@ def get_batch_status(batch_id: str) -> Optional[BatchStatusResponse]:
 def _build_batch_result_item(task_id: str, task: dict) -> BatchResultItem:
     """BatchResultItem 빌드"""
 
-    attributes = None
+    analysis = None
     if task.get("analysis_result"):
         attrs = task["analysis_result"]
         attributes = AnalysisAttributes(
+            caption=attrs.get("caption", ""),
             category=attrs.get("category", ""),
             color=attrs.get("color", []),
             material=attrs.get("material", []),
-            styleTags=attrs.get("style_tags", []),
+            style_tags=attrs.get("style_tags", []),
+            gender=attrs.get("gender", ""),
+            season=attrs.get("season", []),
+            formality=attrs.get("formality", ""),
+            fit=attrs.get("fit", ""),
         )
+        analysis = AnalysisResult(attributes=attributes)
 
     return BatchResultItem(
-        taskId=task_id,
+        task_id=task_id,
         status=task["status"],
-        fileId=task.get("file_id"),
-        attributes=attributes,
+        file_id=task.get("file_id"),
+        analysis=analysis,
     )
 
 
@@ -597,28 +596,30 @@ async def process_image_task(task_id: str) -> None:
     """
     이미지 분석 작업 실행 (백그라운드)
 
-    1. 배경 제거
-    2. AI 분석
+    1. Segmentation (객체 분리)
+    2. AI 속성 분석
     """
     if task_id not in _task_store:
         return
 
     task = _task_store[task_id]
+    sequence = task.get("sequence", 0)
 
     try:
-        # Step 1: 배경 제거 (PREPROCESSING)
+        # Step 1: Segmentation (PREPROCESSING)
+
         task["status"] = TaskStatus.PREPROCESSING
 
-        processed_file_id = await _remove_background(
-            task["file_info"]["presigned_url"], task["file_info"]["file_id"]
+        processed_file_id = await _process_segmentation(
+            task["file_info"]["presigned_url"], task["file_info"]["file_id"], sequence
         )
 
         task["file_id"] = processed_file_id
 
-        # Step 2: AI 분석 (ANALYZING)
+        # Step 2: AI 속성 분석 (ANALYZING)
         task["status"] = TaskStatus.ANALYZING
 
-        attributes = await _analyze_image_attributes(processed_file_id)
+        attributes = await _analyze_image_attributes(processed_file_id, sequence)
 
         task["analysis_result"] = attributes
 
@@ -634,39 +635,79 @@ async def process_image_task(task_id: str) -> None:
     except Exception as e:
         task["status"] = TaskStatus.FAILED
         task["error"] = str(e)
+        logger.error(f"작업 실패: task_id={task_id}, error={e}")
 
 
-async def _remove_background(presigned_url: str, file_id: int) -> int:
+async def _process_segmentation(
+    presigned_url: str, file_id: int, sequence: int = 0
+) -> int:
     """
-    배경 제거 (rembg)
+    패션 아이템 Segmentation (객체 분리)
+
+    처리 과정:
+    1. presigned_url에서 이미지 다운로드
+    2. Instance Segmentation (옷 객체 탐지 및 마스크 생성)
+    3. 세그먼테이션된 이미지 S3 업로드
+    4. 새 file_id 반환
+
+    TODO: RunPod 또는 로컬 Segmentation 모델 연동
+    - SAM (Segment Anything Model)
+    - U2-Net
+    - 또는 패션 전용 segmentation 모델
 
     Returns:
         처리된 이미지의 파일 ID
     """
-    # TODO: rembg 또는 GPU 워커(RunPod) 호출
-    # 1. presigned_url에서 이미지 다운로드
-    # 2. 배경 제거
-    # 3. S3 업로드
-    # 4. 새 file_id 반환
+    # Mock: 시뮬레이션 (sequence별로 다른 시간)
+    import asyncio
+
+    # sequence에 따라 처리 시간 다르게 (테스트용)
+    delay = 1 + sequence  # seq0: 1초, seq1: 2초, seq2: 3초
+    await asyncio.sleep(delay)
+    logger.info(
+        f"Segmentation 완료 (Mock): file_id={file_id}, sequence={sequence}, delay={delay}초"
+    )
     return file_id  # 임시: 같은 file_id 반환
 
 
-async def _analyze_image_attributes(file_id: int) -> dict:
+async def _analyze_image_attributes(file_id: int, sequence: int = 0) -> dict:
     """
-    AI 이미지 분석 (BLIP-2 등)
+    AI 이미지 속성 분석
+
+    처리 과정:
+    1. 이미지 로드
+    2. 캡션 생성 (BLIP-2 등)
+    3. 캡션에서 속성 추출 (LLM 또는 규칙 기반)
+       - 카테고리 분류
+       - 색상 추출
+       - 소재 분석
+       - 스타일 태그 생성
+
+    TODO: RunPod 또는 로컬 모델 연동
+    - BLIP-2 / BLIP / LLaVA (캡션 생성)
+    - GPT-4V / Claude Vision (속성 추출)
 
     Returns:
         분석된 속성들
     """
-    # TODO: BLIP-2 또는 GPU 워커 호출
-    # 1. 이미지 로드
-    # 2. 카테고리 분류
-    # 3. 색상 추출
-    # 4. 소재 분석
-    # 5. 스타일 태그 생성
+    # Mock: 시뮬레이션 (sequence별로 다른 시간)
+    import asyncio
+
+    # sequence에 따라 처리 시간 다르게 (테스트용)
+    delay = 1 + sequence  # seq0: 1초, seq1: 2초, seq2: 3초
+    await asyncio.sleep(delay)
+    logger.info(
+        f"AI 분석 완료 (Mock): file_id={file_id}, sequence={sequence}, delay={delay}초"
+    )
+
     return {
+        "caption": "골드 버튼 디테일이 들어간 캐주얼한 스타일의 빨간색 니트입니다.",
         "category": "상의",
-        "color": ["검정"],
-        "material": ["면"],
-        "style_tags": ["캐주얼", "베이직"],
+        "color": ["빨강"],
+        "material": ["니트"],
+        "style_tags": ["캐주얼", "따뜻한"],
+        "gender": "남녀공용",
+        "season": ["봄", "가을"],
+        "formality": "세미 포멀",
+        "fit": "오버핏",
     }  # 임시

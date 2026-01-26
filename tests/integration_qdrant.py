@@ -19,7 +19,7 @@ TEST_IMAGE_URL = "https://example.com/test_image.jpg"
 TEST_EMBEDDING = [0.1] * 768
 
 
-def test_qdrant_integration_flow():
+def test_qdrant_integration_flow() -> None:
     print("\n[Test] Qdrant 통합 테스트 시작")
 
     # 1. 초기 상태: 중복 없어야 함

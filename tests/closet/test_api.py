@@ -5,7 +5,7 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_validate_success():
+def test_validate_success() -> None:
     """/v1/closet/validate 성공 케이스"""
     payload = {"userId": 123, "images": ["https://example.com/test_image.jpg"]}
     response = client.post("/v1/closet/validate", json=payload)
@@ -15,7 +15,7 @@ def test_validate_success():
     assert "validationResults" in data
 
 
-def test_validate_fail_too_many_images():
+def test_validate_fail_too_many_images() -> None:
     """/v1/closet/validate 실패 케이스 (이미지 개수 초과)"""
     payload = {
         "userId": 123,
@@ -28,7 +28,7 @@ def test_validate_fail_too_many_images():
     assert "VALIDATION_ERROR" in response.json()["errorCode"]
 
 
-def test_analyze_flow():
+def test_analyze_flow() -> None:
     """/v1/closet/analyze API 흐름 테스트"""
     # 1. 분석 시작 요청
     payload = {
