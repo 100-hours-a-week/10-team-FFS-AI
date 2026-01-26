@@ -22,7 +22,7 @@ class ValidationErrorCode(str, Enum):
 
     INVALID_FORMAT = "INVALID_FORMAT"  # 지원하지 않는 이미지 포맷
     FILE_TOO_LARGE = "FILE_TOO_LARGE"  # 파일 크기 10MB 초과
-    DUPLICATE = "DUPLICATE"  # 동일/유사 이미지 존재
+
     NOT_FASHION = "NOT_FASHION"  # 패션 아이템 아님
     NSFW = "NSFW"  # 부적절 콘텐츠 감지
     TOO_BLURRY = "TOO_BLURRY"  # 이미지 품질 불량
@@ -80,7 +80,6 @@ class ValidationResult(BaseModel):
     origin_url: str = Field(..., description="원본 이미지 URL")
     passed: bool = Field(..., description="검증 통과 여부")
     error: ValidationErrorCode | None = Field(None, description="실패 시 에러 코드")
-    embedding: list[float] | None = Field(None, description="임베딩 벡터 (저장용)")
 
 
 class ValidationSummary(BaseModel):
@@ -111,11 +110,6 @@ class ValidateResponse(BaseModel):
                     {"originUrl": "https://s3.example.com/image1.jpg", "passed": True},
                     {"originUrl": "https://s3.example.com/image2.jpg", "passed": True},
                     {"originUrl": "https://s3.example.com/image3.jpg", "passed": True},
-                    {
-                        "originUrl": "https://s3.example.com/image4.jpg",
-                        "passed": False,
-                        "error": "DUPLICATE",
-                    },
                     {
                         "originUrl": "https://s3.example.com/image5.jpg",
                         "passed": False,
@@ -213,8 +207,9 @@ class AnalyzeResponse(BaseModel):
     """이미지 분석 시작 응답 (202 Accepted)"""
 
     batch_id: str = Field(..., description="배치 작업 ID")
-    status: BatchStatus = Field(default=BatchStatus.ACCEPTED, description="상태")
+    status: BatchStatus = Field(default=BatchStatus.IN_PROGRESS, description="상태")
     meta: BatchMeta = Field(..., description="메타 정보")
+    results: list["BatchResultItem"] = Field(..., description="개별 작업 결과 목록")
 
     class Config:
         alias_generator = to_camel
@@ -222,13 +217,27 @@ class AnalyzeResponse(BaseModel):
         json_schema_extra = {
             "example": {
                 "batchId": "123e4567-e89b-12d3-a456-426614174000",
-                "status": "ACCEPTED",
+                "status": "IN_PROGRESS",
                 "meta": {
                     "total": 3,
                     "completed": 0,
                     "processing": 3,
                     "isFinished": False,
                 },
+                "results": [
+                    {
+                        "taskId": "123e4567-e89b-12d3-a456-426614174001",
+                        "status": "PREPROCESSING",
+                    },
+                    {
+                        "taskId": "123e4567-e89b-12d3-a456-426614174002",
+                        "status": "PREPROCESSING",
+                    },
+                    {
+                        "taskId": "123e4567-e89b-12d3-a456-426614174003",
+                        "status": "PREPROCESSING",
+                    },
+                ],
             }
         }
 
@@ -238,14 +247,33 @@ class AnalyzeResponse(BaseModel):
 # ============================================================
 
 
-class AnalysisAttributes(BaseModel):
-    """AI 분석 속성 결과"""
+class Category(str, Enum):
+    """카테고리"""
 
-    caption: str = Field(..., description="이미지 캡션")
-    category: str = Field(..., description="카테고리 (상의, 하의, 아우터 등)")
+    TOP = "TOP"
+    BOTTOM = "BOTTOM"
+    DRESS = "DRESS"
+    SHOES = "SHOES"
+    ACCESSORY = "ACCESSORY"
+    ETC = "ETC"
+
+
+class MajorAttributes(BaseModel):
+    """주요 분석 속성"""
+
+    category: Category = Field(..., description="카테고리 (TOP, BOTTOM 등)")
     color: list[str] = Field(..., description="색상 목록")
     material: list[str] = Field(..., description="소재 목록")
     style_tags: list[str] = Field(..., description="스타일 태그 목록")
+
+    class Config:
+        alias_generator = to_camel
+        populate_by_name = True
+
+
+class MetaData(BaseModel):
+    """메타 데이터"""
+
     gender: str = Field(..., description="성별 (남성/여성/남녀공용)")
     season: list[str] = Field(..., description="계절 목록")
     formality: str = Field(..., description="격식 (캐주얼/포멀 등)")
@@ -256,10 +284,11 @@ class AnalysisAttributes(BaseModel):
         populate_by_name = True
 
 
-class AnalysisResult(BaseModel):
-    """AI 분석 결과 래퍼"""
+class ExtraAttributes(BaseModel):
+    """추가 분석 정보"""
 
-    attributes: AnalysisAttributes = Field(..., description="상세 속성")
+    meta_data: MetaData = Field(..., description="메타 데이터")
+    caption: str = Field(..., description="이미지 캡션")
 
     class Config:
         alias_generator = to_camel
@@ -274,7 +303,10 @@ class BatchResultItem(BaseModel):
         ..., description="작업 상태 (PREPROCESSING/ANALYZING/COMPLETED/FAILED)"
     )
     file_id: int | None = Field(None, description="처리된 파일 ID (전처리 완료 시)")
-    analysis: AnalysisResult | None = Field(None, description="AI 분석 결과 (완료 시)")
+
+    # 분석 완료 시에만 존재
+    major: MajorAttributes | None = Field(None, description="주요 속성")
+    extra: ExtraAttributes | None = Field(None, description="추가 정보")
 
     class Config:
         alias_generator = to_camel

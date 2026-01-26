@@ -54,6 +54,11 @@ logs/
 *.db
 *.sqlite3
 
+# RunPod (Local Test Only)
+runpod/
+# RunPod (Local Test Only)
+runpod/
+
 # Local Dev
 demo_app.py
 tests/manual_api_flow.py

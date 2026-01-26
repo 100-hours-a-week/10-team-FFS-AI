@@ -12,4 +12,5 @@ httpx
 pillow
 tenacity
 prometheus-fastapi-instrumentator
-
+imagehash
+numpy
