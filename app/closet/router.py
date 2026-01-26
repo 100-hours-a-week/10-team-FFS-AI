@@ -35,12 +35,36 @@ router = APIRouter(prefix="/v1/closet", tags=["closet"])
     "/validate",
     response_model=ValidateResponse,
     responses={
-        400: {"model": ErrorResponse, "description": "잘못된 요청 (필수 필드 누락 등)"},
+        400: {
+            "model": ErrorResponse,
+            "description": "잘못된 요청",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "errorCode": "INVALID_REQUEST",
+                        "message": "필수 필드가 누락됐습니다 (예: userId가 누락됐습니다)",
+                    }
+                }
+            },
+        },
         422: {
             "model": ErrorResponse,
-            "description": "처리 불가 (이미지 개수 제한 위반 등)",
+            "description": "처리 불가",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "errorCode": "VALIDATION_ERROR",
+                        "message": "이미지는 1개 이상 10개 이하여야 합니다",
+                    }
+                }
+            },
         },
-        500: {"model": ErrorResponse, "description": "서버 오류"},
+        500: {
+            "model": ErrorResponse,
+            "description": "서버 오류",
+        },
     },
     summary="이미지 어뷰징 체크",
     description="""
@@ -78,9 +102,32 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
     response_model=AnalyzeResponse,
     status_code=status.HTTP_202_ACCEPTED,
     responses={
-        400: {"model": ErrorResponse, "description": "잘못된 요청"},
-        409: {"model": ErrorResponse, "description": "이미 처리 중"},
-        422: {"model": ErrorResponse, "description": "분석할 이미지 없음"},
+        400: {
+            "model": ErrorResponse,
+            "description": "잘못된 요청",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "errorCode": "INVALID_REQUEST",
+                        "message": "필수 필드가 누락됐습니다 (예: userId가 누락됐습니다)",
+                    }
+                }
+            },
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "처리 불가",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "errorCode": "VALIDATION_ERROR",
+                        "message": "이미지는 1개 이상 10개 이하여야 합니다",
+                    }
+                }
+            },
+        },
     },
     summary="이미지 분석 시작",
     description="""
@@ -96,7 +143,7 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
 async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     """이미지 분석 시작 엔드포인트"""
     try:
-        return start_analyze(request)
+        return await start_analyze(request)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
@@ -112,8 +159,19 @@ async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     "/batches/{batch_id}",
     response_model=BatchStatusResponse,
     responses={
-        404: {"model": ErrorResponse, "description": "배치 없음"},
-        410: {"model": ErrorResponse, "description": "만료된 배치"},
+        404: {
+            "model": ErrorResponse,
+            "description": "배치 없음",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "errorCode": "BATCH_NOT_FOUND",
+                        "message": "배치를 찾을 수 없습니다.",
+                    }
+                }
+            },
+        },
     },
     summary="분석 상태 조회",
     description="""
@@ -150,7 +208,7 @@ async def get_batch(batch_id: str) -> BatchStatusResponse:
     Note: 임베딩 저장은 analyze API 완료 시 자동 처리됨
     """,
 )
-async def delete_item(clothes_id: int):
+async def delete_item(clothes_id: int) -> dict:
     """아이템 삭제 엔드포인트 - Qdrant 동기화"""
     from app.closet.service import delete_item_from_qdrant
 

@@ -32,6 +32,7 @@ select = [
 # 무시할 규칙
 ignore = [
     "E501",   # 줄 길이 (formatter가 처리)
+    "E501",   # 줄 길이 (formatter가 처리)
     "ANN101", # self 타입 힌트 (불필요)
     "ANN102", # cls 타입 힌트 (불필요)
     "N815",   # mixedCase 변수명 (Pydantic 모델 필드용 camelCase)

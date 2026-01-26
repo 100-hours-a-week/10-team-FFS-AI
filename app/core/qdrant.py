@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # 환경변수 로드
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", None)
-COLLECTION_NAME = "fashion_items"
+COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "fashion_items")
 VECTOR_SIZE = 768  # Marqo-FashionSigLIP 임베딩 크기
 
 
@@ -52,7 +52,7 @@ class QdrantService:
         vector: list[float],
         limit: int = 1,
         score_threshold: float = 0.0,
-        user_id: Optional[int] = None,
+        user_id: int | None = None,
     ) -> list[models.ScoredPoint]:
         """
         유사 벡터 검색

@@ -45,7 +45,7 @@ fashion_classifier: FashionClassifier = None
 fashion_embedder: FashionEmbedder = None
 
 
-def load_models():
+def load_models() -> None:
     """모델 초기화 (서버 시작 시 1회)"""
     global validator, nsfw_validator, fashion_classifier, fashion_embedder
 

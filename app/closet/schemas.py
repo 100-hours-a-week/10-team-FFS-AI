@@ -8,9 +8,9 @@ Closet 모듈 스키마 정의 (API 명세 v2 기준)
 """
 
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field
+from pydantic.alias_generators import to_camel
 
 # ============================================================
 # 공통 Enum 정의
@@ -54,12 +54,14 @@ class TaskStatus(str, Enum):
 class ValidateRequest(BaseModel):
     """이미지 검증 요청"""
 
-    userId: int = Field(..., description="사용자 ID")
+    user_id: int = Field(..., description="사용자 ID")
     images: list[str] = Field(
         ..., description="검증할 이미지 URL 목록 (1~10개)", min_length=1, max_length=10
     )
 
     class Config:
+        alias_generator = to_camel
+        populate_by_name = True
         json_schema_extra = {
             "example": {
                 "userId": 123,
@@ -75,10 +77,10 @@ class ValidateRequest(BaseModel):
 class ValidationResult(BaseModel):
     """개별 이미지 검증 결과"""
 
-    originUrl: str = Field(..., description="원본 이미지 URL")
+    origin_url: str = Field(..., description="원본 이미지 URL")
     passed: bool = Field(..., description="검증 통과 여부")
-    error: Optional[ValidationErrorCode] = Field(None, description="실패 시 에러 코드")
-    embedding: Optional[list[float]] = Field(None, description="임베딩 벡터 (저장용)")
+    error: ValidationErrorCode | None = Field(None, description="실패 시 에러 코드")
+    embedding: list[float] | None = Field(None, description="임베딩 벡터 (저장용)")
 
 
 class ValidationSummary(BaseModel):
@@ -93,10 +95,14 @@ class ValidateResponse(BaseModel):
     """이미지 검증 응답"""
 
     success: bool = Field(..., description="요청 성공 여부")
-    validationSummary: ValidationSummary = Field(..., description="검증 결과 요약")
-    validationResults: list[ValidationResult] = Field(..., description="개별 검증 결과")
+    validation_summary: ValidationSummary = Field(..., description="검증 결과 요약")
+    validation_results: list[ValidationResult] = Field(
+        ..., description="개별 검증 결과"
+    )
 
     class Config:
+        alias_generator = to_camel
+        populate_by_name = True
         json_schema_extra = {
             "example": {
                 "success": True,
@@ -128,28 +134,38 @@ class ValidateResponse(BaseModel):
 class FileInfo(BaseModel):
     """파일 정보"""
 
-    fileId: int = Field(..., description="파일 ID")
-    objectKey: str = Field(..., description="S3 객체 키")
-    presignedUrl: str = Field(..., description="S3 presigned URL")
+    file_id: int = Field(..., description="파일 ID")
+    object_key: str = Field(..., description="S3 객체 키")
+    presigned_url: str = Field(..., description="S3 presigned URL")
+
+    class Config:
+        alias_generator = to_camel
+        populate_by_name = True
 
 
 class AnalyzeImageItem(BaseModel):
     """분석할 개별 이미지 정보"""
 
     sequence: int = Field(..., description="이미지 순서", ge=0)
-    targetImage: str = Field(..., description="원본 이미지 URL")
-    taskId: str = Field(..., description="개별 작업 ID (UUID)")
-    fileUploadInfo: FileInfo = Field(..., description="파일 업로드 정보")
+    target_image: str = Field(..., description="원본 이미지 URL")
+    task_id: str = Field(..., description="개별 작업 ID (UUID)")
+    file_upload_info: FileInfo = Field(..., description="파일 업로드 정보")
+
+    class Config:
+        alias_generator = to_camel
+        populate_by_name = True
 
 
 class AnalyzeRequest(BaseModel):
     """이미지 분석 시작 요청"""
 
-    userId: int = Field(..., description="사용자 ID")
-    batchId: str = Field(..., description="배치 작업 ID (UUID)")
+    user_id: int = Field(..., description="사용자 ID")
+    batch_id: str = Field(..., description="배치 작업 ID (UUID)")
     images: list[AnalyzeImageItem] = Field(..., description="분석할 이미지 목록")
 
     class Config:
+        alias_generator = to_camel
+        populate_by_name = True
         json_schema_extra = {
             "example": {
                 "userId": 123,
@@ -186,17 +202,23 @@ class BatchMeta(BaseModel):
     total: int = Field(..., description="전체 이미지 수")
     completed: int = Field(..., description="완료된 이미지 수")
     processing: int = Field(..., description="처리 중인 이미지 수")
-    isFinished: bool = Field(..., description="전체 작업 완료 여부")
+    is_finished: bool = Field(..., description="전체 작업 완료 여부")
+
+    class Config:
+        alias_generator = to_camel
+        populate_by_name = True
 
 
 class AnalyzeResponse(BaseModel):
     """이미지 분석 시작 응답 (202 Accepted)"""
 
-    batchId: str = Field(..., description="배치 작업 ID")
+    batch_id: str = Field(..., description="배치 작업 ID")
     status: BatchStatus = Field(default=BatchStatus.ACCEPTED, description="상태")
     meta: BatchMeta = Field(..., description="메타 정보")
 
     class Config:
+        alias_generator = to_camel
+        populate_by_name = True
         json_schema_extra = {
             "example": {
                 "batchId": "123e4567-e89b-12d3-a456-426614174000",
@@ -219,29 +241,50 @@ class AnalyzeResponse(BaseModel):
 class AnalysisAttributes(BaseModel):
     """AI 분석 속성 결과"""
 
+    caption: str = Field(..., description="이미지 캡션")
     category: str = Field(..., description="카테고리 (상의, 하의, 아우터 등)")
     color: list[str] = Field(..., description="색상 목록")
     material: list[str] = Field(..., description="소재 목록")
-    styleTags: list[str] = Field(..., description="스타일 태그 목록")
+    style_tags: list[str] = Field(..., description="스타일 태그 목록")
+    gender: str = Field(..., description="성별 (남성/여성/남녀공용)")
+    season: list[str] = Field(..., description="계절 목록")
+    formality: str = Field(..., description="격식 (캐주얼/포멀 등)")
+    fit: str = Field(..., description="핏 (오버핏/슬림핏 등)")
+
+    class Config:
+        alias_generator = to_camel
+        populate_by_name = True
+
+
+class AnalysisResult(BaseModel):
+    """AI 분석 결과 래퍼"""
+
+    attributes: AnalysisAttributes = Field(..., description="상세 속성")
+
+    class Config:
+        alias_generator = to_camel
+        populate_by_name = True
 
 
 class BatchResultItem(BaseModel):
     """개별 이미지 작업 결과"""
 
-    taskId: str = Field(..., description="개별 작업 ID")
+    task_id: str = Field(..., description="개별 작업 ID")
     status: TaskStatus = Field(
         ..., description="작업 상태 (PREPROCESSING/ANALYZING/COMPLETED/FAILED)"
     )
-    fileId: Optional[int] = Field(None, description="처리된 파일 ID (전처리 완료 시)")
-    attributes: Optional[AnalysisAttributes] = Field(
-        None, description="AI 분석 속성 (완료 시)"
-    )
+    file_id: int | None = Field(None, description="처리된 파일 ID (전처리 완료 시)")
+    analysis: AnalysisResult | None = Field(None, description="AI 분석 결과 (완료 시)")
+
+    class Config:
+        alias_generator = to_camel
+        populate_by_name = True
 
 
 class BatchStatusResponse(BaseModel):
     """배치 상태 조회 응답"""
 
-    batchId: str = Field(..., description="배치 작업 ID")
+    batch_id: str = Field(..., description="배치 작업 ID")
     status: BatchStatus = Field(
         ..., description="배치 상태 (IN_PROGRESS/COMPLETED/FAILED)"
     )
@@ -249,6 +292,8 @@ class BatchStatusResponse(BaseModel):
     results: list[BatchResultItem] = Field(..., description="개별 작업 결과 목록")
 
     class Config:
+        alias_generator = to_camel
+        populate_by_name = True
         json_schema_extra = {
             "example": {
                 "batchId": "123e4567-e89b-12d3-a456-426614174000",
@@ -273,11 +318,18 @@ class BatchStatusResponse(BaseModel):
                         "taskId": "123e4567-e89b-12d3-a456-426614174003",
                         "status": "COMPLETED",
                         "fileId": 47,
-                        "attributes": {
-                            "category": "상의",
-                            "color": ["빨강"],
-                            "material": ["니트"],
-                            "styleTags": ["캐주얼", "따뜻한"],
+                        "analysis": {
+                            "attributes": {
+                                "caption": "골드 버튼 디테일이 들어간 캐주얼한 스타일의 빨간색 니트입니다.",
+                                "category": "상의",
+                                "color": ["빨강"],
+                                "material": ["니트"],
+                                "styleTags": ["캐주얼", "따뜻한"],
+                                "gender": "남녀공용",
+                                "season": ["봄", "가을"],
+                                "formality": "세미 포멀",
+                                "fit": "오버핏",
+                            }
                         },
                     },
                 ],
@@ -301,14 +353,9 @@ class ErrorResponse(BaseModel):
     """공통 에러 응답"""
 
     success: bool = Field(default=False)
-    errorCode: str = Field(..., description="에러 코드")
+    error_code: str = Field(..., description="에러 코드")
     message: str = Field(..., description="에러 메시지")
 
     class Config:
-        json_schema_extra = {
-            "example": {
-                "success": False,
-                "errorCode": "INVALID_FORMAT",
-                "message": "지원하지 않는 이미지 포맷입니다.",
-            }
-        }
+        alias_generator = to_camel
+        populate_by_name = True
