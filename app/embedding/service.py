@@ -59,16 +59,16 @@ class EmbeddingService:
         vector = await self.get_embedding(embedding_text)
 
         qdrant = await get_qdrant_client()
-        point_id = request.clothesId
+        point_id = request.clothes_id
 
         payload = {
-            "userId": request.userId,
-            "clothesId": request.clothesId,
-            "imageUrl": request.imageUrl,
+            "userId": request.user_id,
+            "clothesId": request.clothes_id,
+            "imageUrl": request.image_url,
             "category": request.metadata.category,
             "color": request.metadata.color,
             "material": request.metadata.material,
-            "styleTags": request.metadata.styleTags,
+            "styleTags": request.metadata.style_tags,
             "gender": request.metadata.gender,
             "season": request.metadata.season,
             "formality": request.metadata.formality,
