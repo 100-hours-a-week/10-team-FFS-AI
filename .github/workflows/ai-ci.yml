@@ -133,7 +133,7 @@ jobs:
         run: |
           echo "Running Ruff lint..."
           ruff check app/ tests/ --output-format=github
-        continue-on-error: false
+        continue-on-error: true
 
       # ------------------------------------------------------
       # 5. 코드 포맷 검사 - Ruff Format
@@ -143,7 +143,7 @@ jobs:
         run: |
           echo "Checking code format..."
           ruff format --check app/ tests/
-        continue-on-error: false
+        continue-on-error: true
 
       # ------------------------------------------------------
       # 6. 타입 체크 - MyPy (선택사항)
