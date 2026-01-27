@@ -42,3 +42,41 @@ class SearchQuery(BaseSchema):
 class OutfitRequest(BaseSchema):
     user_id: str = Field(..., description="사용자 ID")
     query: str = Field(..., description="사용자 자연어 요청")
+
+
+class ClothingCandidate(BaseSchema):
+    clothes_id: int = Field(..., description="의류 ID")
+    image_url: str = Field(..., description="이미지 URL")
+    category: str = Field(..., description="카테고리 (상의, 하의, 아우터 등)")
+    color: str | None = Field(default=None, description="색상")
+    style_tags: list[str] = Field(default_factory=list, description="스타일 태그")
+    caption: str | None = Field(default=None, description="캡션")
+    similarity_score: float = Field(..., description="유사도 점수 (0~1)")
+
+
+class SearchResult(BaseSchema):
+    category: str = Field(..., description="검색 카테고리")
+    candidates: list[ClothingCandidate] = Field(
+        default_factory=list, description="후보 아이템 목록"
+    )
+
+
+class OutfitItem(BaseSchema):
+    clothes_id: int = Field(..., description="의류 ID")
+    image_url: str = Field(..., description="이미지 URL")
+    category: str = Field(..., description="카테고리")
+    role: str = Field(..., description="코디 내 역할 (상의, 하의 등)")
+
+
+class Outfit(BaseSchema):
+    outfit_id: str = Field(..., description="코디 고유 ID (UUID)")
+    description: str = Field(..., description="코디 설명")
+    items: list[OutfitItem] = Field(default_factory=list, description="아이템 목록")
+    fallback_notice: str | None = Field(
+        default=None, description="대체 안내 메시지 (아이템 부족 시)"
+    )
+
+
+class OutfitResponse(BaseSchema):
+    query_summary: str = Field(..., description="사용자 요청 요약")
+    outfits: list[Outfit] = Field(default_factory=list, description="추천 코디 목록")
