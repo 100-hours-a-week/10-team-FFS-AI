@@ -1,27 +1,33 @@
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from pytest_mock import MockerFixture
+
+from app.embedding.schemas import ClothingMetadata, EmbeddingRequest
 from app.embedding.service import EmbeddingService
-from app.embedding.schemas import EmbeddingRequest, ClothingMetadata
-from app.embedding.exceptions import ExternalAPIError, VectorDBError
 
 
-# 수정
 @pytest.mark.asyncio
-async def test_get_embedding_success(mocker):
+async def test_get_embedding_success(mocker: MockerFixture) -> None:
+    # Given: settings must be patched BEFORE service instantiation
     mock_settings = MagicMock()
     mock_settings.upstage_api_key = "dummy_key"
     mock_settings.embedding_model = "embedding-passage"
     mocker.patch("app.embedding.service.get_settings", return_value=mock_settings)
 
     service = EmbeddingService()
-    
-    # Mock httpx.AsyncClient.post
+
+    # Mock httpx.AsyncClient.post response
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"data": [{"embedding": [0.1] * 4096}]}
     mock_response.raise_for_status = MagicMock()
-    
-    mock_post = mocker.patch("httpx.AsyncClient.post", new_callable=AsyncMock)
+
+    mock_post: AsyncMock = mocker.patch(
+        "httpx.AsyncClient.post", new_callable=AsyncMock
+    )
     mock_post.return_value = mock_response
 
     # When
@@ -34,8 +40,17 @@ async def test_get_embedding_success(mocker):
 
 
 @pytest.mark.asyncio
-async def test_upsert_clothing_success(mocker, mock_get_qdrant_client):
-    # Given
+async def test_upsert_clothing_success(
+    mocker: MockerFixture,
+    mock_get_qdrant_client: AsyncMock,
+) -> None:
+    # Given: settings patched BEFORE service instantiation
+    mock_settings = MagicMock()
+    mock_settings.upstage_api_key = "dummy_key"
+    mock_settings.embedding_model = "embedding-passage"
+    mock_settings.qdrant_collection_name = "test_collection"
+    mocker.patch("app.embedding.service.get_settings", return_value=mock_settings)
+
     service = EmbeddingService()
     request = EmbeddingRequest(
         user_id="user123",
@@ -50,18 +65,15 @@ async def test_upsert_clothing_success(mocker, mock_get_qdrant_client):
             gender="남성",
             season=["겨울"],
             formality="캐주얼",
-            fit="오버핏"
-        )
+            fit="오버핏",
+        ),
     )
-    
-    # Mock get_embedding
-    mocker.patch.object(service, "get_embedding", return_value=[0.1] * 4096)
-    
-    # Mock settings for collection name
-    mock_settings = MagicMock()
-    mock_settings.qdrant_collection_name = "test_collection"
-    mocker.patch("app.embedding.service.get_settings", return_value=mock_settings)
-    
+
+    # Mock get_embedding (async method)
+    mocker.patch.object(
+        service, "get_embedding", new_callable=AsyncMock, return_value=[0.1] * 4096
+    )
+
     # When
     result = await service.upsert(request)
 
@@ -71,16 +83,18 @@ async def test_upsert_clothing_success(mocker, mock_get_qdrant_client):
 
 
 @pytest.mark.asyncio
-async def test_delete_clothing_success(mock_get_qdrant_client, mocker):
-    # Given
-    service = EmbeddingService()
-    clothes_id = 1
-    
-    # Mock settings for collection name
+async def test_delete_clothing_success(
+    mocker: MockerFixture,
+    mock_get_qdrant_client: AsyncMock,
+) -> None:
+    # Given: settings patched BEFORE service instantiation
     mock_settings = MagicMock()
     mock_settings.qdrant_collection_name = "test_collection"
     mocker.patch("app.embedding.service.get_settings", return_value=mock_settings)
-    
+
+    service = EmbeddingService()
+    clothes_id = 1
+
     # When
     result = await service.delete(clothes_id)
 
