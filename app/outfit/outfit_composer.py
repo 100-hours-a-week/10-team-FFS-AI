@@ -142,6 +142,8 @@ class OutfitComposer:
                             role=item_data.get("role", candidate.category),
                         )
                     )
+                else:
+                    logger.warning(f"LLM returned invalid clothes_id: {clothes_id}")
 
             if items:
                 outfits.append(
