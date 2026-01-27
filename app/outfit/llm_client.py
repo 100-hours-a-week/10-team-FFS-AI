@@ -4,12 +4,12 @@ from typing import Any
 
 import httpx
 from tenacity import (
+    RetryCallState,
     before_sleep_log,
     retry,
     retry_if_exception,
     stop_after_attempt,
     wait_exponential,
-    RetryCallState,
 )
 
 from app.config import Settings, get_settings
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _is_retryable_exception(exception: BaseException) -> bool:
-    if isinstance(exception, (httpx.TimeoutException, httpx.ConnectError)):
+    if isinstance(exception, httpx.TimeoutException | httpx.ConnectError):
         return True
 
     if isinstance(exception, httpx.HTTPStatusError):
@@ -47,26 +47,24 @@ def _wait_with_retry_after(retry_state: RetryCallState) -> float:
 
 
 class LLMClient(ABC):
-
     @abstractmethod
     async def chat_completion(
-            self,
-            messages: list[dict[str, Any]],
-            temperature: float = 0.7,
-            max_tokens: int = 2000,
+        self: "LLMClient",
+        messages: list[dict[str, Any]],
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
     ) -> dict[str, Any]:
-        pass
+        ...
 
 
 class OpenAIClient(LLMClient):
-
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(self: "OpenAIClient", settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
         self.api_key = self.settings.openai_api_key
         self.model = self.settings.openai_chat_model
         self.base_url = "https://api.openai.com/v1"
 
-    def _get_headers(self) -> dict[str, str]:
+    def _get_headers(self: "OpenAIClient") -> dict[str, str]:
         if not self.api_key:
             raise LLMError("OPENAI_API_KEY is not configured")
         return {
@@ -75,10 +73,10 @@ class OpenAIClient(LLMClient):
         }
 
     def _build_payload(
-            self,
-            messages: list[dict[str, Any]],
-            temperature: float,
-            max_tokens: int,
+        self: "OpenAIClient",
+        messages: list[dict[str, Any]],
+        temperature: float,
+        max_tokens: int,
     ) -> dict[str, Any]:
         return {
             "model": self.model,
@@ -94,7 +92,7 @@ class OpenAIClient(LLMClient):
         before_sleep=before_sleep_log(logger, logging.WARNING),
         reraise=True,
     )
-    async def _request(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _request(self: "OpenAIClient", payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}/chat/completions"
         headers = self._get_headers()
 
@@ -104,10 +102,10 @@ class OpenAIClient(LLMClient):
             return response.json()
 
     async def chat_completion(
-            self,
-            messages: list[dict[str, Any]],
-            temperature: float = 0.7,
-            max_tokens: int = 2000,
+        self: "OpenAIClient",
+        messages: list[dict[str, Any]],
+        temperature: float = 0.7,
+        max_tokens: int = 2000,
     ) -> dict[str, Any]:
         payload = self._build_payload(messages, temperature, max_tokens)
 
@@ -116,7 +114,7 @@ class OpenAIClient(LLMClient):
 
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
-            logger.error(f"OpenAI API Error [{status}]: {e.response.text}")
+            logger.error("OpenAI API Error [%s]: %s", status, e.response.text)
 
             if status == 401:
                 raise LLMError("Invalid OpenAI API Key") from e
@@ -126,7 +124,7 @@ class OpenAIClient(LLMClient):
             raise LLMError(f"OpenAI API failed after retries: {e.response.text}") from e
 
         except (httpx.TimeoutException, httpx.ConnectError) as e:
-            logger.error(f"OpenAI network error after retries: {e}")
+            logger.error("OpenAI network error after retries: %s", e)
             raise LLMError(f"Network error: {e}") from e
 
         except Exception as e:
