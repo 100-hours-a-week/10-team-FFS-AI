@@ -45,13 +45,10 @@ SYSTEM_PROMPT = """당신은 사용자의 코디 요청을 분석하는 AI입니
 
 
 class QueryParser:
-    """사용자 쿼리를 파싱하여 구조화된 정보 추출"""
-
     def __init__(self, llm_client: LLMClient) -> None:
         self.llm_client = llm_client
 
     async def parse(self, query: str) -> ParsedQuery:
-        """사용자 쿼리를 파싱합니다."""
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": query},
@@ -79,11 +76,9 @@ class QueryParser:
             raise ParseError(f"Unexpected parsing error: {e}") from e
 
     def _parse_response(self, response: dict[str, Any]) -> ParsedQuery:
-        """LLM 응답에서 ParsedQuery 추출"""
         content = response["choices"][0]["message"]["content"]
         data = self._extract_json(content)
 
-        # reference_item 처리
         reference_item = None
         if data.get("reference_item"):
             reference_item = ReferenceItem(**data["reference_item"])
@@ -99,13 +94,11 @@ class QueryParser:
         )
 
     def _extract_json(self, content: str) -> dict[str, Any]:
-        """문자열에서 JSON 추출 (마크다운 코드블록 처리)"""
         content = content.strip()
 
-        # 마크다운 코드블록 제거
         if content.startswith("```"):
             lines = content.split("\n")
-            # 첫 줄(```json)과 마지막 줄(```) 제거
+
             lines = [l for l in lines if not l.startswith("```")]
             content = "\n".join(lines)
 
