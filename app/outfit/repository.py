@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 
 class ClothingRepository:
     def __init__(
-            self,
-            embedding_service: EmbeddingService | None = None,
-            qdrant_client: AsyncQdrantClient | None = None,
-            settings: Settings | None = None,
+        self,
+        embedding_service: EmbeddingService | None = None,
+        qdrant_client: AsyncQdrantClient | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self._embedding_service = embedding_service
         self._qdrant_client = qdrant_client
@@ -35,10 +35,10 @@ class ClothingRepository:
         return self._qdrant_client
 
     async def search_by_query(
-            self,
-            user_id: str,
-            query: SearchQuery,
-            top_k: int = 5,
+        self,
+        user_id: str,
+        query: SearchQuery,
+        top_k: int = 5,
     ) -> SearchResult:
         embedding_service = await self._get_embedding_service()
         qdrant = await self._get_qdrant()
@@ -84,16 +84,16 @@ class ClothingRepository:
         return SearchResult(category=category, candidates=candidates)
 
     async def search_multiple(
-            self,
-            user_id: str,
-            queries: list[SearchQuery],
-            top_k: int = 5,
+        self,
+        user_id: str,
+        queries: list[SearchQuery],
+        top_k: int = 5,
     ) -> list[SearchResult]:
         tasks = [self.search_by_query(user_id, query, top_k) for query in queries]
         return await asyncio.gather(*tasks)
 
     @staticmethod
-    def _to_candidate(self, hit: ScoredPoint) -> ClothingCandidate:
+    def _to_candidate(hit: ScoredPoint) -> ClothingCandidate:
         payload = hit.payload or {}
         return ClothingCandidate(
             clothes_id=payload.get("clothesId", 0),

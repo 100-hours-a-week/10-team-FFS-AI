@@ -99,7 +99,7 @@ class QueryParser:
         if content.startswith("```"):
             lines = content.split("\n")
 
-            lines = [l for l in lines if not l.startswith("```")]
+            lines = [line for line in lines if not line.startswith("```")]
             content = "\n".join(lines)
 
         return json.loads(content)

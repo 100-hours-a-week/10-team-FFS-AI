@@ -5,7 +5,7 @@ from app.embedding.schemas import ClothingMetadata
 
 class EmbeddingTextFormatter(Protocol):
     def format(
-            self: "EmbeddingTextFormatter", metadata: ClothingMetadata, caption: str
+        self: "EmbeddingTextFormatter", metadata: ClothingMetadata, caption: str
     ) -> str:
         ...
 

@@ -1,11 +1,5 @@
 import logging
 
-logger = logging.getLogger(__name__)
-
-DEFAULT_CATEGORIES = ["상의", "하의", "아우터"]
-
-import logging
-
 from app.outfit.schemas import ParsedQuery, SearchQuery
 
 logger = logging.getLogger(__name__)

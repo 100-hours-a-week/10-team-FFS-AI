@@ -29,12 +29,23 @@ class OutfitService:
             self._query_parser = QueryParser(llm_client=OpenAIClient())
         return self._query_parser
 
+    def _get_search_builder(self) -> SearchQueryBuilder:
+        return self._search_builder
+
+    def _get_repository(self) -> ClothingRepository:
+        return self._repository
+
+    def _get_composer(self) -> OutfitComposer:
+        return self._composer
+
     async def recommend(self, request: OutfitRequest) -> OutfitResponse:
         logger.info(f"Processing outfit request for user: {request.user_id}")
 
         try:
             parsed = await self._get_query_parser().parse(request.query)
-            logger.info(f"Parsed query: occasion={parsed.occasion}, style={parsed.style}")
+            logger.info(
+                f"Parsed query: occasion={parsed.occasion}, style={parsed.style}"
+            )
         except Exception as e:
             logger.error(f"Query parsing failed: {e}")
             raise
