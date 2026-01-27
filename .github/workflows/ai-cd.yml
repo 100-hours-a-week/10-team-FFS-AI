@@ -1,0 +1,770 @@
+name: AI CD
+
+# ============================================================
+# 트리거 설정: CI 워크플로우 완료 후 자동 실행
+# ============================================================
+on:
+  workflow_run:
+    workflows: ["AI CI"]
+    types:
+      - completed
+    branches:
+      - dev
+      - main
+
+permissions:
+  contents: read
+  actions: read
+
+# ============================================================
+# 환경 변수 설정
+# ============================================================
+env:
+  APP_DIR: /app/ai
+  BACKUP_DIR: /app/backups/ai
+  SCRIPTS_DIR: /app/scripts
+
+# ============================================================
+# Dev 환경 배포
+# ============================================================
+jobs:
+  deploy-dev:
+    name: Deploy to Development
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'dev'
+    runs-on: ubuntu-latest
+    environment:
+      name: ai-development
+    timeout-minutes: 15
+
+    steps:
+      # ------------------------------------------------------
+      # 1. 빌드 메타데이터 다운로드
+      # ------------------------------------------------------
+      - name: 📥 Download build metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-build-metadata-${{ github.event.workflow_run.head_sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true
+
+      - name: 📋 Display build metadata
+        run: |
+          if [ -f metadata.json ]; then
+            echo "### 📊 Build Metadata" >> $GITHUB_STEP_SUMMARY
+            cat metadata.json | jq '.' >> $GITHUB_STEP_SUMMARY
+            cat metadata.json
+          else
+            echo "⚠️ Build metadata not found"
+          fi
+
+      # ------------------------------------------------------
+      # 2. 아티팩트 다운로드
+      # ------------------------------------------------------
+      - name: 📥 Download application artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-app-dev-${{ github.event.workflow_run.head_sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: 🔍 Verify downloaded artifact
+        run: |
+          echo "### 📦 Downloaded Files" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ls -lhR >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          
+          # 필수 파일 확인
+          if [ ! -d "app" ]; then
+            echo "::error::app directory not found!"
+            exit 1
+          fi
+          
+          if [ ! -f "requirements.txt" ]; then
+            echo "::error::requirements.txt not found!"
+            exit 1
+          fi
+          
+          echo "✅ Artifact verification passed"
+
+      # ------------------------------------------------------
+      # 3. 배포 전 서버 상태 확인
+      # ------------------------------------------------------
+      - name: 🔍 Check server status before deployment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          script: |
+            echo "=== Server Status Check ==="
+            
+            # 디스크 공간 확인
+            echo "📊 Disk Usage:"
+            df -h ${{ env.APP_DIR }}
+            DISK_USAGE=$(df ${{ env.APP_DIR }} | tail -1 | awk '{print $5}' | sed 's/%//')
+            if [ "$DISK_USAGE" -gt 90 ]; then
+              echo "::warning::Disk usage is high: ${DISK_USAGE}%"
+            fi
+            
+            # 메모리 확인
+            echo "💾 Memory Usage:"
+            free -h
+            
+            # Qdrant 상태 확인
+            echo "🔍 Checking Qdrant..."
+            if curl -sf http://localhost:6333/ > /dev/null; then
+              echo "✅ Qdrant is running"
+            else
+              echo "⚠️ Qdrant is not accessible"
+            fi
+            
+            # Redis 상태 확인
+            echo "🔍 Checking Redis..."
+            if redis-cli -p 6380 ping > /dev/null 2>&1; then
+              echo "✅ Redis is running"
+            else
+              echo "⚠️ Redis is not accessible"
+            fi
+            
+            # 현재 실행 중인 프로세스 확인
+            echo "🔄 Current Process:"
+            if pgrep -f "gunicorn.*app.main:app" > /dev/null; then
+              echo "✅ Application is currently running"
+              PID=$(pgrep -f "gunicorn.*app.main:app")
+              echo "Current PID: $PID"
+            else
+              echo "⚠️ Application is not running"
+            fi
+            
+            # 디렉토리 준비
+            mkdir -p ${{ env.APP_DIR }}
+            mkdir -p ${{ env.BACKUP_DIR }}
+            mkdir -p /tmp/ai-deploy
+            
+            echo "✅ Server check completed"
+
+      # ------------------------------------------------------
+      # 4. 애플리케이션 파일 서버로 전송
+      # ------------------------------------------------------
+      - name: 📤 Transfer application to Dev Server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          source: "app/,requirements.txt,build-artifacts/"
+          target: "/tmp/ai-deploy"
+          overwrite: true
+          strip_components: 0
+
+      # ------------------------------------------------------
+      # 5. 배포 스크립트 실행
+      # ------------------------------------------------------
+      - name: 🚀 Run deployment script
+        id: deploy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          command-timeout: 300s
+          script: |
+            cd ${{ env.APP_DIR }}
+            
+            # 새 버전 준비
+            echo "Preparing new version..."
+            sudo rm -rf /tmp/ai-deploy-staging
+            sudo mv /tmp/ai-deploy /tmp/ai-deploy-staging
+            
+            # deploy.sh 실행 권한 확인
+            if [ ! -x "${{ env.SCRIPTS_DIR }}/deploy-ai.sh" ]; then
+              echo "Making deploy-ai.sh executable..."
+              chmod +x ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
+            fi
+            
+            # 배포 스크립트 실행
+            if [ -f "${{ env.SCRIPTS_DIR }}/deploy-ai.sh" ]; then
+              echo "Executing deploy-ai.sh..."
+              bash ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
+            else
+              echo "ERROR: deploy-ai.sh not found!"
+              exit 1
+            fi
+
+      # ------------------------------------------------------
+      # 6. 배포 후 검증
+      # ------------------------------------------------------
+      - name: 🏥 Post-deployment verification
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          script: |
+            echo "=== Post-Deployment Verification ==="
+            
+            # 프로세스 확인
+            if pgrep -f "gunicorn.*app.main:app" > /dev/null; then
+              PID=$(pgrep -f "gunicorn.*app.main:app")
+              PID_COUNT=$(pgrep -f "gunicorn.*app.main:app" | wc -l)
+              echo "✅ Application is running (Master PID: $(pgrep -f 'gunicorn.*master' | head -1))"
+              echo "Workers: $PID_COUNT processes"
+              
+              if [ $PID_COUNT -lt 2 ]; then
+                echo "⚠️ WARNING: Expected at least 2 processes (master + workers)"
+              fi
+            else
+              echo "❌ Application is not running!"
+              exit 1
+            fi
+            
+            # 헬스체크 (여러 번 시도)
+            echo "Checking application health..."
+            MAX_RETRIES=10
+            RETRY_COUNT=0
+            
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
+                echo "✅ Application is healthy"
+                HEALTH_DATA=$(curl -s http://localhost:8000/health)
+                echo "$HEALTH_DATA" | jq '.' || echo "$HEALTH_DATA"
+                exit 0
+              fi
+              
+              echo "Waiting for application to be ready... ($((RETRY_COUNT + 1))/$MAX_RETRIES)"
+              sleep 5
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+            done
+            
+            echo "❌ Application health check failed after $MAX_RETRIES attempts!"
+            
+            # 로그 출력
+            if [ -f "${{ env.APP_DIR }}/logs/service.log" ]; then
+              echo "=== Last 100 lines of log ==="
+              tail -100 ${{ env.APP_DIR }}/logs/service.log
+            fi
+            
+            exit 1
+
+      # ------------------------------------------------------
+      # 7. 배포 정보 기록
+      # ------------------------------------------------------
+      - name: 📝 Record deployment info
+        if: success()
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEV_SERVER_HOST }}
+          username: ${{ secrets.DEV_SERVER_USER }}
+          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+          script: |
+            cd ${{ env.APP_DIR }}
+            
+            cat > deployment-info.json <<EOF
+            {
+              "environment": "development",
+              "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "commit_sha": "${{ github.event.workflow_run.head_sha }}",
+              "branch": "${{ github.event.workflow_run.head_branch }}",
+              "deployer": "${{ github.event.workflow_run.head_commit.author.name }}",
+              "workflow_run_id": "${{ github.run_id }}"
+            }
+            EOF
+            
+            echo "✅ Deployment info recorded"
+            cat deployment-info.json
+
+      # ------------------------------------------------------
+      # 8. Discord 알림 - 성공
+      # ------------------------------------------------------
+      - name: 📢 Send Discord notification on success
+        if: success()
+        uses: tsickert/discord-webhook@v5.3.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: "AI CD Bot"
+          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          embed-title: "✅ AI Service Dev 배포 성공"
+          embed-description: |
+            **환경:** Development 🟢
+            **브랜치:** `${{ github.event.workflow_run.head_branch }}`
+            **커밋:** `${{ github.event.workflow_run.head_sha }}`
+            **배포자:** ${{ github.event.workflow_run.head_commit.author.name }}
+            
+            배포가 성공적으로 완료되었습니다!
+            
+            [📋 CD 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          embed-color: 3066993
+          embed-footer-text: ${{ github.repository }}
+          embed-timestamp: ${{ github.event.workflow_run.updated_at }}
+
+      # ------------------------------------------------------
+      # 9. Discord 알림 - 실패
+      # ------------------------------------------------------
+      - name: 📢 Send Discord notification on failure
+        if: failure()
+        uses: tsickert/discord-webhook@v5.3.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: "AI CD Bot"
+          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          embed-title: "❌ AI Service Dev 배포 실패"
+          embed-description: |
+            **환경:** Development 🟢
+            **브랜치:** `${{ github.event.workflow_run.head_branch }}`
+            **커밋:** `${{ github.event.workflow_run.head_sha }}`
+            **배포자:** ${{ github.event.workflow_run.head_commit.author.name }}
+            
+            배포 중 오류가 발생했습니다. 로그를 확인해주세요.
+            
+            [📋 CD 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          embed-color: 15158332
+          embed-footer-text: ${{ github.repository }}
+          embed-timestamp: ${{ github.event.workflow_run.updated_at }}
+
+  # ============================================================
+  # Production 환경 배포
+  # ============================================================
+  deploy-prod:
+    name: Deploy to Production
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    environment:
+      name: ai-production
+    timeout-minutes: 20
+
+    steps:
+      # ------------------------------------------------------
+      # 1. 빌드 메타데이터 다운로드
+      # ------------------------------------------------------
+      - name: 📥 Download build metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-build-metadata-${{ github.event.workflow_run.head_sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true
+
+      - name: 📋 Display and validate build metadata
+        run: |
+          if [ -f metadata.json ]; then
+            echo "### 📊 Build Metadata" >> $GITHUB_STEP_SUMMARY
+            cat metadata.json | jq '.' >> $GITHUB_STEP_SUMMARY
+            
+            # 커버리지 검증
+            COVERAGE=$(cat metadata.json | jq -r '.coverage // "0"')
+            echo "Test Coverage: ${COVERAGE}%"
+            
+            if [ "$COVERAGE" -lt 70 ]; then
+              echo "::warning::Test coverage (${COVERAGE}%) is below 70%. Proceed with caution."
+            fi
+          else
+            echo "⚠️ Build metadata not found"
+          fi
+
+      # ------------------------------------------------------
+      # 2. 아티팩트 다운로드
+      # ------------------------------------------------------
+      - name: 📥 Download application artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ai-app-main-${{ github.event.workflow_run.head_sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      - name: 🔍 Verify downloaded artifact
+        run: |
+          echo "### 📦 Downloaded Files" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          ls -lhR >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          
+          # 필수 파일 확인
+          if [ ! -d "app" ]; then
+            echo "::error::app directory not found!"
+            exit 1
+          fi
+          
+          if [ ! -f "requirements.txt" ]; then
+            echo "::error::requirements.txt not found!"
+            exit 1
+          fi
+          
+          # SHA256 체크섬 계산
+          APP_SHA256=$(find app/ -type f -exec sha256sum {} \; | sha256sum | cut -d' ' -f1)
+          echo "Application SHA256: $APP_SHA256"
+          
+          echo "✅ Artifact verification passed"
+
+      # ------------------------------------------------------
+      # 3. 배포 전 서버 상태 확인
+      # ------------------------------------------------------
+      - name: 🔍 Check server status before deployment
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            echo "=== Production Server Status Check ==="
+            
+            # 디스크 공간 확인
+            echo "📊 Disk Usage:"
+            df -h ${{ env.APP_DIR }}
+            DISK_USAGE=$(df ${{ env.APP_DIR }} | tail -1 | awk '{print $5}' | sed 's/%//')
+            if [ "$DISK_USAGE" -gt 85 ]; then
+              echo "ERROR: Disk usage is critically high: ${DISK_USAGE}%"
+              exit 1
+            fi
+            
+            # 메모리 확인
+            echo "💾 Memory Usage:"
+            free -h
+            
+            # Qdrant 상태 확인
+            echo "🔍 Checking Qdrant..."
+            if curl -sf http://localhost:6333/ > /dev/null; then
+              echo "✅ Qdrant is running"
+            else
+              echo "❌ Qdrant is not accessible!"
+              exit 1
+            fi
+            
+            # Redis 상태 확인
+            echo "🔍 Checking Redis..."
+            if redis-cli -p 6380 ping > /dev/null 2>&1; then
+              echo "✅ Redis is running"
+            else
+              echo "❌ Redis is not accessible!"
+              exit 1
+            fi
+            
+            # 현재 애플리케이션 상태 확인
+            echo "🔄 Current Application Status:"
+            if pgrep -f "gunicorn.*app.main:app" > /dev/null; then
+              PID=$(pgrep -f "gunicorn.*master")
+              echo "✅ Application is running (PID: $PID)"
+              
+              # 헬스체크
+              if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
+                echo "✅ Application is healthy"
+              else
+                echo "⚠️ Application is running but unhealthy"
+              fi
+            else
+              echo "⚠️ Application is not running"
+            fi
+            
+            # 디렉토리 준비
+            mkdir -p ${{ env.APP_DIR }}
+            mkdir -p ${{ env.BACKUP_DIR }}
+            mkdir -p /tmp/ai-deploy
+            
+            echo "✅ Production server check completed"
+
+      # ------------------------------------------------------
+      # 4. 현재 버전 백업
+      # ------------------------------------------------------
+      - name: 💾 Backup current version
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            cd ${{ env.APP_DIR }}
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            
+            # 현재 애플리케이션 백업
+            if [ -d "app" ]; then
+              tar -czf ${{ env.BACKUP_DIR }}/ai-app_prod_$TIMESTAMP.tar.gz app/ requirements.txt 2>/dev/null || true
+              echo "✅ Production backup created: ai-app_prod_$TIMESTAMP.tar.gz"
+              
+              # 백업 파일 정보
+              BACKUP_SIZE=$(stat -c%s ${{ env.BACKUP_DIR }}/ai-app_prod_$TIMESTAMP.tar.gz 2>/dev/null || echo "0")
+              echo "Backup size: $BACKUP_SIZE bytes"
+              
+              # 배포 정보도 백업
+              if [ -f "deployment-info.json" ]; then
+                cp deployment-info.json ${{ env.BACKUP_DIR }}/deployment-info_$TIMESTAMP.json
+                echo "✅ Deployment info backed up"
+              fi
+            else
+              echo "⚠️ No existing app to backup (first deployment)"
+            fi
+            
+            # 오래된 백업 삭제 (최근 10개만 유지)
+            cd ${{ env.BACKUP_DIR }}
+            ls -t ai-app_prod_*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm -v
+            ls -t deployment-info_*.json 2>/dev/null | tail -n +11 | xargs -r rm -v
+            
+            echo "📦 Current backups:"
+            ls -lh ai-app_prod_*.tar.gz 2>/dev/null || echo "No backups found"
+
+      # ------------------------------------------------------
+      # 5. 애플리케이션 파일 서버로 전송
+      # ------------------------------------------------------
+      - name: 📤 Transfer application to Production Server
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          source: "app/,requirements.txt,build-artifacts/"
+          target: "/tmp/ai-deploy"
+          overwrite: true
+          strip_components: 0
+
+      # ------------------------------------------------------
+      # 6. 배포 스크립트 실행
+      # ------------------------------------------------------
+      - name: 🚀 Run deployment script
+        id: deploy
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          command-timeout: 300s
+          script: |
+            cd ${{ env.APP_DIR }}
+            
+            # 새 버전 준비
+            echo "Preparing new version..."
+            rm -rf /tmp/ai-deploy-staging
+            mv /tmp/ai-deploy /tmp/ai-deploy-staging
+            
+            # 배포 스크립트 실행
+            if [ -f "${{ env.SCRIPTS_DIR }}/deploy-ai.sh" ]; then
+              echo "Executing deploy-ai.sh..."
+              chmod +x ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
+              bash ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
+            else
+              echo "ERROR: deploy-ai.sh not found!"
+              exit 1
+            fi
+
+      # ------------------------------------------------------
+      # 7. 배포 후 검증
+      # ------------------------------------------------------
+      - name: 🏥 Post-deployment verification
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            echo "=== Post-Deployment Verification ==="
+            
+            # 프로세스 확인
+            if pgrep -f "gunicorn.*app.main:app" > /dev/null; then
+              MASTER_PID=$(pgrep -f "gunicorn.*master" | head -1)
+              WORKER_COUNT=$(pgrep -f "gunicorn.*worker" | wc -l)
+              echo "✅ Application is running (Master PID: $MASTER_PID)"
+              echo "Workers: $WORKER_COUNT processes"
+            else
+              echo "❌ Application is not running!"
+              exit 1
+            fi
+            
+            # 헬스체크 (여러 번 시도)
+            echo "Checking application health..."
+            MAX_RETRIES=10
+            RETRY_COUNT=0
+            
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
+                echo "✅ Application is healthy"
+                
+                # 상세 정보 출력
+                echo "=== Health Details ==="
+                curl -s http://localhost:8000/health | jq '.' || true
+                
+                exit 0
+              fi
+              
+              echo "Waiting for application to be ready... ($((RETRY_COUNT + 1))/$MAX_RETRIES)"
+              sleep 5
+              RETRY_COUNT=$((RETRY_COUNT + 1))
+            done
+            
+            echo "❌ Application health check failed after $MAX_RETRIES attempts!"
+            
+            # 로그 출력
+            if [ -f "${{ env.APP_DIR }}/logs/service.log" ]; then
+              echo "=== Last 100 lines of log ==="
+              tail -100 ${{ env.APP_DIR }}/logs/service.log
+            fi
+            
+            exit 1
+
+      # ------------------------------------------------------
+      # 8. Smoke Test
+      # ------------------------------------------------------
+      - name: 🧪 Run smoke tests
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            echo "=== Production Smoke Tests ==="
+            
+            FAILED=0
+            
+            # Test 1: Health
+            echo "1. Testing health endpoint..."
+            if curl -f -s http://localhost:8000/health > /dev/null; then
+              echo "✅ Health check passed"
+            else
+              echo "❌ Health check failed"
+              FAILED=$((FAILED + 1))
+            fi
+            
+            # Test 2: Root endpoint
+            echo "2. Testing root endpoint..."
+            if curl -f -s http://localhost:8000/ > /dev/null; then
+              echo "✅ Root endpoint passed"
+            else
+              echo "❌ Root endpoint failed"
+              FAILED=$((FAILED + 1))
+            fi
+            
+            # Test 3: Qdrant connectivity
+            echo "3. Testing Qdrant connectivity..."
+            QDRANT_STATUS=$(curl -s http://localhost:8000/health | jq -r '.services.qdrant // "UNKNOWN"')
+            if [ "$QDRANT_STATUS" = "connected" ]; then
+              echo "✅ Qdrant connectivity passed"
+            else
+              echo "⚠️ Qdrant status: $QDRANT_STATUS"
+            fi
+            
+            # Test 4: Redis connectivity
+            echo "4. Testing Redis connectivity..."
+            REDIS_STATUS=$(curl -s http://localhost:8000/health | jq -r '.services.redis // "UNKNOWN"')
+            if [ "$REDIS_STATUS" = "connected" ]; then
+              echo "✅ Redis connectivity passed"
+            else
+              echo "⚠️ Redis status: $REDIS_STATUS"
+            fi
+            
+            if [ $FAILED -gt 0 ]; then
+              echo "❌ $FAILED smoke test(s) failed"
+              exit 1
+            fi
+            
+            echo "✅ All smoke tests passed"
+
+      # ------------------------------------------------------
+      # 9. 배포 정보 기록
+      # ------------------------------------------------------
+      - name: 📝 Record deployment info
+        if: success()
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            cd ${{ env.APP_DIR }}
+            APP_SHA256=$(find app/ -type f -exec sha256sum {} \; | sha256sum | cut -d' ' -f1)
+            
+            cat > deployment-info.json <<EOF
+            {
+              "environment": "production",
+              "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "commit_sha": "${{ github.event.workflow_run.head_sha }}",
+              "branch": "${{ github.event.workflow_run.head_branch }}",
+              "deployer": "${{ github.event.workflow_run.head_commit.author.name }}",
+              "workflow_run_id": "${{ github.run_id }}",
+              "app_sha256": "$APP_SHA256"
+            }
+            EOF
+            
+            echo "✅ Deployment info recorded"
+            cat deployment-info.json
+
+      # ------------------------------------------------------
+      # 10. 롤백 스크립트 (실패 시)
+      # ------------------------------------------------------
+      - name: ⚠️ Rollback on failure
+        if: failure() && steps.deploy.outcome == 'failure'
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.PROD_SERVER_HOST }}
+          username: ${{ secrets.PROD_SERVER_USER }}
+          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+          script: |
+            cd ${{ env.APP_DIR }}
+            
+            echo "=== Rolling back to previous version ==="
+            
+            if [ -f "${{ env.SCRIPTS_DIR }}/rollback-ai.sh" ]; then
+              chmod +x ${{ env.SCRIPTS_DIR }}/rollback-ai.sh
+              bash ${{ env.SCRIPTS_DIR }}/rollback-ai.sh
+              
+              # 롤백 후 헬스체크
+              sleep 5
+              if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
+                echo "✅ Rollback successful, application is healthy"
+              else
+                echo "❌ Rollback completed but application is unhealthy!"
+                echo "Manual intervention required!"
+              fi
+            else
+              echo "❌ rollback-ai.sh not found!"
+              echo "Manual rollback required!"
+            fi
+
+      # ------------------------------------------------------
+      # 11. Discord 알림 - 성공
+      # ------------------------------------------------------
+      - name: 📢 Send Discord notification on success
+        if: success()
+        uses: tsickert/discord-webhook@v5.3.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: "AI CD Bot"
+          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          embed-title: "✅ AI Service Production 배포 성공"
+          embed-description: |
+            **환경:** Production 🔴
+            **브랜치:** `${{ github.event.workflow_run.head_branch }}`
+            **커밋:** `${{ github.event.workflow_run.head_sha }}`
+            **배포자:** ${{ github.event.workflow_run.head_commit.author.name }}
+            
+            🎉 프로덕션 배포가 성공적으로 완료되었습니다!
+            
+            [📋 CD 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          embed-color: 3066993
+          embed-footer-text: ${{ github.repository }}
+          embed-timestamp: ${{ github.event.workflow_run.updated_at }}
+
+      # ------------------------------------------------------
+      # 12. Discord 알림 - 실패
+      # ------------------------------------------------------
+      - name: 📢 Send Discord notification on failure
+        if: failure()
+        uses: tsickert/discord-webhook@v5.3.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: "AI CD Bot"
+          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          embed-title: "❌ AI Service Production 배포 실패 (롤백 완료)"
+          embed-description: |
+            **환경:** Production 🔴
+            **브랜치:** `${{ github.event.workflow_run.head_branch }}`
+            **커밋:** `${{ github.event.workflow_run.head_sha }}`
+            **배포자:** ${{ github.event.workflow_run.head_commit.author.name }}
+            
+            ⚠️ 배포 실패로 자동 롤백되었습니다. 즉시 확인이 필요합니다!
+            
+            [📋 CD 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          embed-color: 15158332
+          embed-footer-text: ${{ github.repository }}
+          embed-timestamp: ${{ github.event.workflow_run.updated_at }}
