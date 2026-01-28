@@ -43,7 +43,7 @@ def test_recommend_outfit_success(
     }
 
     # When
-    response = client.post("/v1/closet/outfit", json=request_data)
+    response = client.post("/ai/v1/closet/outfit", json=request_data)
 
     # Then
     assert response.status_code == 200
@@ -69,7 +69,7 @@ def test_recommend_outfit_llm_error(
     }
 
     # When
-    response = client.post("/v1/closet/outfit", json=request_data)
+    response = client.post("/ai/v1/closet/outfit", json=request_data)
 
     # Then
     assert response.status_code == 503
@@ -92,7 +92,7 @@ def test_recommend_outfit_parse_error(
     }
 
     # When
-    response = client.post("/v1/closet/outfit", json=request_data)
+    response = client.post("/ai/v1/closet/outfit", json=request_data)
 
     # Then
     assert response.status_code == 400

@@ -41,8 +41,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.include_router(embedding_router)
-app.include_router(outfit_router)
+app.include_router(embedding_router, prefix="/ai")
+app.include_router(outfit_router, prefix="/ai")
 
 
 @app.get("/")
