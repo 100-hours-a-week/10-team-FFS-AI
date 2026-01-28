@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.database import check_health, close_databases, init_databases
 from app.embedding.router import router as embedding_router
+from app.outfit.router import router as outfit_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,6 +42,7 @@ app = FastAPI(
 )
 
 app.include_router(embedding_router)
+app.include_router(outfit_router)
 
 
 @app.get("/")

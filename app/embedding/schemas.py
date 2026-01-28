@@ -12,6 +12,9 @@ class ClothingMetadata(BaseSchema):
     season: list[str] = Field(..., description="추천 계절 목록")
     formality: str = Field(..., description="포멀도 (예: 포멀, 캐주얼)")
     fit: str = Field(..., description="핏 (예: 오버핏, 슬림핏)")
+    occasion: list[str] = Field(
+        default=[], description="적합한 상황/장소 (예: 면접, 출근, 데이트)"
+    )
 
 
 class EmbeddingRequest(BaseSchema):

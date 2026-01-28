@@ -44,6 +44,12 @@ class Settings(BaseSettings):
         default="Salesforce/blip-image-captioning-base", alias="CAPTION_MODEL"
     )
 
+    # LLM Settings
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_chat_model: str = Field(default="gpt-4o-mini", alias="OPENAI_CHAT_MODEL")
+    llm_timeout: int = Field(default=30, alias="LLM_TIMEOUT")
+    llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
+
 
 @lru_cache
 def get_settings() -> Settings:

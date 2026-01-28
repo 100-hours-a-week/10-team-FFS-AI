@@ -5,7 +5,7 @@
 repos:
   # Ruff - 린터 + 포맷터
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.0
+    rev: v0.5.7
     hooks:
       # 린터 (자동 수정 포함)
       - id: ruff
