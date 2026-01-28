@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import os
 from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock
@@ -15,7 +16,7 @@ from app.main import app
 # 🔧 환경변수 설정 (가장 먼저 실행)
 # ============================================================
 @pytest.fixture(scope="session", autouse=True)
-def setup_test_environment():
+def setup_test_environment() -> Generator[None, None, None]:
     """
     테스트 환경변수 설정
     - CI: GitHub Actions의 env 사용
@@ -25,17 +26,16 @@ def setup_test_environment():
     test_env = {
         "APP_ENV": os.getenv("APP_ENV", "ci"),
         "DEBUG": os.getenv("DEBUG", "False"),
-
         # Qdrant 설정
         "QDRANT_HOST": os.getenv("QDRANT_HOST", "localhost"),
         "QDRANT_PORT": os.getenv("QDRANT_PORT", "6333"),
-        "QDRANT_COLLECTION_NAME": os.getenv("QDRANT_COLLECTION_NAME", "test_embeddings"),
-
+        "QDRANT_COLLECTION_NAME": os.getenv(
+            "QDRANT_COLLECTION_NAME", "test_embeddings"
+        ),
         # Redis 설정
         "REDIS_HOST": os.getenv("REDIS_HOST", "localhost"),
         "REDIS_PORT": os.getenv("REDIS_PORT", "6380"),
         "REDIS_DB": os.getenv("REDIS_DB", "0"),
-
         # API Keys (옵션)
         "UPSTAGE_API_KEY": os.getenv("UPSTAGE_API_KEY", "test_upstage_key"),
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID", "test_access_key"),
@@ -47,6 +47,7 @@ def setup_test_environment():
 
     # Settings 캐시 클리어 (중요!)
     from app.config import get_settings
+
     get_settings.cache_clear()
 
     # 디버깅 출력 (CI에서 확인용)
@@ -66,6 +67,7 @@ def setup_test_environment():
 
     # 테스트 종료 후 캐시 정리
     get_settings.cache_clear()
+
 
 @pytest.fixture(autouse=True)
 def mock_db_clients(mocker: MockerFixture) -> AsyncMock:

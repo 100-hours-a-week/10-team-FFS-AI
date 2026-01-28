@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from qdrant_client.http.models import ScoredPoint
+from qdrant_client.http.models import QueryResponse, ScoredPoint
 
 from app.outfit.repository import ClothingRepository
 from app.outfit.schemas import SearchQuery
@@ -17,7 +17,8 @@ def mock_embedding_service() -> MagicMock:
 @pytest.fixture
 def mock_qdrant_client() -> MagicMock:
     client = MagicMock()
-    client.search = AsyncMock(return_value=[])
+    # Qdrant 1.7+ API: query_points 반환 형태
+    client.query_points = AsyncMock(return_value=QueryResponse(points=[]))
     return client
 
 
@@ -49,7 +50,7 @@ class TestSearchByQuery:
 
         assert result.category == "상의"
         assert result.candidates == []
-        mock_qdrant_client.search.assert_awaited_once()
+        mock_qdrant_client.query_points.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_search_without_category_filter(
@@ -65,7 +66,7 @@ class TestSearchByQuery:
         )
 
         assert result.category == "전체"
-        mock_qdrant_client.search.assert_awaited_once()
+        mock_qdrant_client.query_points.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_search_returns_candidates(
@@ -86,7 +87,9 @@ class TestSearchByQuery:
                 "caption": "검은색 반팔 티셔츠",
             },
         )
-        mock_qdrant_client.search = AsyncMock(return_value=[mock_hit])
+        mock_qdrant_client.query_points = AsyncMock(
+            return_value=QueryResponse(points=[mock_hit])
+        )
 
         query = SearchQuery(text="검정 티셔츠", category_filter="상의")
 
@@ -122,7 +125,7 @@ class TestSearchMultiple:
         )
 
         assert len(results) == 3
-        assert mock_qdrant_client.search.await_count == 3
+        assert mock_qdrant_client.query_points.await_count == 3
 
 
 class TestToCandidateStatic:
