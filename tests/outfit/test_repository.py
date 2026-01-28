@@ -101,7 +101,7 @@ class TestSearchByQuery:
         candidate = result.candidates[0]
         assert candidate.clothes_id == 123
         assert candidate.category == "상의"
-        assert candidate.color == "검정"
+        assert candidate.color == ["검정"]
         assert candidate.similarity_score == 0.95
 
 
@@ -148,7 +148,7 @@ class TestToCandidateStatic:
         assert candidate.clothes_id == 456
         assert candidate.image_url == "https://img.com/456.jpg"
         assert candidate.category == "하의"
-        assert candidate.color == "네이비"
+        assert candidate.color == ["네이비"]
         assert candidate.style_tags == ["포멀"]
         assert candidate.caption == "네이비 슬랙스"
         assert candidate.similarity_score == 0.88
@@ -168,6 +168,6 @@ class TestToCandidateStatic:
         candidate = ClothingRepository._to_candidate(hit)
 
         assert candidate.clothes_id == 789
-        assert candidate.color is None
+        assert candidate.color == []
         assert candidate.style_tags == []
         assert candidate.caption is None
