@@ -56,3 +56,13 @@ def mock_embedding_service() -> Generator[AsyncMock, None, None]:
     app.dependency_overrides[get_embedding_service] = lambda: mock_service
     yield mock_service
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def mock_outfit_service() -> Generator[AsyncMock, None, None]:
+    from app.outfit.service import OutfitService, get_outfit_service
+
+    mock_service: AsyncMock = AsyncMock(spec=OutfitService)
+    app.dependency_overrides[get_outfit_service] = lambda: mock_service
+    yield mock_service
+    app.dependency_overrides.clear()
