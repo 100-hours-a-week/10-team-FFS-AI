@@ -1,5 +1,4 @@
 import time
-from collections.abc import Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,8 +12,6 @@ from app.closet.schemas import (
     ValidationErrorCode,
 )
 from app.closet.service import (
-    _batch_store,
-    _task_store,
     get_batch_status,
     process_image_task,
     start_analyze,
@@ -88,15 +85,10 @@ async def test_validate_images_nsfw_detected(mocker: MockerFixture) -> None:
 # --- Analyze Tests ---
 
 
-@pytest.fixture(autouse=True)
-def clear_stores() -> Generator[None, None, None]:
-    _batch_store.clear()
-    _task_store.clear()
-    yield
-
-
 @pytest.mark.asyncio
-async def test_start_analyze_success(mocker: MockerFixture) -> None:
+async def test_start_analyze_success(
+    mocker: MockerFixture, mock_redis_client: MagicMock
+) -> None:
     # Given
     batch_id = "test_batch"
     request = AnalyzeRequest(
@@ -113,63 +105,91 @@ async def test_start_analyze_success(mocker: MockerFixture) -> None:
     )
     mock_bg_tasks = MagicMock()
 
+    # Redis가 비어있다고 가정 (exists_batch=False)
+    # conftest.py의 mock implementation이 자동으로 처리함
+
     # When
     response = await start_analyze(request, mock_bg_tasks)
 
     # Then
     assert response.batch_id == batch_id
     assert response.status == BatchStatus.IN_PROGRESS
-    assert batch_id in _batch_store
+
+    # Redis 호출 확인
+    mock_redis_client.set_batch.assert_called_once()
+    mock_redis_client.set_task.assert_called_once()
+    mock_redis_client.add_task_to_batch.assert_called_once()
+
     mock_bg_tasks.add_task.assert_called_once()
 
 
-def test_get_batch_status_completed() -> None:
+def test_get_batch_status_completed(mock_redis_client: MagicMock) -> None:
     # Given
     batch_id = "batch_done"
-    _batch_store[batch_id] = {
-        "user_id": "test",
-        "status": BatchStatus.ACCEPTED,
-        "total": 1,
-        "completed": 0,
-        "processing": 1,
-        "created_at": time.time(),
-    }
-    # Simulate a task
     task_id = "task_1"
-    _task_store[task_id] = {
-        "batch_id": batch_id,
-        "status": TaskStatus.COMPLETED,
-        "sequence": 1,
-        "analysis_result": {"category": "TOP"},  # Mock result
-    }
+
+    # Redis Mock에 데이터 주입 (conftest.py의 side_effect 이용)
+    mock_redis_client.set_batch(
+        batch_id,
+        {
+            "user_id": "test",
+            "status": BatchStatus.ACCEPTED,
+            "total": 1,
+            "completed": 0,
+            "processing": 1,
+            "created_at": time.time(),
+        },
+    )
+    mock_redis_client.set_task(
+        task_id,
+        {
+            "batch_id": batch_id,
+            "status": TaskStatus.COMPLETED,
+            "sequence": 1,
+            "analysis_result": {"category": "TOP"},
+        },
+    )
+    mock_redis_client.add_task_to_batch(batch_id, task_id)
 
     # When
     result = get_batch_status(batch_id)
 
     # Then
     assert result is not None
+    # 로직상 completed count가 업데이트되어야 COMPLETED가 됨 (process_image_task에서 됨)
+    # 여기선 단순히 조회 로직만 테스트하므로, 수동으로 데이터를 완벽하게 맞춰주거나
+    # get_batch_status 로직이 카운트를 세는지 확인해야 함.
+    # get_batch_status 구현: task loop 돌면서 completed_count 셈.
+    # 따라서 위에 set_task status=COMPLETED 면 completed_count=1이 됨.
+    # total=1, completed=1 => COMPLETED
+
     assert result.status == BatchStatus.COMPLETED
     assert result.meta.is_finished is True
     assert result.results[0].status == TaskStatus.COMPLETED
 
 
 @pytest.mark.asyncio
-async def test_process_image_task_success(mocker: MockerFixture) -> None:
+async def test_process_image_task_success(
+    mocker: MockerFixture, mock_redis_client: MagicMock
+) -> None:
     # Given
     task_id = "task_1"
     batch_id = "batch_1"
 
-    # Store에 mock task 미리 저장
-    _task_store[task_id] = {
-        "batch_id": batch_id,
-        "user_id": 1,
-        "sequence": 0,
-        "target_image": "http://img.jpg",
-        "file_info": {"presigned_url": "http://presigned.url", "file_id": 100},
-        "status": TaskStatus.PREPROCESSING,
-        "created_at": time.time(),
-    }
-    _batch_store[batch_id] = {"completed": 0, "processing": 1}
+    # Redis Mock 상태 설정
+    mock_redis_client.set_batch(batch_id, {"completed": 0, "processing": 1, "total": 1})
+    mock_redis_client.set_task(
+        task_id,
+        {
+            "batch_id": batch_id,
+            "user_id": 1,
+            "sequence": 0,
+            "target_image": "http://img.jpg",
+            "file_info": {"presigned_url": "http://presigned.url", "file_id": 100},
+            "status": TaskStatus.PREPROCESSING,
+            "created_at": time.time(),
+        },
+    )
 
     # Mocks
     mock_download = mocker.patch("app.closet.service.download_image")
@@ -183,7 +203,7 @@ async def test_process_image_task_success(mocker: MockerFixture) -> None:
     mock_storage.upload_file.return_value = "https://s3.url/segmented.png"
     mocker.patch("app.closet.service.get_storage", return_value=mock_storage)
 
-    # analyze_image_attributes mock (to prevent it from running)
+    # analyze_image_attributes mock
     mocker.patch(
         "app.closet.service._analyze_image_attributes", return_value={"category": "TOP"}
     )
@@ -192,9 +212,10 @@ async def test_process_image_task_success(mocker: MockerFixture) -> None:
     await process_image_task(task_id)
 
     # Then
-    task = _task_store[task_id]
-    assert task["status"] == TaskStatus.COMPLETED
-    assert task["file_id"] == 100  # Returns input file_id
+    # Redis 상태 확인
+    updated_task = mock_redis_client.get_task(task_id)
+    assert updated_task["status"] == TaskStatus.COMPLETED
+    assert updated_task["file_id"] == 100
 
     # Check calls
     mock_download.assert_called_once_with("http://presigned.url")

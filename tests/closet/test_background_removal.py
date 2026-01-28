@@ -12,7 +12,7 @@ from app.closet.background_removal import BackgroundRemover, get_background_remo
 class TestBackgroundRemover:
     @pytest.fixture
     def mock_seg_model(self: TestBackgroundRemover) -> Generator[MagicMock, None, None]:
-        with patch("app.core.models.SegmentationModel") as mock_model_cls:
+        with patch("app.closet.background_removal.SegmentationModel") as mock_model_cls:
             model_instance = mock_model_cls.return_value
             model_instance.device = "cpu"
             model_instance._loaded = False
