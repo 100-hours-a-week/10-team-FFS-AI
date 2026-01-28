@@ -63,15 +63,15 @@ class ClothingRepository:
 
         query_filter = qdrant_models.Filter(must=must_conditions)
 
-        results = await qdrant.search(
+        response = await qdrant.query_points(
             collection_name=self.settings.qdrant_collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=query_filter,
             limit=top_k,
             with_payload=True,
         )
 
-        candidates = [self._to_candidate(hit) for hit in results]
+        candidates = [self._to_candidate(hit) for hit in response.points]
         category = query.category_filter or "전체"
 
         logger.info(
