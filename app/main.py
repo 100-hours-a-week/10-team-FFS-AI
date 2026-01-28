@@ -1,1 +1,66 @@
-# FastAPI 앱 진입점, 라우터 등록, lifespan 이벤트
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+
+from app.core.database import check_health, close_databases, init_databases
+from app.embedding.router import router as embedding_router
+from app.outfit.router import router as outfit_router
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    logger.info("start server")
+    try:
+        await init_databases()
+        logger.info("Application startup complete")
+    except Exception as e:
+        logger.error(f"Failed to start application: {e}")
+        raise
+
+    yield
+
+    logger.info("shut down server")
+    try:
+        await close_databases()
+        logger.info("Application shutdown complete")
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}")
+
+
+app = FastAPI(
+    title="KlosetLab",
+    lifespan=lifespan,
+)
+
+app.include_router(embedding_router)
+app.include_router(outfit_router)
+
+
+@app.get("/")
+async def root() -> dict[str, str]:
+    return {"status": "running"}
+
+
+@app.get("/health")
+async def health_check() -> JSONResponse:
+    health_status = await check_health()
+
+    all_connected = all(status == "connected" for status in health_status.values())
+    overall_status = "healthy" if all_connected else "degraded"
+
+    response_data = {
+        "status": overall_status,
+        "services": health_status,
+    }
+    status_code = 200 if all_connected else 503
+
+    return JSONResponse(content=response_data, status_code=status_code)

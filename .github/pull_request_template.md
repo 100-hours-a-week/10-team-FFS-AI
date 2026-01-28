@@ -1,7 +1,9 @@
 ## ⭐️ Issue Number
 
-- #
-- resolves: #
+
+- #1 ,
+- resolves #1 ,
+
 
 ## 🚩 Summary
 
