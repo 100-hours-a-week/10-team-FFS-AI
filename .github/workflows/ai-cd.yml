@@ -34,9 +34,9 @@ permissions:
 # 환경 변수 설정
 # ============================================================
 env:
-  APP_DIR: /app/ai
-  BACKUP_DIR: /app/backups/ai
-  SCRIPTS_DIR: /app/scripts
+  APP_DIR: ~/app/ai
+  BACKUP_DIR: ~/app/backups/ai
+  SCRIPTS_DIR: ~/app/scripts
 
 # ============================================================
 # Dev 환경 배포 (dev 브랜치)
@@ -50,6 +50,8 @@ jobs:
        github.event.workflow_run.head_branch == 'dev') ||
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')
     runs-on: ubuntu-latest
+    environment:
+      name: ai-development
     timeout-minutes: 15
 
     steps:
@@ -128,7 +130,8 @@ jobs:
           host: ${{ secrets.DEV_SERVER_HOST }}
           username: ${{ secrets.DEV_SERVER_USER }}
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
-          command_timeout: 300s
+          command_timeout: 10m
+          script_stop: true  # 오류 시 즉시 중단
           script: |
             cd ${{ env.APP_DIR }}
             
@@ -140,7 +143,7 @@ jobs:
               mv /tmp/ai-deploy /tmp/ai-deploy-staging
               bash ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
             else
-              # 기본 배포
+              # 기본 배포 (setsid 사용으로 완전 분리)
               echo "Basic deployment..."
               
               # 백업
@@ -160,16 +163,32 @@ jobs:
                 pip install -r requirements.txt --quiet
               fi
               
-              # 애플리케이션 재시작
+              # 기존 프로세스 종료
               pkill -f "gunicorn.*app.main:app" || true
               sleep 3
               
-              nohup gunicorn app.main:app \
+              # 로그 디렉토리
+              mkdir -p logs
+              
+              # Gunicorn을 daemon 모드로 시작
+              gunicorn app.main:app \
                 --workers 2 \
                 --worker-class uvicorn.workers.UvicornWorker \
                 --bind 0.0.0.0:8000 \
-                --log-level info \
-                > logs/service.log 2>&1 &
+                --daemon \
+                --pid gunicorn.pid \
+                --access-logfile logs/access.log \
+                --error-logfile logs/error.log
+              
+              sleep 5
+              
+              # 시작 확인
+              if [ -f gunicorn.pid ] && pgrep -F gunicorn.pid > /dev/null; then
+                echo "✅ Application started (PID: $(cat gunicorn.pid))"
+              else
+                echo "❌ Failed to start application"
+                exit 1
+              fi
             fi
             
             rm -rf /tmp/ai-deploy /tmp/ai-deploy-staging
@@ -240,7 +259,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
     runs-on: ubuntu-latest
     environment:
-      name: ai-environment  # ⚠️ GitHub Settings에서 승인자 설정 필요
+      name: ai-production  # ⚠️ GitHub Settings에서 승인자 설정 필요
     timeout-minutes: 30  # 승인 대기 시간 포함
 
     steps:
@@ -349,7 +368,8 @@ jobs:
           host: ${{ secrets.PROD_SERVER_HOST }}
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          command_timeout: 300s
+          command_timeout: 10m
+          script_stop: true
           script: |
             cd ${{ env.APP_DIR }}
             
@@ -369,17 +389,41 @@ jobs:
                 pip install -r requirements.txt --quiet
               fi
               
-              # Zero-downtime reload
-              if pgrep -f "gunicorn.*master" > /dev/null; then
-                MASTER_PID=$(pgrep -f "gunicorn.*master" | head -1)
-                kill -HUP $MASTER_PID
-                echo "✅ Graceful reload"
+              # Systemd가 있으면 사용
+              if systemctl is-active --quiet ai-app 2>/dev/null; then
+                echo "Restarting via systemd..."
+                sudo systemctl restart ai-app
+                sleep 3
               else
-                nohup gunicorn app.main:app \
-                  --workers 4 \
-                  --worker-class uvicorn.workers.UvicornWorker \
-                  --bind 0.0.0.0:8000 \
-                  > logs/service.log 2>&1 &
+                # Zero-downtime reload 시도
+                if pgrep -f "gunicorn.*master" > /dev/null; then
+                  MASTER_PID=$(pgrep -f "gunicorn.*master" | head -1)
+                  kill -HUP $MASTER_PID
+                  echo "✅ Graceful reload"
+                else
+                  # 첫 배포 - daemon 모드로 시작
+                  pkill -f "gunicorn.*app.main:app" || true
+                  sleep 3
+                  
+                  mkdir -p logs
+                  gunicorn app.main:app \
+                    --workers 4 \
+                    --worker-class uvicorn.workers.UvicornWorker \
+                    --bind 0.0.0.0:8000 \
+                    --daemon \
+                    --pid gunicorn.pid \
+                    --access-logfile logs/access.log \
+                    --error-logfile logs/error.log
+                  
+                  sleep 5
+                  
+                  if [ -f gunicorn.pid ] && pgrep -F gunicorn.pid > /dev/null; then
+                    echo "✅ Application started (PID: $(cat gunicorn.pid))"
+                  else
+                    echo "❌ Failed to start"
+                    exit 1
+                  fi
+                fi
               fi
             fi
             
@@ -449,7 +493,16 @@ jobs:
               
               pkill -f "gunicorn.*app.main:app" || true
               sleep 3
-              nohup gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 > logs/service.log 2>&1 &
+              
+              mkdir -p logs
+              gunicorn app.main:app \
+                --workers 4 \
+                --worker-class uvicorn.workers.UvicornWorker \
+                --bind 0.0.0.0:8000 \
+                --daemon \
+                --pid gunicorn.pid \
+                --access-logfile logs/access.log \
+                --error-logfile logs/error.log
               
               sleep 5
               if curl -f -s http://localhost:8000/health > /dev/null; then
