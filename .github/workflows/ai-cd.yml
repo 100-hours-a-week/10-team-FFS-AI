@@ -131,7 +131,7 @@ jobs:
           username: ${{ secrets.DEV_SERVER_USER }}
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
           command_timeout: 10m
-          script_stop: true  # 오류 시 즉시 중단
+          script_stop: true
           script: |
             cd ${{ env.APP_DIR }}
 
@@ -143,10 +143,9 @@ jobs:
               mv /tmp/ai-deploy /tmp/ai-deploy-staging
               bash ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
             else
-              # 기본 배포 (setsid 사용으로 완전 분리)
               echo "Basic deployment..."
-
-              # 백업
+              
+              # 백업 (기존 app이 있을 경우만)
               if [ -d "app" ]; then
                 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
                 tar -czf ${{ env.BACKUP_DIR }}/ai-app_dev_backup_$TIMESTAMP.tar.gz app/ requirements.txt 2>/dev/null || true
@@ -156,12 +155,17 @@ jobs:
               rm -rf app/
               cp -r /tmp/ai-deploy/app .
               cp /tmp/ai-deploy/requirements.txt .
-
-              # 가상환경 업데이트
-              if [ -d "venv" ]; then
-                source venv/bin/activate
-                pip install -r requirements.txt --quiet
+              
+              # 가상환경이 없으면 생성
+              if [ ! -d "venv" ]; then
+                echo "Creating virtual environment..."
+                python3 -m venv venv
               fi
+              
+              # 가상환경 활성화 및 의존성 설치
+              source venv/bin/activate
+              pip install --upgrade pip --quiet
+              pip install -r requirements.txt --quiet
               
               # 기존 프로세스 종료
               pkill -f "gunicorn.*app.main:app" || true
@@ -187,6 +191,7 @@ jobs:
                 echo "✅ Application started (PID: $(cat gunicorn.pid))"
               else
                 echo "❌ Failed to start application"
+                cat logs/error.log 2>/dev/null || true
                 exit 1
               fi
             fi
@@ -379,15 +384,21 @@ jobs:
               chmod +x ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
               bash ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
             else
-              # 기본 배포
+              # 새 버전 적용
               rm -rf app/
               cp -r /tmp/ai-deploy/app .
               cp /tmp/ai-deploy/requirements.txt .
-
-              if [ -d "venv" ]; then
-                source venv/bin/activate
-                pip install -r requirements.txt --quiet
+              
+              # 가상환경이 없으면 생성
+              if [ ! -d "venv" ]; then
+                echo "Creating virtual environment..."
+                python3 -m venv venv
               fi
+              
+              # 가상환경 활성화 및 의존성 설치
+              source venv/bin/activate
+              pip install --upgrade pip --quiet
+              pip install -r requirements.txt --quiet
               
               # Systemd가 있으면 사용
               if systemctl is-active --quiet ai-app 2>/dev/null; then
@@ -421,6 +432,7 @@ jobs:
                     echo "✅ Application started (PID: $(cat gunicorn.pid))"
                   else
                     echo "❌ Failed to start"
+                    cat logs/error.log 2>/dev/null || true
                     exit 1
                   fi
                 fi
@@ -490,7 +502,10 @@ jobs:
             if [ -n "$LATEST_BACKUP" ]; then
               cd ${{ env.APP_DIR }}
               tar -xzf ${{ env.BACKUP_DIR }}/$LATEST_BACKUP
-
+              
+              # 가상환경 활성화
+              source venv/bin/activate
+              
               pkill -f "gunicorn.*app.main:app" || true
               sleep 3
               
