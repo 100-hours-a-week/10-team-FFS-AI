@@ -17,7 +17,6 @@ def mock_embedding_service() -> MagicMock:
 @pytest.fixture
 def mock_qdrant_client() -> MagicMock:
     client = MagicMock()
-    # Qdrant 1.7+ API: query_points 반환 형태
     client.query_points = AsyncMock(return_value=QueryResponse(points=[]))
     return client
 
