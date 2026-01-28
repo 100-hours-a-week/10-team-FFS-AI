@@ -1,7 +1,14 @@
-import pytest
-from app.embedding.schemas import EmbeddingRequest, ClothingMetadata
+from __future__ import annotations
 
-def test_create_embedding_api_success(client, mock_embedding_service):
+from unittest.mock import AsyncMock
+
+from fastapi.testclient import TestClient
+
+
+def test_create_embedding_api_success(
+    client: TestClient,
+    mock_embedding_service: AsyncMock,
+) -> None:
     # Given
     mock_embedding_service.upsert.return_value = True
     request_data = {
@@ -17,8 +24,8 @@ def test_create_embedding_api_success(client, mock_embedding_service):
             "gender": "남성",
             "season": ["겨울"],
             "formality": "캐주얼",
-            "fit": "오버핏"
-        }
+            "fit": "오버핏",
+        },
     }
 
     # When
@@ -32,7 +39,10 @@ def test_create_embedding_api_success(client, mock_embedding_service):
     mock_embedding_service.upsert.assert_called_once()
 
 
-def test_delete_embedding_api_success(client, mock_embedding_service):
+def test_delete_embedding_api_success(
+    client: TestClient,
+    mock_embedding_service: AsyncMock,
+) -> None:
     # Given
     mock_embedding_service.delete.return_value = True
     clothes_id = 1

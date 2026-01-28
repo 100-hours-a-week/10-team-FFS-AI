@@ -72,8 +72,9 @@ class EmbeddingService:
             "season": request.metadata.season,
             "formality": request.metadata.formality,
             "fit": request.metadata.fit,
+            "occasion": request.metadata.occasion,
             "caption": request.caption,
-            "embeddingText": embedding_text,  # 디버깅/분석용
+            "embeddingText": embedding_text,
         }
 
         try:
@@ -110,7 +111,6 @@ class EmbeddingService:
 
 
 # 기본 서비스 인스턴스 (DI 컨테이너 도입 전까지 사용)
-# FastAPI가 의존성으로 분석할 때, 파라미터가 있으면 "요청 파라미터"로 오해할 수 있으므로 제거합니다.
 @lru_cache
 def get_embedding_service() -> EmbeddingService:
     return EmbeddingService()

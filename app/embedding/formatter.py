@@ -13,7 +13,7 @@ class EmbeddingTextFormatter(Protocol):
 class HybridFormatter:
     """
     출력 예시:
-        "검정, 네이비 울, 폴리에스터 코트. 포멀한 스타일. 겨울, 가을용.
+        "검정 울 코트. 포멀 스타일. 겨울용. 미니멀, 클래식. 면접, 출근에 적합.
          오버핏 더블 버튼 코트로 세련된 분위기를 연출합니다."
     """
 
@@ -44,7 +44,15 @@ class HybridFormatter:
         if metadata.fit:
             parts.append(metadata.fit)
 
+        if metadata.style_tags:
+            style_tags_str = ", ".join(metadata.style_tags)
+            parts.append(style_tags_str)
+
+        if metadata.occasion:
+            occasion_str = ", ".join(metadata.occasion)
+            parts.append(f"{occasion_str}에 적합")
+
         if caption:
             parts.append(caption)
 
-        return " ".join(parts)
+        return ". ".join(parts)
