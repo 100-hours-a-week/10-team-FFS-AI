@@ -158,7 +158,6 @@ class SegmentationModel:
 
             logger.info(f"Segmentation 모델 로딩 중: {self.model_id}")
             self._device = "cuda" if torch.cuda.is_available() else "cpu"
-
             self._model = AutoModelForImageSegmentation.from_pretrained(
                 self.model_id, trust_remote_code=True
             )
