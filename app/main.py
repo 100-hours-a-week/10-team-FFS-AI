@@ -43,7 +43,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="KlosetLab",
+    title="KlosetLab AI Service",
+    description="패션 이미지 분석, 임베딩 및 코디 추천 AI 서비스",
     lifespan=lifespan,
 )
 

@@ -7,7 +7,7 @@ API:
 - GET /v1/closet/batches/{batchId}: 분석 상태 조회
 """
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 
 from app.closet.schemas import (
     AnalyzeRequest,
@@ -151,16 +151,18 @@ async def validate(request: ValidateRequest) -> ValidateResponse:
     이미지 분석 시작 API (비동기)
 
     처리 내용:
-    - 배경 제거 (rembg)
+    - 배경 제거 (BiRefNet)
     - AI 속성 분석 (카테고리, 색상, 소재, 스타일)
 
     즉시 202 Accepted 반환 후 백그라운드에서 처리
     """,
 )
-async def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
+async def analyze(
+    request: AnalyzeRequest, background_tasks: BackgroundTasks
+) -> AnalyzeResponse:
     """이미지 분석 시작 엔드포인트"""
     try:
-        return await start_analyze(request)
+        return await start_analyze(request, background_tasks)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
