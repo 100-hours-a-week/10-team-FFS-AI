@@ -4,4 +4,9 @@ pytest
 pytest-asyncio
 ruff
 pre-commit
-pytest-mock # for coverage
+
+# for coverage
+pytest-mock
+pytest-cov
+mypy
+types-redis
