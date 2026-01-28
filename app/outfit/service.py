@@ -1,4 +1,5 @@
 import logging
+from functools import lru_cache
 
 from app.outfit.llm_client import OpenAIClient
 from app.outfit.outfit_composer import OutfitComposer
@@ -48,3 +49,9 @@ class OutfitService:
         logger.info(f"Generated {len(response.outfits)} outfit recommendations")
 
         return response
+
+
+# FastAPI 의존성 주입용 (DI 컨테이너 도입 전까지 사용)
+@lru_cache
+def get_outfit_service() -> OutfitService:
+    return OutfitService()
