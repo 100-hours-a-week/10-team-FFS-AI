@@ -13,3 +13,15 @@ pillow
 tenacity
 imagehash
 numpy
+
+# AI Core
+open_clip_torch>=2.20.0
+timm>=0.9.0
+ftfy
+regex
+tqdm
+
+# Background Removal (BiRefNet)
+# AI Models dependencies (Required for BiRefNet)
+einops
+kornia

@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     ai_model_server_url: str = Field(default="", alias="AI_MODEL_SERVER_URL")
     use_mock_validator: bool = Field(default=True, alias="USE_MOCK_VALIDATOR")
 
+    nsfw_model_id: str = Field(
+        default="Falconsai/nsfw_image_detection", alias="NSFW_MODEL_ID"
+    )
+    clip_model_id: str = Field(
+        default="laion/CLIP-ViT-B-32-laion2B-s34B-b79K", alias="CLIP_MODEL_ID"
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

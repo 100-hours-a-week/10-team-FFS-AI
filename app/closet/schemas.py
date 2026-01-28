@@ -9,7 +9,7 @@ Closet 모듈 스키마 정의 (API 명세 v2 기준)
 
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 # ============================================================
@@ -59,10 +59,10 @@ class ValidateRequest(BaseModel):
         ..., description="검증할 이미지 URL 목록 (1~10개)", min_length=1, max_length=10
     )
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        json_schema_extra={
             "example": {
                 "userId": 123,
                 "images": [
@@ -71,7 +71,8 @@ class ValidateRequest(BaseModel):
                     "https://s3.example.com/image3.jpg",
                 ],
             }
-        }
+        },
+    )
 
 
 class ValidationResult(BaseModel):
@@ -81,6 +82,8 @@ class ValidationResult(BaseModel):
     passed: bool = Field(..., description="검증 통과 여부")
     error: ValidationErrorCode | None = Field(None, description="실패 시 에러 코드")
 
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
 
 class ValidationSummary(BaseModel):
     """검증 결과 요약"""
@@ -88,6 +91,8 @@ class ValidationSummary(BaseModel):
     total: int = Field(..., description="전체 이미지 수")
     passed: int = Field(..., description="통과한 이미지 수")
     failed: int = Field(..., description="실패한 이미지 수")
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class ValidateResponse(BaseModel):
@@ -99,10 +104,10 @@ class ValidateResponse(BaseModel):
         ..., description="개별 검증 결과"
     )
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        json_schema_extra={
             "example": {
                 "success": True,
                 "validationSummary": {"total": 5, "passed": 3, "failed": 2},
@@ -117,7 +122,8 @@ class ValidateResponse(BaseModel):
                     },
                 ],
             }
-        }
+        },
+    )
 
 
 # ============================================================
@@ -132,9 +138,7 @@ class FileInfo(BaseModel):
     object_key: str = Field(..., description="S3 객체 키")
     presigned_url: str = Field(..., description="S3 presigned URL")
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class AnalyzeImageItem(BaseModel):
@@ -145,9 +149,7 @@ class AnalyzeImageItem(BaseModel):
     task_id: str = Field(..., description="개별 작업 ID (UUID)")
     file_upload_info: FileInfo = Field(..., description="파일 업로드 정보")
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class AnalyzeRequest(BaseModel):
@@ -157,10 +159,10 @@ class AnalyzeRequest(BaseModel):
     batch_id: str = Field(..., description="배치 작업 ID (UUID)")
     images: list[AnalyzeImageItem] = Field(..., description="분석할 이미지 목록")
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        json_schema_extra={
             "example": {
                 "userId": 123,
                 "batchId": "123e4567-e89b-12d3-a456-426614174000",
@@ -187,7 +189,8 @@ class AnalyzeRequest(BaseModel):
                     },
                 ],
             }
-        }
+        },
+    )
 
 
 class BatchMeta(BaseModel):
@@ -198,9 +201,7 @@ class BatchMeta(BaseModel):
     processing: int = Field(..., description="처리 중인 이미지 수")
     is_finished: bool = Field(..., description="전체 작업 완료 여부")
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class AnalyzeResponse(BaseModel):
@@ -211,10 +212,10 @@ class AnalyzeResponse(BaseModel):
     meta: BatchMeta = Field(..., description="메타 정보")
     results: list["BatchResultItem"] = Field(..., description="개별 작업 결과 목록")
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        json_schema_extra={
             "example": {
                 "batchId": "123e4567-e89b-12d3-a456-426614174000",
                 "status": "IN_PROGRESS",
@@ -239,7 +240,8 @@ class AnalyzeResponse(BaseModel):
                     },
                 ],
             }
-        }
+        },
+    )
 
 
 # ============================================================
@@ -266,9 +268,7 @@ class MajorAttributes(BaseModel):
     material: list[str] = Field(..., description="소재 목록")
     style_tags: list[str] = Field(..., description="스타일 태그 목록")
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class MetaData(BaseModel):
@@ -278,10 +278,11 @@ class MetaData(BaseModel):
     season: list[str] = Field(..., description="계절 목록")
     formality: str = Field(..., description="격식 (캐주얼/포멀 등)")
     fit: str = Field(..., description="핏 (오버핏/슬림핏 등)")
+    occasion: list[str] = Field(
+        ..., description="착용 상황/목적 (예: 면접, 비즈니스 미팅, 출근)"
+    )
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class ExtraAttributes(BaseModel):
@@ -290,9 +291,7 @@ class ExtraAttributes(BaseModel):
     meta_data: MetaData = Field(..., description="메타 데이터")
     caption: str = Field(..., description="이미지 캡션")
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class BatchResultItem(BaseModel):
@@ -308,9 +307,7 @@ class BatchResultItem(BaseModel):
     major: MajorAttributes | None = Field(None, description="주요 속성")
     extra: ExtraAttributes | None = Field(None, description="추가 정보")
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
 
 class BatchStatusResponse(BaseModel):
@@ -323,10 +320,10 @@ class BatchStatusResponse(BaseModel):
     meta: BatchMeta = Field(..., description="메타 정보")
     results: list[BatchResultItem] = Field(..., description="개별 작업 결과 목록")
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        json_schema_extra={
             "example": {
                 "batchId": "123e4567-e89b-12d3-a456-426614174000",
                 "status": "IN_PROGRESS",
@@ -361,12 +358,14 @@ class BatchStatusResponse(BaseModel):
                                 "season": ["봄", "가을"],
                                 "formality": "세미 포멀",
                                 "fit": "오버핏",
+                                "occasion": ["데이트", "캐주얼 모임", "주말 외출"],
                             }
                         },
                     },
                 ],
             }
-        }
+        },
+    )
 
 
 # ============================================================
@@ -388,6 +387,4 @@ class ErrorResponse(BaseModel):
     error_code: str = Field(..., description="에러 코드")
     message: str = Field(..., description="에러 메시지")
 
-    class Config:
-        alias_generator = to_camel
-        populate_by_name = True
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)

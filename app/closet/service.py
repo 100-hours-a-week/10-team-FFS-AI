@@ -12,11 +12,17 @@ AI 모델 (RunPod Serverless에서 실행):
 - Marqo-FashionSigLIP: 중복/유사 이미지 검증 (임베딩 기반)
 """
 
+from __future__ import annotations
+
+import asyncio
+import io
 import logging
 import time
 
 import httpx
+from fastapi import BackgroundTasks, HTTPException, status
 
+from app.closet.background_removal import get_background_remover
 from app.closet.schemas import (
     # Analyze API
     AnalyzeRequest,
@@ -38,11 +44,10 @@ from app.closet.schemas import (
     ValidationResult,
     ValidationSummary,
 )
+from app.closet.validators import ImageValidator, MockImageValidator, download_image
 from app.config import get_settings
-
-# 1. Remove import
-# (Handled by the range replacement or explicit target)
-
+from app.core.redis_client import get_redis_client
+from app.core.storage import get_storage
 
 logger = logging.getLogger(__name__)
 
@@ -68,12 +73,8 @@ settings = get_settings()
 
 
 # ============================================================
-# 작업 저장소 (실제로는 Redis 등 사용)
+# Redis 클라이언트
 # ============================================================
-
-# 임시 인메모리 저장소 (나중에 Redis로 교체)
-_batch_store: dict[str, dict] = {}  # batchId -> batch info
-_task_store: dict[str, dict] = {}  # taskId -> task info
 
 
 # ============================================================
@@ -198,7 +199,7 @@ async def validate_images(request: ValidateRequest) -> ValidateResponse:
         # 모든 검증 통과
         results.append(
             ValidationResult(
-                originUrl=image_url,
+                origin_url=image_url,
                 passed=True,
                 # embedding 제거 (User Request)
             )
@@ -260,8 +261,6 @@ def _check_quality(image_url: str) -> bool:
     - 고도화 시 고려: Super Resolution (Real-ESRGAN 등)으로 흐릿한 사진 선명화
     """
     try:
-        import io
-
         from PIL import Image
 
         # 이미지 다운로드
@@ -291,49 +290,49 @@ def _check_quality(image_url: str) -> bool:
 # ============================================================
 
 
+# ============================================================
+# AI 모델 검증 (Direct Call)
+# ============================================================
+
+
+_validator_instance: ImageValidator | None = None
+
+
+def get_validator() -> ImageValidator:
+    """Validator 싱글톤 가져오기"""
+    global _validator_instance
+    if _validator_instance is None:
+        if settings.use_mock_validator:
+            logger.info("Mock Validator 사용")
+            _validator_instance = MockImageValidator()
+        else:
+            logger.info("Real Image Validator 초기화 (Lazy Loading)")
+            _validator_instance = ImageValidator(lazy_load=True)
+    return _validator_instance
+
+
 async def call_ai_model_server(image_urls: list[str]) -> list[dict]:
     """
-    AI Model Server로 이미지 검증 요청 (GCP 등)
-
-    Args:
-        image_urls: 검증할 이미지 URL 목록
-
-    Returns:
-        검증 결과 목록
-        [
-            {
-                "url": "...",
-                "nsfw": {"is_nsfw": false, "score": 0.1},
-                "fashion": {"is_fashion": true, "score": 0.8},
-                "embedding": [0.1, 0.2, ...]
-            }
-        ]
+    AI 모델 직접 호출 (Monolith 방식)
+    이름은 call_ai_model_server지만 실제로는 내부 함수 호출
     """
-    logger.info(f"USE_MOCK_VALIDATOR: {settings.use_mock_validator}")
-    if settings.use_mock_validator:
-        logger.info("Mock 모드로 실행")
-        return _mock_validate(image_urls)
+    logger.info(f"AI 모델 내부 호출 시작: {len(image_urls)}개")
 
-    if not settings.ai_model_server_url:
-        logger.warning("AI_MODEL_SERVER_URL 설정이 없습니다. Mock 모드로 실행합니다.")
-        return _mock_validate(image_urls)
+    # Validator 가져오기
+    validator = get_validator()
 
+    # 비동기가 아니므로 동기적으로 실행 (FastAPI 스레드풀에서 실행하면 더 좋음)
+    # 여기서는 간단히 직접 호출
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                f"{settings.ai_model_server_url}/validate",  # 표준화된 REST API 엔드포인트
-                headers={"Content-Type": "application/json"},
-                json={"images": image_urls},  # input 래퍼 없이 직접 전송
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            # 응답 구조: {"results": [...]}
-            return data.get("results", [])
-
+        results = validator.validate_batch(image_urls)
+        return results
     except Exception as e:
-        logger.error(f"AI 서버 호출 실패: {e}")
-        return _mock_validate(image_urls)
+        logger.error(f"AI 모델 내부 호출 실패: {e}")
+        # 실패 시 Mock 결과 반환 또는 에러 처리
+        if settings.use_mock_validator:
+            return _mock_validate(image_urls)
+        # 에러를 포함한 결과 반환
+        return [{"url": url, "error": str(e)} for url in image_urls]
 
 
 def _mock_validate(image_urls: list[str]) -> list[dict]:
@@ -365,7 +364,9 @@ def _mock_validate(image_urls: list[str]) -> list[dict]:
 # ============================================================
 
 
-async def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
+async def start_analyze(
+    request: AnalyzeRequest, background_tasks: BackgroundTasks
+) -> AnalyzeResponse:
     """
     이미지 분석 작업 시작 (비동기)
 
@@ -373,21 +374,19 @@ async def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
     1. 패션 아이템 Segmentation (객체 분리)
     2. AI 속성 분석 (카테고리, 색상, 소재, 스타일)
     """
-    import asyncio
 
     batch_id = request.batch_id
+    redis_client = get_redis_client()
 
     # 중복 배치 ID 체크 (409)
-    if batch_id in _batch_store:
-        from fastapi import HTTPException, status
-
+    if redis_client.exists_batch(batch_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"이미 처리 중인 배치입니다: {batch_id}",
         )
 
-    # 배치 정보 저장
-    _batch_store[batch_id] = {
+    # 배치 정보 저장 (Redis)
+    batch_data = {
         "user_id": request.user_id,
         "status": BatchStatus.ACCEPTED,
         "total": len(request.images),
@@ -395,12 +394,16 @@ async def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         "processing": len(request.images),
         "created_at": time.time(),
     }
+    redis_client.set_batch(batch_id, batch_data)
 
     # 개별 작업 정보 저장 및 백그라운드 작업 시작
     initial_results = []
     for image in request.images:
         task_id = image.task_id
-        _task_store[task_id] = {
+
+        # 작업 정보 저장 (Redis)
+        task_data = {
+            "task_id": task_id,  # task_id 명시적 저장
             "batch_id": batch_id,
             "user_id": request.user_id,
             "sequence": image.sequence,
@@ -415,6 +418,8 @@ async def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
             "analysis_result": None,
             "created_at": time.time(),
         }
+        redis_client.set_task(task_id, task_data)
+        redis_client.add_task_to_batch(batch_id, task_id)
 
         # 초기 results 배열 생성
         initial_results.append(
@@ -428,7 +433,7 @@ async def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
         )
 
         # 백그라운드 작업 시작 (Fire and forget)
-        asyncio.create_task(process_image_task(task_id))
+        background_tasks.add_task(process_image_task, task_id)
         logger.info(f"백그라운드 작업 시작: task_id={task_id}")
 
     return AnalyzeResponse(
@@ -451,31 +456,35 @@ async def start_analyze(request: AnalyzeRequest) -> AnalyzeResponse:
 
 def get_batch_status(batch_id: str) -> BatchStatusResponse | None:
     """배치 상태 조회"""
+    redis_client = get_redis_client()
 
-    if batch_id not in _batch_store:
+    # 배치 정보 조회 (Redis)
+    batch = redis_client.get_batch(batch_id)
+    if batch is None:
         return None
 
-    batch = _batch_store[batch_id]
+    # 해당 배치의 모든 작업 조회 (Redis)
+    tasks = redis_client.get_tasks_by_batch(batch_id)
 
-    # 해당 배치의 모든 작업 조회
     results: list[BatchResultItem] = []
     completed_count = 0
     processing_count = 0
 
-    for task_id, task in _task_store.items():
-        if task.get("batch_id") != batch_id:
-            continue
-
+    # task_id -> (sequence, result_item) 매핑 생성
+    task_map = {}
+    for task in tasks:
+        task_id = task.get("task_id", "")
         result_item = _build_batch_result_item(task_id, task)
-        results.append(result_item)
+        task_map[task_id] = (task.get("sequence", 0), result_item)
 
         if task["status"] == TaskStatus.COMPLETED:
             completed_count += 1
         elif task["status"] != TaskStatus.FAILED:
             processing_count += 1
 
-    # 결과를 sequence 순으로 정렬
-    results.sort(key=lambda x: _task_store.get(x.task_id, {}).get("sequence", 0))
+    # sequence 순으로 정렬
+    sorted_items = sorted(task_map.values(), key=lambda x: x[0])
+    results = [item[1] for item in sorted_items]
 
     total = batch["total"]
     is_finished = completed_count == total
@@ -520,6 +529,7 @@ def _build_batch_result_item(task_id: str, task: dict) -> BatchResultItem:
             season=attrs.get("season", []),
             formality=attrs.get("formality", ""),
             fit=attrs.get("fit", ""),
+            occasion=attrs.get("occasion", []),
         )
 
         extra = ExtraAttributes(
@@ -548,16 +558,21 @@ async def process_image_task(task_id: str) -> None:
     1. Segmentation (객체 분리)
     2. AI 속성 분석
     """
-    if task_id not in _task_store:
+    redis_client = get_redis_client()
+
+    # Redis에서 작업 정보 조회
+    task = redis_client.get_task(task_id)
+    if task is None:
+        logger.error(f"작업을 찾을 수 없음: task_id={task_id}")
         return
 
-    task = _task_store[task_id]
     sequence = task.get("sequence", 0)
+    batch_id = task["batch_id"]
 
     try:
         # Step 1: Segmentation (PREPROCESSING)
-
         task["status"] = TaskStatus.PREPROCESSING
+        redis_client.set_task(task_id, task)
 
         processed_file_id = await _process_segmentation(
             task["file_info"]["presigned_url"], task["file_info"]["file_id"], sequence
@@ -567,6 +582,7 @@ async def process_image_task(task_id: str) -> None:
 
         # Step 2: AI 속성 분석 (ANALYZING)
         task["status"] = TaskStatus.ANALYZING
+        redis_client.set_task(task_id, task)
 
         attributes = await _analyze_image_attributes(processed_file_id, sequence)
 
@@ -574,16 +590,15 @@ async def process_image_task(task_id: str) -> None:
 
         # 완료
         task["status"] = TaskStatus.COMPLETED
+        redis_client.set_task(task_id, task)
 
-        # 배치 완료 카운트 업데이트
-        batch_id = task["batch_id"]
-        if batch_id in _batch_store:
-            _batch_store[batch_id]["completed"] += 1
-            _batch_store[batch_id]["processing"] -= 1
+        # 배치 완료 카운트 업데이트 (Redis)
+        redis_client.increment_batch_completed(batch_id)
 
     except Exception as e:
         task["status"] = TaskStatus.FAILED
         task["error"] = str(e)
+        redis_client.set_task(task_id, task)
         logger.error(f"작업 실패: task_id={task_id}, error={e}")
 
 
@@ -595,28 +610,44 @@ async def _process_segmentation(
 
     처리 과정:
     1. presigned_url에서 이미지 다운로드
-    2. Instance Segmentation (옷 객체 탐지 및 마스크 생성)
+    2. Instance Segmentation (BiRefNet)
     3. 세그먼테이션된 이미지 S3 업로드
-    4. 새 file_id 반환
-
-    TODO: RunPod 또는 로컬 Segmentation 모델 연동
-    - SAM (Segment Anything Model)
-    - U2-Net
-    - 또는 패션 전용 segmentation 모델
+    4. 기존 file_id 반환
 
     Returns:
         처리된 이미지의 파일 ID
     """
-    # Mock: 시뮬레이션 (sequence별로 다른 시간)
-    import asyncio
+    try:
+        # 1. 이미지 다운로드
+        image = await asyncio.to_thread(download_image, presigned_url)
+        if image is None:
+            raise Exception("이미지 다운로드 실패")
 
-    # sequence에 따라 처리 시간 다르게 (테스트용)
-    delay = 1 + sequence  # seq0: 1초, seq1: 2초, seq2: 3초
-    await asyncio.sleep(delay)
-    logger.info(
-        f"Segmentation 완료 (Mock): file_id={file_id}, sequence={sequence}, delay={delay}초"
-    )
-    return file_id  # 임시: 같은 file_id 반환
+        # 2. 배경 제거 (BiRefNet)
+        remover = get_background_remover()
+        # GPU 연산은 blocking이므로 thread로 실행
+        segmented_image = await asyncio.to_thread(remover.remove_background, image)
+
+        # 3. S3 업로드
+        storage = get_storage()
+
+        # 이미지를 bytes로 변환
+        buf = io.BytesIO()
+        segmented_image.save(buf, format="PNG")
+        buf.seek(0)
+
+        object_key = f"segmented/{file_id}_{sequence}.png"
+
+        s3_url = await asyncio.to_thread(
+            storage.upload_file, buf, object_key, "image/png"
+        )
+
+        logger.info(f"Segmentation 완료: file_id={file_id}, s3_url={s3_url}")
+        return file_id
+
+    except Exception as e:
+        logger.error(f"Segmentation 처리 중 에러: {e}")
+        raise e
 
 
 async def _analyze_image_attributes(file_id: int, sequence: int = 0) -> dict:
@@ -640,8 +671,6 @@ async def _analyze_image_attributes(file_id: int, sequence: int = 0) -> dict:
         분석된 속성들
     """
     # Mock: 시뮬레이션 (sequence별로 다른 시간)
-    import asyncio
-
     # sequence에 따라 처리 시간 다르게 (테스트용)
     delay = 1 + sequence  # seq0: 1초, seq1: 2초, seq2: 3초
     await asyncio.sleep(delay)
@@ -659,4 +688,5 @@ async def _analyze_image_attributes(file_id: int, sequence: int = 0) -> dict:
         "season": ["봄", "가을"],
         "formality": "세미 포멀",
         "fit": "오버핏",
+        "occasion": ["데이트", "캐주얼 모임", "주말 외출"],
     }  # 임시
