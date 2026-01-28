@@ -79,8 +79,10 @@ jobs:
       DEBUG: False
       QDRANT_HOST: localhost
       QDRANT_PORT: 6333
+      QDRANT_COLLECTION_NAME: klosetlab_embeddings
       REDIS_HOST: localhost
       REDIS_PORT: 6380
+      REDIS_DB: 0
       UPSTAGE_API_KEY: ${{ secrets.UPSTAGE_API_KEY }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
