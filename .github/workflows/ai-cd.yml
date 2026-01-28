@@ -130,8 +130,7 @@ jobs:
           host: ${{ secrets.DEV_SERVER_HOST }}
           username: ${{ secrets.DEV_SERVER_USER }}
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
-          command_timeout: 10m
-          script_stop: true
+          command_timeout: 300s
           script: |
             cd ${{ env.APP_DIR }}
 
@@ -438,7 +437,7 @@ jobs:
                 fi
               fi
             fi
-
+            
             rm -rf /tmp/ai-deploy /tmp/ai-deploy-staging
 
       # ------------------------------------------------------
