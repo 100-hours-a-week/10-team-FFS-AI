@@ -50,9 +50,6 @@ jobs:
        github.event.workflow_run.head_branch == 'dev') ||
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')
     runs-on: ubuntu-latest
-    environment:
-      name: ai-development
-      url: http://${{ secrets.DEV_SERVER_HOST }}:8000
     timeout-minutes: 15
 
     steps:
@@ -243,8 +240,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
     runs-on: ubuntu-latest
     environment:
-      name: ai-production  # ⚠️ GitHub Settings에서 승인자 설정 필요
-      url: https://${{ secrets.PROD_SERVER_HOST }}
+      name: ai-environment  # ⚠️ GitHub Settings에서 승인자 설정 필요
     timeout-minutes: 30  # 승인 대기 시간 포함
 
     steps:
