@@ -34,9 +34,9 @@ permissions:
 # 환경 변수 설정
 # ============================================================
 env:
-  APP_DIR: ~/app/ai
-  BACKUP_DIR: ~/app/backups/ai
-  SCRIPTS_DIR: ~/app/scripts
+  APP_DIR: /app/ai
+  BACKUP_DIR: /app/backups/ai
+  SCRIPTS_DIR: /app/scripts
 
 # ============================================================
 # Dev 환경 배포 (dev 브랜치)
@@ -50,8 +50,6 @@ jobs:
        github.event.workflow_run.head_branch == 'dev') ||
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')
     runs-on: ubuntu-latest
-    environment:
-      name: ai-development
     timeout-minutes: 15
 
     steps:
@@ -142,9 +140,10 @@ jobs:
               mv /tmp/ai-deploy /tmp/ai-deploy-staging
               bash ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
             else
+              # 기본 배포
               echo "Basic deployment..."
-              
-              # 백업 (기존 app이 있을 경우만)
+
+              # 백업
               if [ -d "app" ]; then
                 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
                 tar -czf ${{ env.BACKUP_DIR }}/ai-app_dev_backup_$TIMESTAMP.tar.gz app/ requirements.txt 2>/dev/null || true
@@ -154,45 +153,23 @@ jobs:
               rm -rf app/
               cp -r /tmp/ai-deploy/app .
               cp /tmp/ai-deploy/requirements.txt .
-              
-              # 가상환경이 없으면 생성
-              if [ ! -d "venv" ]; then
-                echo "Creating virtual environment..."
-                python3 -m venv venv
+
+              # 가상환경 업데이트
+              if [ -d "venv" ]; then
+                source venv/bin/activate
+                pip install -r requirements.txt --quiet
               fi
-              
-              # 가상환경 활성화 및 의존성 설치
-              source venv/bin/activate
-              pip install --upgrade pip --quiet
-              pip install -r requirements.txt --quiet
-              
-              # 기존 프로세스 종료
+
+              # 애플리케이션 재시작
               pkill -f "gunicorn.*app.main:app" || true
               sleep 3
-              
-              # 로그 디렉토리
-              mkdir -p logs
-              
-              # Gunicorn을 daemon 모드로 시작
-              gunicorn app.main:app \
+
+              nohup gunicorn app.main:app \
                 --workers 2 \
                 --worker-class uvicorn.workers.UvicornWorker \
                 --bind 0.0.0.0:8000 \
-                --daemon \
-                --pid gunicorn.pid \
-                --access-logfile logs/access.log \
-                --error-logfile logs/error.log
-              
-              sleep 5
-              
-              # 시작 확인
-              if [ -f gunicorn.pid ] && pgrep -F gunicorn.pid > /dev/null; then
-                echo "✅ Application started (PID: $(cat gunicorn.pid))"
-              else
-                echo "❌ Failed to start application"
-                cat logs/error.log 2>/dev/null || true
-                exit 1
-              fi
+                --log-level info \
+                > logs/service.log 2>&1 &
             fi
 
             rm -rf /tmp/ai-deploy /tmp/ai-deploy-staging
@@ -263,7 +240,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
     runs-on: ubuntu-latest
     environment:
-      name: ai-production  # ⚠️ GitHub Settings에서 승인자 설정 필요
+      name: ai-environment  # ⚠️ GitHub Settings에서 승인자 설정 필요
     timeout-minutes: 30  # 승인 대기 시간 포함
 
     steps:
@@ -372,8 +349,7 @@ jobs:
           host: ${{ secrets.PROD_SERVER_HOST }}
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          command_timeout: 10m
-          script_stop: true
+          command_timeout: 300s
           script: |
             cd ${{ env.APP_DIR }}
 
@@ -383,61 +359,30 @@ jobs:
               chmod +x ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
               bash ${{ env.SCRIPTS_DIR }}/deploy-ai.sh
             else
-              # 새 버전 적용
+              # 기본 배포
               rm -rf app/
               cp -r /tmp/ai-deploy/app .
               cp /tmp/ai-deploy/requirements.txt .
-              
-              # 가상환경이 없으면 생성
-              if [ ! -d "venv" ]; then
-                echo "Creating virtual environment..."
-                python3 -m venv venv
+
+              if [ -d "venv" ]; then
+                source venv/bin/activate
+                pip install -r requirements.txt --quiet
               fi
-              
-              # 가상환경 활성화 및 의존성 설치
-              source venv/bin/activate
-              pip install --upgrade pip --quiet
-              pip install -r requirements.txt --quiet
-              
-              # Systemd가 있으면 사용
-              if systemctl is-active --quiet ai-app 2>/dev/null; then
-                echo "Restarting via systemd..."
-                sudo systemctl restart ai-app
-                sleep 3
+
+              # Zero-downtime reload
+              if pgrep -f "gunicorn.*master" > /dev/null; then
+                MASTER_PID=$(pgrep -f "gunicorn.*master" | head -1)
+                kill -HUP $MASTER_PID
+                echo "✅ Graceful reload"
               else
-                # Zero-downtime reload 시도
-                if pgrep -f "gunicorn.*master" > /dev/null; then
-                  MASTER_PID=$(pgrep -f "gunicorn.*master" | head -1)
-                  kill -HUP $MASTER_PID
-                  echo "✅ Graceful reload"
-                else
-                  # 첫 배포 - daemon 모드로 시작
-                  pkill -f "gunicorn.*app.main:app" || true
-                  sleep 3
-                  
-                  mkdir -p logs
-                  gunicorn app.main:app \
-                    --workers 4 \
-                    --worker-class uvicorn.workers.UvicornWorker \
-                    --bind 0.0.0.0:8000 \
-                    --daemon \
-                    --pid gunicorn.pid \
-                    --access-logfile logs/access.log \
-                    --error-logfile logs/error.log
-                  
-                  sleep 5
-                  
-                  if [ -f gunicorn.pid ] && pgrep -F gunicorn.pid > /dev/null; then
-                    echo "✅ Application started (PID: $(cat gunicorn.pid))"
-                  else
-                    echo "❌ Failed to start"
-                    cat logs/error.log 2>/dev/null || true
-                    exit 1
-                  fi
-                fi
+                nohup gunicorn app.main:app \
+                  --workers 4 \
+                  --worker-class uvicorn.workers.UvicornWorker \
+                  --bind 0.0.0.0:8000 \
+                  > logs/service.log 2>&1 &
               fi
             fi
-            
+
             rm -rf /tmp/ai-deploy /tmp/ai-deploy-staging
 
       # ------------------------------------------------------
@@ -501,23 +446,11 @@ jobs:
             if [ -n "$LATEST_BACKUP" ]; then
               cd ${{ env.APP_DIR }}
               tar -xzf ${{ env.BACKUP_DIR }}/$LATEST_BACKUP
-              
-              # 가상환경 활성화
-              source venv/bin/activate
-              
+
               pkill -f "gunicorn.*app.main:app" || true
               sleep 3
-              
-              mkdir -p logs
-              gunicorn app.main:app \
-                --workers 4 \
-                --worker-class uvicorn.workers.UvicornWorker \
-                --bind 0.0.0.0:8000 \
-                --daemon \
-                --pid gunicorn.pid \
-                --access-logfile logs/access.log \
-                --error-logfile logs/error.log
-              
+              nohup gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 > logs/service.log 2>&1 &
+
               sleep 5
               if curl -f -s http://localhost:8000/health > /dev/null; then
                 echo "✅ Rollback successful"
