@@ -95,11 +95,20 @@ class ClothingRepository:
     @staticmethod
     def _to_candidate(hit: ScoredPoint) -> ClothingCandidate:
         payload = hit.payload or {}
+
+        raw_color = payload.get("color")
+        if raw_color is None:
+            color_list: list[str] = []
+        # 하위호환성 추후 제거
+        elif isinstance(raw_color, str):
+            color_list = [raw_color] if raw_color else []
+        else:
+            color_list = list(raw_color)
         return ClothingCandidate(
             clothes_id=payload.get("clothesId", 0),
             image_url=payload.get("imageUrl", ""),
             category=payload.get("category", ""),
-            color=payload.get("color"),
+            color=color_list,
             style_tags=payload.get("styleTags", []),
             caption=payload.get("caption"),
             similarity_score=hit.score,
