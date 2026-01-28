@@ -128,7 +128,7 @@ jobs:
           host: ${{ secrets.DEV_SERVER_HOST }}
           username: ${{ secrets.DEV_SERVER_USER }}
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
-          command-timeout: 300s
+          command_timeout: 300s
           script: |
             cd ${{ env.APP_DIR }}
             
@@ -349,7 +349,7 @@ jobs:
           host: ${{ secrets.PROD_SERVER_HOST }}
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          command-timeout: 300s
+          command_timeout: 300s
           script: |
             cd ${{ env.APP_DIR }}
             
