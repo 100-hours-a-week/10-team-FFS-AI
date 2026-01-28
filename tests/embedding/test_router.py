@@ -29,7 +29,7 @@ def test_create_embedding_api_success(
     }
 
     # When
-    response = client.post("/v1/closet/embedding", json=request_data)
+    response = client.post("/ai/v1/closet/embedding", json=request_data)
 
     # Then
     assert response.status_code == 200
@@ -48,7 +48,7 @@ def test_delete_embedding_api_success(
     clothes_id = 1
 
     # When
-    response = client.delete(f"/v1/closet/{clothes_id}")
+    response = client.delete(f"/ai/v1/closet/{clothes_id}")
 
     # Then
     assert response.status_code == 200

@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from qdrant_client.http.models import ScoredPoint
+from qdrant_client.http.models import QueryResponse, ScoredPoint
 
 from app.outfit.repository import ClothingRepository
 from app.outfit.schemas import SearchQuery
@@ -17,7 +17,7 @@ def mock_embedding_service() -> MagicMock:
 @pytest.fixture
 def mock_qdrant_client() -> MagicMock:
     client = MagicMock()
-    client.search = AsyncMock(return_value=[])
+    client.query_points = AsyncMock(return_value=QueryResponse(points=[]))
     return client
 
 
@@ -49,7 +49,7 @@ class TestSearchByQuery:
 
         assert result.category == "상의"
         assert result.candidates == []
-        mock_qdrant_client.search.assert_awaited_once()
+        mock_qdrant_client.query_points.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_search_without_category_filter(
@@ -65,7 +65,7 @@ class TestSearchByQuery:
         )
 
         assert result.category == "전체"
-        mock_qdrant_client.search.assert_awaited_once()
+        mock_qdrant_client.query_points.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_search_returns_candidates(
@@ -86,7 +86,9 @@ class TestSearchByQuery:
                 "caption": "검은색 반팔 티셔츠",
             },
         )
-        mock_qdrant_client.search = AsyncMock(return_value=[mock_hit])
+        mock_qdrant_client.query_points = AsyncMock(
+            return_value=QueryResponse(points=[mock_hit])
+        )
 
         query = SearchQuery(text="검정 티셔츠", category_filter="상의")
 
@@ -99,7 +101,7 @@ class TestSearchByQuery:
         candidate = result.candidates[0]
         assert candidate.clothes_id == 123
         assert candidate.category == "상의"
-        assert candidate.color == "검정"
+        assert candidate.color == ["검정"]
         assert candidate.similarity_score == 0.95
 
 
@@ -122,7 +124,7 @@ class TestSearchMultiple:
         )
 
         assert len(results) == 3
-        assert mock_qdrant_client.search.await_count == 3
+        assert mock_qdrant_client.query_points.await_count == 3
 
 
 class TestToCandidateStatic:
@@ -146,7 +148,7 @@ class TestToCandidateStatic:
         assert candidate.clothes_id == 456
         assert candidate.image_url == "https://img.com/456.jpg"
         assert candidate.category == "하의"
-        assert candidate.color == "네이비"
+        assert candidate.color == ["네이비"]
         assert candidate.style_tags == ["포멀"]
         assert candidate.caption == "네이비 슬랙스"
         assert candidate.similarity_score == 0.88
@@ -166,6 +168,6 @@ class TestToCandidateStatic:
         candidate = ClothingRepository._to_candidate(hit)
 
         assert candidate.clothes_id == 789
-        assert candidate.color is None
+        assert candidate.color == []
         assert candidate.style_tags == []
         assert candidate.caption is None

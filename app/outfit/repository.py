@@ -63,15 +63,15 @@ class ClothingRepository:
 
         query_filter = qdrant_models.Filter(must=must_conditions)
 
-        results = await qdrant.search(
+        response = await qdrant.query_points(
             collection_name=self.settings.qdrant_collection_name,
-            query_vector=query_vector,
+            query=query_vector,
             query_filter=query_filter,
             limit=top_k,
             with_payload=True,
         )
 
-        candidates = [self._to_candidate(hit) for hit in results]
+        candidates = [self._to_candidate(hit) for hit in response.points]
         category = query.category_filter or "전체"
 
         logger.info(
@@ -95,11 +95,20 @@ class ClothingRepository:
     @staticmethod
     def _to_candidate(hit: ScoredPoint) -> ClothingCandidate:
         payload = hit.payload or {}
+
+        raw_color = payload.get("color")
+        if raw_color is None:
+            color_list: list[str] = []
+        # 하위호환성 추후 제거
+        elif isinstance(raw_color, str):
+            color_list = [raw_color] if raw_color else []
+        else:
+            color_list = list(raw_color)
         return ClothingCandidate(
             clothes_id=payload.get("clothesId", 0),
             image_url=payload.get("imageUrl", ""),
             category=payload.get("category", ""),
-            color=payload.get("color"),
+            color=color_list,
             style_tags=payload.get("styleTags", []),
             caption=payload.get("caption"),
             similarity_score=hit.score,

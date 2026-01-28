@@ -53,8 +53,7 @@ class LLMClient(ABC):
         messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 2000,
-    ) -> dict[str, Any]:
-        ...
+    ) -> dict[str, Any]: ...
 
 
 class OpenAIClient(LLMClient):

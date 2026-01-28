@@ -120,7 +120,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
-          
+
           # 설치된 주요 패키지 버전 출력
           echo "### 📦 Installed Packages" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -189,10 +189,10 @@ jobs:
           else
             COVERAGE="0"
           fi
-          
+
           echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
           echo "### 📊 Test Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
-          
+
           # 커버리지가 너무 낮으면 경고
           if [ "$COVERAGE" -lt 70 ]; then
             echo "::warning::Test coverage is below 70% (${COVERAGE}%)"
@@ -242,10 +242,10 @@ jobs:
         run: |
           echo "Generating deployment requirements..."
           mkdir -p build-artifacts
-          
+
           # 배포용 requirements.txt 복사
           cp requirements.txt build-artifacts/
-          
+
           # 환경 정보 저장
           python --version > build-artifacts/python-version.txt
           pip list > build-artifacts/pip-list.txt
@@ -322,18 +322,18 @@ jobs:
             const ruffFormat = '${{ steps.ruff_format.outcome }}';
             const test = '${{ steps.test.outcome }}';
             const importTest = '${{ steps.import_test.outcome }}';
-            
+
             const getIcon = (status) => status === 'success' ? '✅' : status === 'failure' ? '❌' : '⚠️';
-            
+
             const getCoverageColor = (cov) => {
               const num = parseInt(cov);
               if (num >= 80) return '🟢';
               if (num >= 70) return '🟡';
               return '🔴';
             };
-            
+
             const body = `## 🤖 AI Service CI Results
-            
+
             | Check | Status | Details |
             |-------|--------|---------|
             | 🔍 Code Lint | ${getIcon(ruffLint)} ${ruffLint} | Ruff 린트 검사 |
@@ -341,37 +341,37 @@ jobs:
             | 🧪 Tests | ${getIcon(test)} ${test} | 단위 테스트 |
             | 📦 Import Test | ${getIcon(importTest)} ${importTest} | 앱 임포트 검증 |
             | 📊 Coverage | ${getCoverageColor(coverage)} ${coverage}% | 테스트 커버리지 |
-            
+
             <details>
             <summary>📋 상세 정보</summary>
-            
+
             - **브랜치:** \`${{ github.head_ref }}\` → \`${{ github.base_ref }}\`
             - **커밋:** \`${context.payload.pull_request.head.sha.substring(0, 7)}\`
             - **작성자:** @${{ github.event.pull_request.user.login }}
-            
+
             ### 📊 테스트 커버리지 기준
             - 🟢 80% 이상: 우수
             - 🟡 70-79%: 양호
             - 🔴 70% 미만: 개선 필요
-            
+
             [📊 전체 리포트 보기](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
             </details>
-            
+
             ${coverage < 70 ? '\n⚠️ **주의:** 테스트 커버리지가 기준(70%)에 미달합니다.' : ''}
             ${test === 'failure' ? '\n❌ **테스트 실패:** 실패한 테스트를 확인해주세요.' : ''}
             `;
-            
+
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
             });
-            
-            const botComment = comments.data.find(comment => 
-              comment.user.type === 'Bot' && 
+
+            const botComment = comments.data.find(comment =>
+              comment.user.type === 'Bot' &&
               comment.body.includes('AI Service CI Results')
             );
-            
+
             if (botComment) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -404,9 +404,9 @@ jobs:
             **브랜치:** `${{ github.head_ref }}` → `${{ github.base_ref }}`
             **작성자:** @${{ github.event.pull_request.user.login }}
             **커버리지:** ${{ steps.coverage.outputs.coverage }}%
-            
+
             모든 검사를 통과했습니다! 🎉
-            
+
             [🔗 PR 보기](${{ github.event.pull_request.html_url }})
           embed-color: 3066993
           embed-footer-text: ${{ github.repository }}
@@ -427,13 +427,13 @@ jobs:
             **PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}
             **브랜치:** `${{ github.head_ref }}` → `${{ github.base_ref }}`
             **작성자:** @${{ github.event.pull_request.user.login }}
-            
+
             **실패 단계:**
             • Lint: ${{ steps.ruff_lint.outcome }}
             • Format: ${{ steps.ruff_format.outcome }}
             • Tests: ${{ steps.test.outcome }}
             • Import: ${{ steps.import_test.outcome }}
-            
+
             [🔗 PR 보기](${{ github.event.pull_request.html_url }})
             [📋 CI 로그 보기](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           embed-color: 15158332
