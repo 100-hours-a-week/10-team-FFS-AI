@@ -101,7 +101,7 @@ class OutfitComposer:
             for c in result.candidates:
                 tags = ", ".join(c.style_tags) if c.style_tags else "없음"
                 lines.append(
-                    f"  - ID: {c.clothes_id}, 색상: {c.color or '없음'}, 스타일: {tags}"
+                    f"  - ID: {c.clothes_id}, 색상: {', '.join(c.color) if c.color else '없음'}, 스타일: {tags}"
                 )
 
         lines.append(f"\n{num_outfits}개의 코디를 추천해주세요.")

@@ -144,7 +144,6 @@ async def close_databases() -> None:
 async def check_health() -> dict[str, str]:
     health_status = {}
 
-    # Check Qdrant
     try:
         if _qdrant_client:
             await _qdrant_client.get_collections()
@@ -155,7 +154,6 @@ async def check_health() -> dict[str, str]:
         logger.error(f"Qdrant health check failed: {e}")
         health_status["qdrant"] = f"error: {str(e)}"
 
-    # Check Redis
     try:
         if _redis_client:
             await _redis_client.ping()
