@@ -48,7 +48,7 @@ class ClothingCandidate(BaseSchema):
     clothes_id: int = Field(..., description="의류 ID")
     image_url: str = Field(..., description="이미지 URL")
     category: str = Field(..., description="카테고리 (상의, 하의, 아우터 등)")
-    color: str | None = Field(default=None, description="색상")
+    color: list[str] = Field(default_factory=list, description="색상 목록")
     style_tags: list[str] = Field(default_factory=list, description="스타일 태그")
     caption: str | None = Field(default=None, description="캡션")
     similarity_score: float = Field(..., description="유사도 점수 (0~1)")
