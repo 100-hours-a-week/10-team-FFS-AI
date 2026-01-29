@@ -23,13 +23,11 @@ permissions:
   contents: read
   actions: read
 
-# ============================================================
-# ✅ 환경 변수 - 절대 경로로 수정
-# ============================================================
 env:
   APP_DIR: /home/ubuntu/app/ai
   BACKUP_DIR: /home/ubuntu/app/backups/ai
   LOG_DIR: /home/ubuntu/app/ai/logs
+  SERVICE_NAME: klosetlab-ai.service
 
 # ============================================================
 # Dev 환경 배포
@@ -59,7 +57,7 @@ jobs:
           fi
 
       # ------------------------------------------------------
-      # ✅ 서버 상태 확인 - 경로 수정
+      # 서버 상태 확인
       # ------------------------------------------------------
       - name: 🔍 Check server status
         uses: appleboy/ssh-action@v1.0.0
@@ -77,6 +75,14 @@ jobs:
             curl -sf http://localhost:6333/ > /dev/null && echo "✅ Qdrant OK" || echo "⚠️ Qdrant issue"
             redis-cli -p 6380 ping > /dev/null 2>&1 && echo "✅ Redis OK" || echo "⚠️ Redis issue"
             
+            # systemd 서비스 상태 확인
+            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+              echo "✅ AI Service is running"
+              sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -10
+            else
+              echo "⚠️ AI Service is not running (will be started)"
+            fi
+            
             # 디렉토리 준비
             mkdir -p ${{ env.APP_DIR }} ${{ env.BACKUP_DIR }} ${{ env.LOG_DIR }} /tmp/ai-deploy
 
@@ -92,7 +98,7 @@ jobs:
           strip_components: 0
 
       # ------------------------------------------------------
-      # ✅ 배포 실행 - 스크립트 수정
+      # 배포 실행
       # ------------------------------------------------------
       - name: 🚀 Deploy application
         id: deploy
@@ -103,15 +109,15 @@ jobs:
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
           command_timeout: 300s
           script: |
-            set -e  # 에러 발생 시 즉시 중단
+            set -e
             
             cd ${{ env.APP_DIR }}
             echo "Working directory: $(pwd)"
             
-            # 백업
+            # 백업 생성
             if [ -d "app" ]; then
               TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-              echo "Creating backup..."
+              echo "Creating backup: ai-app_dev_backup_$TIMESTAMP.tar.gz"
               tar -czf ${{ env.BACKUP_DIR }}/ai-app_dev_backup_$TIMESTAMP.tar.gz app/ requirements.txt 2>/dev/null || true
               
               # 오래된 백업 삭제 (최근 5개만 유지)
@@ -132,38 +138,28 @@ jobs:
               source venv/bin/activate
               pip install -r requirements.txt --quiet --no-cache-dir
             else
-              echo "⚠️ Virtual environment not found!"
+              echo "❌ Virtual environment not found!"
+              exit 1
             fi
             
-            # 기존 프로세스 종료
-            echo "Stopping existing processes..."
-            pkill -f "gunicorn.*app.main:app" || true
-            sleep 3
-            
-            # 로그 파일 준비
+            # 로그 디렉토리 준비
             mkdir -p ${{ env.LOG_DIR }}
             
-            # ✅ 애플리케이션 시작 (백그라운드로 실행하되 SSH 세션과 분리)
-            echo "Starting application..."
-            nohup gunicorn app.main:app \
-              --workers 2 \
-              --worker-class uvicorn.workers.UvicornWorker \
-              --bind 0.0.0.0:8000 \
-              --log-level info \
-              --access-logfile ${{ env.LOG_DIR }}/access.log \
-              --error-logfile ${{ env.LOG_DIR }}/error.log \
-              > ${{ env.LOG_DIR }}/service.log 2>&1 &
+            # systemd 서비스 재시작
+            echo "Restarting AI service via systemd..."
+            sudo systemctl restart ${{ env.SERVICE_NAME }}
             
-            # 프로세스 시작 대기
-            sleep 3
+            # 시작 대기
+            sleep 5
             
-            # 프로세스 확인
-            if pgrep -f "gunicorn.*app.main:app" > /dev/null; then
-              echo "✅ Application started successfully"
-              pgrep -f "gunicorn.*app.main:app" | xargs ps -p
+            # 서비스 상태 확인
+            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+              echo "✅ Service restarted successfully"
+              sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
             else
-              echo "❌ Failed to start application"
-              tail -20 ${{ env.LOG_DIR }}/error.log || true
+              echo "❌ Service failed to start"
+              echo "=== Recent service logs ==="
+              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
               exit 1
             fi
             
@@ -171,7 +167,7 @@ jobs:
             rm -rf /tmp/ai-deploy
 
       # ------------------------------------------------------
-      # ✅ 배포 검증 - 재시도 로직 개선
+      # 배포 검증
       # ------------------------------------------------------
       - name: 🏥 Verify deployment
         uses: appleboy/ssh-action@v1.0.0
@@ -182,9 +178,10 @@ jobs:
           script: |
             echo "=== Deployment Verification ==="
             
-            # 프로세스 확인
-            if ! pgrep -f "gunicorn.*app.main:app" > /dev/null; then
-              echo "❌ Application not running!"
+            # systemd 서비스 상태 확인
+            if ! sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+              echo "❌ Service is not running!"
+              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
               exit 1
             fi
             
@@ -195,16 +192,25 @@ jobs:
               
               if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
                 echo "✅ Application is healthy"
+                echo ""
+                echo "=== Health Check Response ==="
                 curl -s http://localhost:8000/health | python3 -m json.tool || curl -s http://localhost:8000/health
+                echo ""
+                echo "=== Service Status ==="
+                sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
                 exit 0
               fi
               
               sleep 5
             done
             
-            echo "❌ Health check failed!"
-            echo "Recent error logs:"
-            tail -30 ${{ env.LOG_DIR }}/error.log || true
+            echo "❌ Health check failed after $MAX_RETRIES attempts!"
+            echo ""
+            echo "=== Recent error logs ==="
+            tail -50 ${{ env.LOG_DIR }}/error.log || true
+            echo ""
+            echo "=== Service logs ==="
+            sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
             exit 1
 
       - name: 📢 Discord notification
@@ -219,6 +225,7 @@ jobs:
             **환경:** Development 🟢
             **브랜치:** `${{ github.event.workflow_run.head_branch || github.ref_name }}`
             **커밋:** `${{ github.event.workflow_run.head_sha || github.sha }}`
+            **서비스:** systemd (${{ env.SERVICE_NAME }})
             
             [📋 배포 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           embed-color: ${{ steps.deploy.outcome == 'success' && '3066993' || '15158332' }}
@@ -266,17 +273,28 @@ jobs:
               echo "❌ ERROR: Disk usage too high: ${DISK_USAGE}%"
               exit 1
             fi
+            echo "✅ Disk usage: ${DISK_USAGE}%"
             
             # Qdrant 필수 확인
             if ! curl -sf http://localhost:6333/ > /dev/null; then
               echo "❌ Qdrant is not accessible!"
               exit 1
             fi
+            echo "✅ Qdrant is accessible"
             
             # Redis 필수 확인
             if ! redis-cli -p 6380 ping > /dev/null 2>&1; then
               echo "❌ Redis is not accessible!"
               exit 1
+            fi
+            echo "✅ Redis is accessible"
+            
+            # systemd 서비스 상태
+            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+              echo "✅ AI Service is running"
+              sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -10
+            else
+              echo "⚠️ AI Service is not running"
             fi
             
             echo "✅ Production server check passed"
@@ -293,12 +311,15 @@ jobs:
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
             
             if [ -d "app" ]; then
+              echo "Creating production backup: ai-app_prod_$TIMESTAMP.tar.gz"
               tar -czf ${{ env.BACKUP_DIR }}/ai-app_prod_$TIMESTAMP.tar.gz app/ requirements.txt
               echo "✅ Production backup created"
               
               # 오래된 백업 삭제 (최근 10개만 유지)
               cd ${{ env.BACKUP_DIR }}
               ls -t ai-app_prod_*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm -v
+            else
+              echo "⚠️ No existing app directory to backup"
             fi
 
       - name: 📤 Transfer to Production
@@ -323,37 +344,50 @@ jobs:
             set -e
             
             cd ${{ env.APP_DIR }}
+            echo "Working directory: $(pwd)"
             
             # 새 버전 적용
+            echo "Applying new version..."
             rm -rf app/
             cp -r /tmp/ai-deploy/app .
             cp /tmp/ai-deploy/requirements.txt .
             
+            # 가상환경 업데이트
             if [ -d "venv" ]; then
+              echo "Updating virtual environment..."
               source venv/bin/activate
               pip install -r requirements.txt --quiet --no-cache-dir
+            else
+              echo "❌ Virtual environment not found!"
+              exit 1
             fi
             
-            # ✅ Zero-downtime reload (Gunicorn의 Graceful reload 사용)
-            if pgrep -f "gunicorn.*master" > /dev/null; then
+            # 로그 디렉토리 준비
+            mkdir -p ${{ env.LOG_DIR }}
+            
+            # ✅ Zero-downtime reload (Gunicorn의 Graceful reload)
+            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
               echo "Performing graceful reload..."
-              MASTER_PID=$(pgrep -f "gunicorn.*master" | head -1)
-              kill -HUP $MASTER_PID
+              sudo systemctl reload ${{ env.SERVICE_NAME }}
               echo "✅ Graceful reload signal sent"
               sleep 5
             else
-              echo "Starting new instance..."
-              mkdir -p ${{ env.LOG_DIR }}
-              nohup gunicorn app.main:app \
-                --workers 4 \
-                --worker-class uvicorn.workers.UvicornWorker \
-                --bind 0.0.0.0:8000 \
-                --access-logfile ${{ env.LOG_DIR }}/access.log \
-                --error-logfile ${{ env.LOG_DIR }}/error.log \
-                > ${{ env.LOG_DIR }}/service.log 2>&1 &
+              echo "Service not running, starting fresh..."
+              sudo systemctl start ${{ env.SERVICE_NAME }}
               sleep 5
             fi
             
+            # 서비스 상태 확인
+            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+              echo "✅ Service is running"
+              sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
+            else
+              echo "❌ Service failed to start/reload"
+              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
+              exit 1
+            fi
+            
+            # 임시 파일 정리
             rm -rf /tmp/ai-deploy
 
       - name: 🧪 Verify & Smoke Test
@@ -365,18 +399,24 @@ jobs:
           script: |
             echo "=== Production Verification ==="
             
-            if ! pgrep -f "gunicorn.*app.main:app" > /dev/null; then
-              echo "❌ Application not running!"
+            # systemd 서비스 확인
+            if ! sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+              echo "❌ Service is not running!"
+              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
               exit 1
             fi
             
             # 헬스체크 & Smoke tests
             for i in $(seq 1 10); do
+              echo "Health check attempt $i/10..."
+              
               if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
                 echo "✅ Health check passed"
                 
                 # Service connectivity check
                 HEALTH=$(curl -s http://localhost:8000/health)
+                echo ""
+                echo "=== Health Response ==="
                 echo "$HEALTH" | python3 -m json.tool || echo "$HEALTH"
                 
                 QDRANT=$(echo $HEALTH | python3 -c "import sys, json; print(json.load(sys.stdin)['services']['qdrant'])" 2>/dev/null || echo "unknown")
@@ -387,14 +427,25 @@ jobs:
                   exit 1
                 fi
                 
+                echo ""
+                echo "=== Service Status ==="
+                sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
+                
+                echo ""
                 echo "✅ All smoke tests passed"
                 exit 0
               fi
+              
               sleep 5
             done
             
-            echo "❌ Verification failed!"
-            tail -30 ${{ env.LOG_DIR }}/error.log || true
+            echo "❌ Verification failed after 10 attempts!"
+            echo ""
+            echo "=== Error logs ==="
+            tail -50 ${{ env.LOG_DIR }}/error.log || true
+            echo ""
+            echo "=== Service logs ==="
+            sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
             exit 1
 
       - name: ⚠️ Rollback on failure
@@ -405,40 +456,42 @@ jobs:
           username: ${{ secrets.PROD_SERVER_USER }}
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
           script: |
-            echo "=== Rolling back ==="
+            echo "=== Rolling back to previous version ==="
             cd ${{ env.BACKUP_DIR }}
             
             LATEST_BACKUP=$(ls -t ai-app_prod_*.tar.gz 2>/dev/null | head -1)
             
             if [ -n "$LATEST_BACKUP" ]; then
+              echo "Found backup: $LATEST_BACKUP"
               cd ${{ env.APP_DIR }}
+              
+              # 백업 복원
               tar -xzf ${{ env.BACKUP_DIR }}/$LATEST_BACKUP
               
+              # 가상환경 업데이트
               if [ -d "venv" ]; then
                 source venv/bin/activate
                 pip install -r requirements.txt --quiet
               fi
               
-              pkill -f "gunicorn.*app.main:app" || true
-              sleep 3
-              
-              mkdir -p ${{ env.LOG_DIR }}
-              nohup gunicorn app.main:app \
-                --workers 4 \
-                --worker-class uvicorn.workers.UvicornWorker \
-                --bind 0.0.0.0:8000 \
-                --access-logfile ${{ env.LOG_DIR }}/access.log \
-                --error-logfile ${{ env.LOG_DIR }}/error.log \
-                > ${{ env.LOG_DIR }}/service.log 2>&1 &
-              
+              # 서비스 재시작
+              sudo systemctl restart ${{ env.SERVICE_NAME }}
               sleep 5
-              if curl -f -s http://localhost:8000/health > /dev/null; then
-                echo "✅ Rollback successful"
+              
+              # 롤백 검증
+              if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+                if curl -f -s http://localhost:8000/health > /dev/null; then
+                  echo "✅ Rollback successful"
+                  sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -10
+                else
+                  echo "⚠️ Service running but health check failed"
+                fi
               else
-                echo "❌ Rollback failed!"
+                echo "❌ Rollback failed - service not running!"
+                sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
               fi
             else
-              echo "❌ No backup found!"
+              echo "❌ No backup found for rollback!"
             fi
 
       - name: 📢 Discord notification
@@ -453,8 +506,9 @@ jobs:
             **환경:** Production 🔴
             **브랜치:** `${{ github.event.workflow_run.head_branch || github.ref_name }}`
             **커밋:** `${{ github.event.workflow_run.head_sha || github.sha }}`
+            **서비스:** systemd (${{ env.SERVICE_NAME }})
             
-            ${{ steps.deploy.outcome == 'failure' && '⚠️ 자동 롤백 완료' || '🎉 배포 완료' }}
+            ${{ steps.deploy.outcome == 'failure' && '⚠️ 자동 롤백 시도됨' || '🎉 Graceful reload 완료' }}
             
             [📋 배포 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           embed-color: ${{ steps.deploy.outcome == 'success' && '3066993' || '15158332' }}
