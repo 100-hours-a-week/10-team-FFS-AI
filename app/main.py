@@ -42,7 +42,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
 Instrumentator().instrument(app).expose(app)
+
 
 app.include_router(embedding_router, prefix="/ai")
 app.include_router(outfit_router, prefix="/ai")

@@ -70,11 +70,11 @@ jobs:
 
             # 디스크 공간 확인
             df -h ${{ env.APP_DIR }}
-
+            
             # Qdrant & Redis 확인
             curl -sf http://localhost:6333/ > /dev/null && echo "✅ Qdrant OK" || echo "⚠️ Qdrant issue"
-            redis-cli -p 6380 ping > /dev/null 2>&1 && echo "✅ Redis OK" || echo "⚠️ Redis issue"
-
+            redis-cli -p 6379 ping > /dev/null 2>&1 && echo "✅ Redis OK" || echo "⚠️ Redis issue"
+            
             # systemd 서비스 상태 확인
             if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
               echo "✅ AI Service is running"
@@ -131,7 +131,7 @@ jobs:
             rm -rf app/
             cp -r /tmp/ai-deploy/app .
             cp /tmp/ai-deploy/requirements.txt .
-
+            
             # 가상환경 업데이트
             if [ -d "venv" ]; then
               echo "Updating virtual environment..."
@@ -141,17 +141,17 @@ jobs:
               echo "❌ Virtual environment not found!"
               exit 1
             fi
-
+            
             # 로그 디렉토리 준비
             mkdir -p ${{ env.LOG_DIR }}
-
+            
             # systemd 서비스 재시작
             echo "Restarting AI service via systemd..."
             sudo systemctl restart ${{ env.SERVICE_NAME }}
-
+            
             # 시작 대기
             sleep 5
-
+            
             # 서비스 상태 확인
             if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
               echo "✅ Service restarted successfully"
@@ -162,7 +162,7 @@ jobs:
               sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
               exit 1
             fi
-
+            
             # 임시 파일 정리
             rm -rf /tmp/ai-deploy
 
@@ -177,19 +177,19 @@ jobs:
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
           script: |
             echo "=== Deployment Verification ==="
-
+            
             # systemd 서비스 상태 확인
             if ! sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
               echo "❌ Service is not running!"
               sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
               exit 1
             fi
-
+            
             # 헬스체크 (최대 30초 대기)
             MAX_RETRIES=6
             for i in $(seq 1 $MAX_RETRIES); do
               echo "Health check attempt $i/$MAX_RETRIES..."
-
+              
               if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
                 echo "✅ Application is healthy"
                 echo ""
@@ -200,10 +200,10 @@ jobs:
                 sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
                 exit 0
               fi
-
+              
               sleep 5
             done
-
+            
             echo "❌ Health check failed after $MAX_RETRIES attempts!"
             echo ""
             echo "=== Recent error logs ==="
@@ -226,7 +226,7 @@ jobs:
             **브랜치:** `${{ github.event.workflow_run.head_branch || github.ref_name }}`
             **커밋:** `${{ github.event.workflow_run.head_sha || github.sha }}`
             **서비스:** systemd (${{ env.SERVICE_NAME }})
-
+            
             [📋 배포 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           embed-color: ${{ steps.deploy.outcome == 'success' && '3066993' || '15158332' }}
 
@@ -274,21 +274,21 @@ jobs:
               exit 1
             fi
             echo "✅ Disk usage: ${DISK_USAGE}%"
-
+            
             # Qdrant 필수 확인
             if ! curl -sf http://localhost:6333/ > /dev/null; then
               echo "❌ Qdrant is not accessible!"
               exit 1
             fi
             echo "✅ Qdrant is accessible"
-
+            
             # Redis 필수 확인
-            if ! redis-cli -p 6380 ping > /dev/null 2>&1; then
+            if ! redis-cli -p 6379 ping > /dev/null 2>&1; then
               echo "❌ Redis is not accessible!"
               exit 1
             fi
             echo "✅ Redis is accessible"
-
+            
             # systemd 서비스 상태
             if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
               echo "✅ AI Service is running"
@@ -296,7 +296,7 @@ jobs:
             else
               echo "⚠️ AI Service is not running"
             fi
-
+            
             echo "✅ Production server check passed"
             mkdir -p ${{ env.APP_DIR }} ${{ env.BACKUP_DIR }} ${{ env.LOG_DIR }} /tmp/ai-deploy
 
@@ -342,16 +342,16 @@ jobs:
           command_timeout: 300s
           script: |
             set -e
-
+            
             cd ${{ env.APP_DIR }}
             echo "Working directory: $(pwd)"
-
+            
             # 새 버전 적용
             echo "Applying new version..."
             rm -rf app/
             cp -r /tmp/ai-deploy/app .
             cp /tmp/ai-deploy/requirements.txt .
-
+            
             # 가상환경 업데이트
             if [ -d "venv" ]; then
               echo "Updating virtual environment..."
@@ -361,10 +361,10 @@ jobs:
               echo "❌ Virtual environment not found!"
               exit 1
             fi
-
+            
             # 로그 디렉토리 준비
             mkdir -p ${{ env.LOG_DIR }}
-
+            
             # ✅ Zero-downtime reload (Gunicorn의 Graceful reload)
             if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
               echo "Performing graceful reload..."
@@ -376,7 +376,7 @@ jobs:
               sudo systemctl start ${{ env.SERVICE_NAME }}
               sleep 5
             fi
-
+            
             # 서비스 상태 확인
             if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
               echo "✅ Service is running"
@@ -386,7 +386,7 @@ jobs:
               sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
               exit 1
             fi
-
+            
             # 임시 파일 정리
             rm -rf /tmp/ai-deploy
 
@@ -398,7 +398,7 @@ jobs:
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
           script: |
             echo "=== Production Verification ==="
-
+            
             # systemd 서비스 확인
             if ! sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
               echo "❌ Service is not running!"
@@ -409,7 +409,7 @@ jobs:
             # 헬스체크 & Smoke tests
             for i in $(seq 1 10); do
               echo "Health check attempt $i/10..."
-
+              
               if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
                 echo "✅ Health check passed"
 
@@ -418,27 +418,27 @@ jobs:
                 echo ""
                 echo "=== Health Response ==="
                 echo "$HEALTH" | python3 -m json.tool || echo "$HEALTH"
-
+                
                 QDRANT=$(echo $HEALTH | python3 -c "import sys, json; print(json.load(sys.stdin)['services']['qdrant'])" 2>/dev/null || echo "unknown")
                 REDIS=$(echo $HEALTH | python3 -c "import sys, json; print(json.load(sys.stdin)['services']['redis'])" 2>/dev/null || echo "unknown")
-
+                
                 if [ "$QDRANT" != "connected" ] || [ "$REDIS" != "connected" ]; then
                   echo "⚠️ Service connectivity issue (Qdrant: $QDRANT, Redis: $REDIS)"
                   exit 1
                 fi
-
+                
                 echo ""
                 echo "=== Service Status ==="
                 sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
-
+                
                 echo ""
                 echo "✅ All smoke tests passed"
                 exit 0
               fi
-
+              
               sleep 5
             done
-
+            
             echo "❌ Verification failed after 10 attempts!"
             echo ""
             echo "=== Error logs ==="
@@ -464,20 +464,20 @@ jobs:
             if [ -n "$LATEST_BACKUP" ]; then
               echo "Found backup: $LATEST_BACKUP"
               cd ${{ env.APP_DIR }}
-
+              
               # 백업 복원
               tar -xzf ${{ env.BACKUP_DIR }}/$LATEST_BACKUP
-
+              
               # 가상환경 업데이트
               if [ -d "venv" ]; then
                 source venv/bin/activate
                 pip install -r requirements.txt --quiet
               fi
-
+              
               # 서비스 재시작
               sudo systemctl restart ${{ env.SERVICE_NAME }}
               sleep 5
-
+              
               # 롤백 검증
               if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
                 if curl -f -s http://localhost:8000/health > /dev/null; then
@@ -507,8 +507,8 @@ jobs:
             **브랜치:** `${{ github.event.workflow_run.head_branch || github.ref_name }}`
             **커밋:** `${{ github.event.workflow_run.head_sha || github.sha }}`
             **서비스:** systemd (${{ env.SERVICE_NAME }})
-
+            
             ${{ steps.deploy.outcome == 'failure' && '⚠️ 자동 롤백 시도됨' || '🎉 Graceful reload 완료' }}
-
+            
             [📋 배포 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           embed-color: ${{ steps.deploy.outcome == 'success' && '3066993' || '15158332' }}
