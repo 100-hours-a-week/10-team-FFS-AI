@@ -73,7 +73,7 @@ jobs:
             
             # Qdrant & Redis 확인
             curl -sf http://localhost:6333/ > /dev/null && echo "✅ Qdrant OK" || echo "⚠️ Qdrant issue"
-            redis-cli -p 6380 ping > /dev/null 2>&1 && echo "✅ Redis OK" || echo "⚠️ Redis issue"
+            redis-cli -p 6379 ping > /dev/null 2>&1 && echo "✅ Redis OK" || echo "⚠️ Redis issue"
             
             # systemd 서비스 상태 확인
             if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
@@ -283,7 +283,7 @@ jobs:
             echo "✅ Qdrant is accessible"
             
             # Redis 필수 확인
-            if ! redis-cli -p 6380 ping > /dev/null 2>&1; then
+            if ! redis-cli -p 6379 ping > /dev/null 2>&1; then
               echo "❌ Redis is not accessible!"
               exit 1
             fi
