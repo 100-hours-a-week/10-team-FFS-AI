@@ -10,17 +10,14 @@ sentence-transformers
 open_clip_torch
 timm
 einops
-kornia
+
 ftfy
 regex
 python-dotenv
 httpx
 pillow
-tenacity
-<<<<<<< HEAD
+
 prometheus-fastapi-instrumentator
-imagehash
-=======
->>>>>>> 5125b24 (Refactor: Migrate to pure Client-Server architecture (Ray Serve))
+
 numpy
 ray[serve]

@@ -2,14 +2,13 @@
 Closet 서비스 - 이미지 검증 및 분석 비즈니스 로직 (API 명세 v2 기준)
 
 주요 기능:
-1. 이미지 검증 (Validate): 포맷, 크기, 중복/유사(Marqo-FashionSigLIP), 패션 여부(LAION CLIP), NSFW(Falconsai)
+1. 이미지 검증 (Validate): 포맷, 크기, 패션 여부(LAION CLIP), NSFW(Falconsai)
 2. 이미지 분석 (Analyze): 배경 제거, AI 속성 분석
 3. 작업 상태 관리: 비동기 작업 진행 상태 추적
 
 AI 모델 (External AI Model Server에서 실행):
 - Falconsai/nsfw_image_detection: NSFW 검증
 - LAION CLIP-ViT-B-32-laion2b-s34b-b79k: 도메인 탐지 (패션 여부)
-- Marqo-FashionSigLIP: 중복/유사 이미지 검증 (임베딩 기반)
 """
 
 from __future__ import annotations
