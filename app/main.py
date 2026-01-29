@@ -54,7 +54,7 @@ Instrumentator().instrument(app).expose(app)
 
 app.include_router(embedding_router, prefix="/ai")
 app.include_router(outfit_router, prefix="/ai")
-app.include_router(closet_router)
+app.include_router(closet_router, prefix="/ai")
 
 
 @app.get("/")

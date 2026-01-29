@@ -1,81 +1,67 @@
-"""
-배경 제거 (Background Removal) 모듈
-
-BiRefNet(Bilateral Reference Network)을 사용하여 고품질 배경 제거를 수행합니다.
-Business Logic Layer: 이미지 전처리, 후처리 담당
-Model Infrastructure Layer: app.core.models.SegmentationModel (모델 로딩 및 추론)
-"""
-
 from __future__ import annotations
 
+import io
 import logging
+from typing import Optional
 
+import httpx
 from PIL import Image
-from torchvision import transforms
 
-from app.core.models import SegmentationModel
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 class BackgroundRemover:
     """
-    BiRefNet 기반 배경 제거 클래스 (Business Logic)
+    배경 제거 클라이언트 (Ray Serve Client)
+
+    Ray Serve에 배포된 모델('/segmentation')을 HTTP로 호출하여 배경을 제거합니다.
+    URL: settings.AI_MODEL_SERVER_URL (예: http://localhost:8000 또는 http://GCP_IP:8000)
     """
 
     def __init__(self: BackgroundRemover) -> None:
-        self.seg_model = SegmentationModel()
-        self.transform_image = transforms.Compose(
-            [
-                transforms.Resize((1024, 1024)),
-                transforms.ToTensor(),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
-            ]
+        self.server_url = settings.ai_model_server_url
+        if not self.server_url:
+            logger.warning(
+                "AI_MODEL_SERVER_URL is not set. Background removal will fail."
+            )
+
+        logger.info(
+            f"BackgroundRemover Initialized. Target Ray Serve: {self.server_url}"
         )
 
-    def remove_background(self: BackgroundRemover, image: Image.Image) -> Image.Image:
+    async def remove_background(
+        self: BackgroundRemover, image: Image.Image
+    ) -> Image.Image:
         """
-        이미지 배경 제거
-
-        Args:
-            image: PIL Image 객체 (RGB)
-
-        Returns:
-            배경이 제거된 PIL Image 객체 (RGBA)
+        배경 제거 요청 (/segmentation)
         """
-        # 모델 로드 (Lazy Loading은 SegmentationModel 내부에서 처리)
-        # 단, device 정보를 알기 위해 load_model() 호출 필요할 수 있음
-        # predict() 호출 시 내부적으로 load하므로 바로 predict 호출
+        # Convert Image to Bytes
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        image_bytes = buf.getvalue()
 
-        original_size = image.size
+        api_url = f"{self.server_url}/segmentation"
 
-        # 전처리
-        # 모델이 로드되어야 device를 알 수 있으므로, predict 호출 직전에 로드 확인
-        # (SegmentationModel.device 프로퍼티 접근 접근 시 로드 필요하면 로드)
-        if not self.seg_model._loaded:
-            self.seg_model.load_model()
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                # Send bytes directly (as per Ray Deployment implementation)
+                response = await client.post(api_url, content=image_bytes)
+                response.raise_for_status()
 
-        device = self.seg_model.device
-        input_images = self.transform_image(image).unsqueeze(0).to(device)
+                # Convert response bytes back to Image
+                out_buf = io.BytesIO(response.content)
+                return Image.open(out_buf).convert("RGBA")
 
-        # 추론 (Infrastructure Layer 위임)
-        # preds: Tensor (Sigmoid 적용됨)
-        preds = self.seg_model.predict(input_images)
-
-        # 마스크 후처리
-        pred = preds[0].squeeze()
-        pred_pil = transforms.ToPILImage()(pred).resize(original_size)
-
-        # 이미지 합성 (Alpha Channel 적용)
-        image.putalpha(pred_pil)
-
-        return image
+        except Exception as e:
+            logger.error(f"Ray Serve Segmentation Error: {e}")
+            # Fail Open: Return original image converted to RGBA
+            return image.convert("RGBA")
 
 
-# 싱글톤 인스턴스
-_remover_instance: BackgroundRemover | None = None
+_remover_instance: Optional[BackgroundRemover] = None
 
 
 def get_background_remover() -> BackgroundRemover:

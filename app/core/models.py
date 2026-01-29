@@ -2,7 +2,7 @@
 AI 모델 로더 (Singleton Pattern)
 
 실제 AI 모델(HuggingFace, OpenCLIP 등)을 로드하고 관리하는 모듈입니다.
-비즈니스 로직(검증 등)은 ai_validators.py에서 처리하고, 여기서는 순수 모델 로딩 및 추론만 담당합니다.
+비즈니스 로직(검증 등)은 app/closet/validators.py에서 처리하고, 여기서는 순수 모델 로딩 및 추론만 담당합니다.
 """
 
 from __future__ import annotations
@@ -92,11 +92,6 @@ class FashionClassifier:
 
             model_name = "ViT-B-32"  # 기본값
             pretrained = "laion2b_s34b_b79k"  # 기본값
-
-            # settings.clip_model_id가 복잡한 문자열일 수 있어 파싱 필요하지만
-            # 여기서는 편의상 하드코딩된 model/pretrained를 사용하거나,
-            # settings에서 분리해서 받는 것이 좋음.
-            # (현재 구조상 호환성을 위해 기존 로직 유지)
 
             logger.info(f"CLIP 모델 로딩 중: {model_name} ({pretrained})")
 

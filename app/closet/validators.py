@@ -1,38 +1,20 @@
-"""
-이미지 검증 AI 모델 래퍼
-
-RunPod Serverless에서 실행될 AI 검증 로직을 담은 모듈입니다.
-
-Models:
-1. NSFW 검증: Falconsai/nsfw_image_detection
-2. 패션 분류: LAION CLIP-ViT-B-32-laion2B-s34B-b79K
-3. 중복/유사 검증: Marqo/marqo-fashionSigLIP (임베딩 생성)
-"""
-
 from __future__ import annotations
 
 import io
 import logging
 
 import httpx
+import numpy as np
 from PIL import Image
 
-from app.core.models import FashionClassifier, NSFWValidator
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
-# ============================================================
-# 설정 상수
-# ============================================================
-
-NSFW_MODEL_ID = "Falconsai/nsfw_image_detection"
-CLIP_MODEL_ID = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
-FASHION_SIGLIP_MODEL_ID = "Marqo/marqo-fashionSigLIP"
-
-NSFW_THRESHOLD = 0.5  # NSFW 판정 임계값
-FASHION_THRESHOLD = 0.3  # 패션 도메인 판정 임계값
-
-# 패션 관련 텍스트 프롬프트 (CLIP용)
+# Constants for prompts (Client sends these to Ray Serve)
+NSFW_THRESHOLD = 0.5
+FASHION_THRESHOLD = 0.3
 FASHION_PROMPTS = [
     "a photo of clothing",
     "a photo of a fashion item",
@@ -42,7 +24,6 @@ FASHION_PROMPTS = [
     "a photo of shoes",
     "a photo of a jacket",
 ]
-
 NON_FASHION_PROMPTS = [
     "a photo of food",
     "a photo of a landscape",
@@ -53,57 +34,28 @@ NON_FASHION_PROMPTS = [
 ]
 
 
-# ============================================================
-# 이미지 유틸리티
-# ============================================================
-
-
-def download_image(image_url: str, timeout: float = 30.0) -> Image.Image | None:
-    """URL에서 이미지 다운로드"""
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        with httpx.Client(
-            timeout=timeout, follow_redirects=True, verify=False, headers=headers
-        ) as client:
-            response = client.get(image_url)
-            response.raise_for_status()
-            image = Image.open(io.BytesIO(response.content))
-            return image.convert("RGB")
-    except Exception as e:
-        logger.error(f"이미지 다운로드 실패: {image_url}, 에러: {e}")
-        return None
-
-
-# ============================================================
-# 통합 검증기 (Business Logic)
-# ============================================================
-
-# Load Model Classes from models.py
-
-
 class ImageValidator:
     """
-    통합 이미지 검증기 (Business Logic Layer)
+    통합 이미지 검증기 (Ray Serve Client)
+
+    Ray Serve에 배포된 모델('/nsfw', '/fashion')을 HTTP로 호출하여 검증합니다.
+    URL: settings.AI_MODEL_SERVER_URL (예: http://localhost:8000 또는 http://GCP_IP:8000)
     """
 
     def __init__(self: ImageValidator, lazy_load: bool = True) -> None:
-        self.nsfw_validator = NSFWValidator()
-        self.fashion_classifier = FashionClassifier()
+        # RUN_MODE 제거, 오직 Server URL만 의존
+        self.server_url = settings.ai_model_server_url
+        if not self.server_url:
+            logger.warning("AI_MODEL_SERVER_URL is not set. Validation will fail.")
 
-        if not lazy_load:
-            self.load_all_models()
+        logger.info(f"ImageValidator Initialized. Target Ray Serve: {self.server_url}")
 
-    def load_all_models(self: ImageValidator) -> None:
-        """모든 모델 로드"""
-        logger.info("모든 검증 모델 로딩 시작...")
-        self.nsfw_validator.load_model()
-        self.fashion_classifier.load_model()
-        logger.info("모든 검증 모델 로딩 완료")
-
-    def validate_image(self: ImageValidator, image_url: str) -> dict:
-        """이미지 종합 검증"""
+    async def validate_image(self: ImageValidator, image_url: str) -> dict:
+        """
+        단일 이미지 검증
+        1. NSFW 모델 호출 (/nsfw)
+        2. Fashion 모델 호출 (/fashion)
+        """
         result = {
             "url": image_url,
             "nsfw": None,
@@ -112,92 +64,111 @@ class ImageValidator:
             "error": None,
         }
 
-        # 1. 다운로드
-        image = download_image(image_url)
+        # 1. Download for NSFW (Sending Bytes)
+        # Note: Optimization possible if NSFW model supports URL download.
+        # Currently, we maintain the logic of sending bytes for NSFW.
+        image = self._download_image_sync(image_url)
         if image is None:
             result["error"] = "IMAGE_DOWNLOAD_FAILED"
             return result
 
-        # 2. NSFW 검증
+        buf = io.BytesIO()
+        image.save(buf, format="JPEG")
+        image_bytes = buf.getvalue()
+
         try:
-            nsfw_output = self.nsfw_validator.predict(image)
-            # Output Format: [{"label": "nsfw", "score": 0.95}, ...]
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # ---------------------------
+                # A. NSFW Check (/nsfw)
+                # ---------------------------
+                nsfw_api = f"{self.server_url}/nsfw"
+                nsfw_resp = await client.post(nsfw_api, content=image_bytes)
+                nsfw_resp.raise_for_status()
+                nsfw_out = nsfw_resp.json()
 
-            nsfw_score = 0.0
-            for item in nsfw_output:
-                if item["label"].lower() == "nsfw":
-                    nsfw_score = item["score"]
+                nsfw_score = 0.0
+                for item in nsfw_out:
+                    if item["label"].lower() == "nsfw":
+                        nsfw_score = item["score"]
+                is_nsfw = nsfw_score >= NSFW_THRESHOLD
+                result["nsfw"] = {"is_nsfw": is_nsfw, "score": nsfw_score}
 
-            is_nsfw = nsfw_score >= NSFW_THRESHOLD
-            result["nsfw"] = {"is_nsfw": is_nsfw, "score": nsfw_score}
+                if is_nsfw:
+                    logger.info(f"Image {image_url} blocked by NSFW filter.")
+                    return result
 
-            if is_nsfw:
-                return result  # NSFW면 중단
+                # ---------------------------
+                # B. Fashion Check (/fashion)
+                # ---------------------------
+                fashion_api = f"{self.server_url}/fashion"
+                all_prompts = FASHION_PROMPTS + NON_FASHION_PROMPTS
+
+                # Protocol: Send JSON with image_url and prompts
+                payload = {"image_url": image_url, "texts": all_prompts}
+
+                fashion_resp = await client.post(fashion_api, json=payload)
+                fashion_resp.raise_for_status()
+                scores = fashion_resp.json()  # list[float]
+
+                scores_np = np.array(scores)
+                f_score = float(scores_np[: len(FASHION_PROMPTS)].sum())
+                nf_score = float(scores_np[len(FASHION_PROMPTS) :].sum())
+                is_fashion = f_score > nf_score and f_score >= FASHION_THRESHOLD
+                result["fashion"] = {"is_fashion": is_fashion, "score": f_score}
 
         except Exception as e:
-            logger.error(f"NSFW 검증 에러: {e}")
-            result["error"] = f"NSFW_CHECK_FAILED: {e}"
-            return result
-
-        # 3. 패션 분류
-        try:
-            all_prompts = FASHION_PROMPTS + NON_FASHION_PROMPTS
-            scores = self.fashion_classifier.get_features(image, all_prompts)
-
-            fashion_score = float(scores[: len(FASHION_PROMPTS)].sum())
-            non_fashion_score = float(scores[len(FASHION_PROMPTS) :].sum())
-
-            is_fashion = (
-                fashion_score > non_fashion_score and fashion_score >= FASHION_THRESHOLD
-            )
-
-            result["fashion"] = {"is_fashion": is_fashion, "score": fashion_score}
-
-            if not is_fashion:
-                return result  # 패션 아니면 중단
-
-        except Exception as e:
-            logger.error(f"패션 분류 에러: {e}")
-            # 에러 시 통과 처리
-            result["fashion"] = {"is_fashion": True, "score": 0.0, "error": str(e)}
+            logger.error(f"Ray Serve Validation Error: {e}")
+            result["error"] = str(e)
+            result["fashion"] = {"is_fashion": True, "score": 0.0}  # Fail open
 
         return result
 
-    def validate_batch(self: ImageValidator, image_urls: list[str]) -> list[dict]:
+    async def validate_batch(self: ImageValidator, image_urls: list[str]) -> list[dict]:
+        """
+        배치 검증
+        단순 반복 호출로 구현 (Ray Serve가 내부적으로 동시성 처리)
+        """
         results = []
         for url in image_urls:
-            results.append(self.validate_image(url))
+            res = await self.validate_image(url)
+            results.append(res)
         return results
 
-
-# ============================================================
-# Mock 검증기 (테스트용)
-# ============================================================
+    def _download_image_sync(self, url: str) -> Image.Image | None:
+        try:
+            with httpx.Client(timeout=30.0, verify=False) as client:
+                resp = client.get(url)
+                resp.raise_for_status()
+                return Image.open(io.BytesIO(resp.content)).convert("RGB")
+        except Exception:
+            return None
 
 
 class MockImageValidator:
-    """
-    테스트용 Mock 검증기
+    """테스트용 Mock"""
 
-    실제 모델 없이 테스트할 때 사용합니다.
-    """
-
-    def validate_image(self: MockImageValidator, image_url: str) -> dict:
-        """Mock 검증 결과 반환"""
-        # 테스트용 규칙
-        is_nsfw = "nsfw" in image_url.lower()
-        is_fashion = (
-            "food" not in image_url.lower() and "landscape" not in image_url.lower()
-        )
+    def validate_image(self, url: str) -> dict:
+        is_nsfw = "nsfw" in url.lower()
+        is_fashion = "food" not in url.lower() and "landscape" not in url.lower()
 
         return {
-            "url": image_url,
-            "nsfw": {"is_nsfw": is_nsfw, "score": 0.9 if is_nsfw else 0.1},
-            "fashion": {"is_fashion": is_fashion, "score": 0.8 if is_fashion else 0.2},
-            "embedding": [0.1] * 768 if is_fashion and not is_nsfw else [],
+            "url": url,
+            "nsfw": {"is_nsfw": is_nsfw, "score": 0.9 if is_nsfw else 0.0},
+            "fashion": {"is_fashion": is_fashion, "score": 0.99 if is_fashion else 0.1},
+            "embedding": [],
             "error": None,
         }
 
-    def validate_batch(self: MockImageValidator, image_urls: list[str]) -> list[dict]:
-        """Mock 배치 검증"""
-        return [self.validate_image(url) for url in image_urls]
+    def validate_batch(self, urls: list[str]) -> list[dict]:
+        return [self.validate_image(u) for u in urls]
+
+
+# Compatibility utility for service.py
+def download_image(image_url: str, timeout: float = 30.0):
+    try:
+        with httpx.Client(timeout=timeout, verify=False) as client:
+            resp = client.get(image_url)
+            resp.raise_for_status()
+            return Image.open(io.BytesIO(resp.content)).convert("RGB")
+    except Exception:
+        return None

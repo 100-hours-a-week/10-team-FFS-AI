@@ -7,22 +7,20 @@ boto3
 torch
 transformers
 sentence-transformers
+open_clip_torch
+timm
+einops
+kornia
+ftfy
+regex
 python-dotenv
 httpx
 pillow
 tenacity
+<<<<<<< HEAD
 prometheus-fastapi-instrumentator
 imagehash
+=======
+>>>>>>> 5125b24 (Refactor: Migrate to pure Client-Server architecture (Ray Serve))
 numpy
-
-# AI Core
-open_clip_torch>=2.20.0
-timm>=0.9.0
-ftfy
-regex
-tqdm
-
-# Background Removal (BiRefNet)
-# AI Models dependencies (Required for BiRefNet)
-einops
-kornia
+ray[serve]
