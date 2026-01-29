@@ -11,12 +11,5 @@ python-dotenv
 httpx
 pillow
 tenacity
-
-
-
-
-
-
-
-
+prometheus-fastapi-instrumentator
 

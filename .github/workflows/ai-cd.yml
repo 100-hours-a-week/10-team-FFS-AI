@@ -67,7 +67,7 @@ jobs:
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
           script: |
             echo "=== Dev Server Status Check ==="
-            
+
             # 디스크 공간 확인
             df -h ${{ env.APP_DIR }}
             
@@ -82,7 +82,7 @@ jobs:
             else
               echo "⚠️ AI Service is not running (will be started)"
             fi
-            
+
             # 디렉토리 준비
             mkdir -p ${{ env.APP_DIR }} ${{ env.BACKUP_DIR }} ${{ env.LOG_DIR }} /tmp/ai-deploy
 
@@ -110,22 +110,22 @@ jobs:
           command_timeout: 300s
           script: |
             set -e
-            
+
             cd ${{ env.APP_DIR }}
             echo "Working directory: $(pwd)"
-            
+
             # 백업 생성
             if [ -d "app" ]; then
               TIMESTAMP=$(date +%Y%m%d_%H%M%S)
               echo "Creating backup: ai-app_dev_backup_$TIMESTAMP.tar.gz"
               tar -czf ${{ env.BACKUP_DIR }}/ai-app_dev_backup_$TIMESTAMP.tar.gz app/ requirements.txt 2>/dev/null || true
-              
+
               # 오래된 백업 삭제 (최근 5개만 유지)
               cd ${{ env.BACKUP_DIR }}
               ls -t ai-app_dev_*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -v
               cd ${{ env.APP_DIR }}
             fi
-            
+
             # 새 버전 적용
             echo "Applying new version..."
             rm -rf app/
@@ -266,7 +266,7 @@ jobs:
           key: ${{ secrets.PROD_SERVER_SSH_KEY }}
           script: |
             echo "=== Production Server Status Check ==="
-            
+
             # 디스크 공간 확인 (더 엄격)
             DISK_USAGE=$(df ${{ env.APP_DIR }} | tail -1 | awk '{print $5}' | sed 's/%//')
             if [ "$DISK_USAGE" -gt 85 ]; then
@@ -309,12 +309,12 @@ jobs:
           script: |
             cd ${{ env.APP_DIR }}
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-            
+
             if [ -d "app" ]; then
               echo "Creating production backup: ai-app_prod_$TIMESTAMP.tar.gz"
               tar -czf ${{ env.BACKUP_DIR }}/ai-app_prod_$TIMESTAMP.tar.gz app/ requirements.txt
               echo "✅ Production backup created"
-              
+
               # 오래된 백업 삭제 (최근 10개만 유지)
               cd ${{ env.BACKUP_DIR }}
               ls -t ai-app_prod_*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm -v
@@ -405,14 +405,14 @@ jobs:
               sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
               exit 1
             fi
-            
+
             # 헬스체크 & Smoke tests
             for i in $(seq 1 10); do
               echo "Health check attempt $i/10..."
               
               if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
                 echo "✅ Health check passed"
-                
+
                 # Service connectivity check
                 HEALTH=$(curl -s http://localhost:8000/health)
                 echo ""
@@ -458,9 +458,9 @@ jobs:
           script: |
             echo "=== Rolling back to previous version ==="
             cd ${{ env.BACKUP_DIR }}
-            
+
             LATEST_BACKUP=$(ls -t ai-app_prod_*.tar.gz 2>/dev/null | head -1)
-            
+
             if [ -n "$LATEST_BACKUP" ]; then
               echo "Found backup: $LATEST_BACKUP"
               cd ${{ env.APP_DIR }}
