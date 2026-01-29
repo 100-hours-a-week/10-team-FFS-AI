@@ -34,9 +34,9 @@ permissions:
 # 환경 변수 설정
 # ============================================================
 env:
-  APP_DIR: /app/ai
-  BACKUP_DIR: /app/backups/ai
-  SCRIPTS_DIR: /app/scripts
+  APP_DIR: ~/app/ai
+  BACKUP_DIR: ~/app/backups/ai
+  SCRIPTS_DIR: ~/app/ai
 
 # ============================================================
 # Dev 환경 배포 (dev 브랜치)
