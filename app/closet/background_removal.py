@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Optional
 
 import httpx
 from PIL import Image
@@ -61,7 +60,7 @@ class BackgroundRemover:
             return image.convert("RGBA")
 
 
-_remover_instance: Optional[BackgroundRemover] = None
+_remover_instance: BackgroundRemover | None = None
 
 
 def get_background_remover() -> BackgroundRemover:

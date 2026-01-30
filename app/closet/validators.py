@@ -164,7 +164,7 @@ class MockImageValidator:
 
 
 # Compatibility utility for service.py
-def download_image(image_url: str, timeout: float = 30.0):
+def download_image(image_url: str, timeout: float = 30.0) -> Image.Image | None:
     try:
         with httpx.Client(timeout=timeout, verify=False) as client:
             resp = client.get(image_url)

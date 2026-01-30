@@ -18,7 +18,7 @@ def test_validate_api_success(client: TestClient, mocker: MockerFixture) -> None
     }
 
     # When
-    response = client.post("/v1/closet/validate", json=payload)
+    response = client.post("/ai/v1/closet/validate", json=payload)
 
     # Then
     assert response.status_code == 200
@@ -32,7 +32,7 @@ def test_validate_api_validation_error(client: TestClient) -> None:
     payload = {"images": ["http://test.com/1.jpg"]}
 
     # When
-    response = client.post("/v1/closet/validate", json=payload)
+    response = client.post("/ai/v1/closet/validate", json=payload)
 
     # Then
     assert response.status_code == 400
@@ -69,7 +69,7 @@ def test_analyze_api_success(client: TestClient, mocker: MockerFixture) -> None:
     }
 
     # When
-    response = client.post("/v1/closet/analyze", json=payload)
+    response = client.post("/ai/v1/closet/analyze", json=payload)
 
     # Then
     assert response.status_code == 202
@@ -91,7 +91,7 @@ def test_get_batch_status_success(client: TestClient, mocker: MockerFixture) -> 
     }
 
     # When
-    response = client.get(f"/v1/closet/batches/{batch_id}")
+    response = client.get(f"/ai/v1/closet/batches/{batch_id}")
 
     # Then
     assert response.status_code == 200
@@ -106,7 +106,7 @@ def test_get_batch_status_not_found(client: TestClient, mocker: MockerFixture) -
     mock_get_batch_status.return_value = None
 
     # When
-    response = client.get("/v1/closet/batches/non_existent_id")
+    response = client.get("/ai/v1/closet/batches/non_existent_id")
 
     # Then
     assert response.status_code == 404
