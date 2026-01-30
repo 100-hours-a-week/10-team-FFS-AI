@@ -12,4 +12,3 @@ httpx
 pillow
 tenacity
 prometheus-fastapi-instrumentator
-

@@ -40,8 +40,24 @@ class SearchQuery(BaseSchema):
 
 
 class OutfitRequest(BaseSchema):
-    user_id: str = Field(..., description="사용자 ID")
+    user_id: int = Field(..., description="사용자 ID")
     query: str = Field(..., description="사용자 자연어 요청")
+    session_id: str | None = Field(default=None, description="멀티턴 대화 세션 ID")
+    weather: "Weather | None" = Field(default=None, description="날씨 정보")
+    urls: "list[UrlInfo] | None" = Field(
+        default=None, description="VTON용 URL 정보 (V1에서는 null)"
+    )
+
+
+class Weather(BaseSchema):
+    temperature: int = Field(..., description="온도 (섭씨)")
+    condition: str = Field(..., description="날씨 상태 (sunny, cloudy, rainy 등)")
+
+
+class UrlInfo(BaseSchema):
+    file_id: int = Field(..., description="파일 ID")
+    object_key: str = Field(..., description="S3 오브젝트 키")
+    presigned_url: str = Field(..., description="Presigned URL")
 
 
 class ClothingCandidate(BaseSchema):
