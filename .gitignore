@@ -29,8 +29,6 @@ env/
 ENV/
 .venv
 
-
-
 # Environment
 .env
 .env.local
@@ -54,10 +52,6 @@ logs/
 # Database
 *.db
 *.sqlite3
-
-
-
-
 
 # Cache
 .cache/
