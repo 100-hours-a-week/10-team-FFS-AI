@@ -87,9 +87,12 @@ class OutfitItem(BaseSchema):
 class Outfit(BaseSchema):
     outfit_id: str = Field(..., description="코디 고유 ID (UUID)")
     description: str = Field(..., description="코디 설명")
-    items: list[OutfitItem] = Field(default_factory=list, description="아이템 목록")
+    clothes_ids: list[int] = Field(default_factory=list, description="의류 ID 목록")
     fallback_notice: str | None = Field(
         default=None, description="대체 안내 메시지 (아이템 부족 시)"
+    )
+    file_id: int | None = Field(
+        default=None, description="VTON 이미지 파일 ID (V1에서는 null)"
     )
 
 
