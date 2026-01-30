@@ -5,7 +5,6 @@ import pytest
 from app.outfit.schemas import (
     ClothingCandidate,
     Outfit,
-    OutfitItem,
     OutfitRequest,
     OutfitResponse,
     ParsedQuery,
@@ -88,20 +87,7 @@ def mock_composer() -> MagicMock:
                 Outfit(
                     outfit_id="outfit-001",
                     description="깔끔한 비즈니스 룩",
-                    items=[
-                        OutfitItem(
-                            clothes_id=101,
-                            image_url="https://img.com/101.jpg",
-                            category="상의",
-                            role="상의",
-                        ),
-                        OutfitItem(
-                            clothes_id=201,
-                            image_url="https://img.com/201.jpg",
-                            category="하의",
-                            role="하의",
-                        ),
-                    ],
+                    clothes_ids=[101, 201],
                 )
             ],
         )
@@ -134,7 +120,7 @@ class TestOutfitServiceRecommend:
         mock_repository: MagicMock,
         mock_composer: MagicMock,
     ) -> None:
-        request = OutfitRequest(user_id="user123", query="면접에 입을 옷 추천해줘")
+        request = OutfitRequest(user_id=123, query="면접에 입을 옷 추천해줘")
 
         response = await service.recommend(request)
 
@@ -145,7 +131,7 @@ class TestOutfitServiceRecommend:
 
         assert response.query_summary == "면접용 포멀 코디"
         assert len(response.outfits) == 1
-        assert len(response.outfits[0].items) == 2
+        assert response.outfits[0].clothes_ids == [101, 201]
 
     @pytest.mark.asyncio
     async def test_passes_user_id_to_repository(
@@ -153,9 +139,9 @@ class TestOutfitServiceRecommend:
         service: OutfitService,
         mock_repository: MagicMock,
     ) -> None:
-        request = OutfitRequest(user_id="user456", query="오늘 뭐 입지")
+        request = OutfitRequest(user_id=456, query="오늘 뭐 입지")
 
         await service.recommend(request)
 
         call_args = mock_repository.search_multiple.call_args
-        assert call_args.kwargs["user_id"] == "user456"
+        assert call_args.kwargs["user_id"] == 456
