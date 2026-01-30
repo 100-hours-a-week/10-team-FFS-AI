@@ -30,13 +30,6 @@ class Settings(BaseSettings):
     redis_password: str | None = Field(default=None, alias="REDIS_PASSWORD")
     redis_max_connections: int = Field(default=10, alias="REDIS_MAX_CONNECTIONS")
 
-    aws_access_key_id: str | None = Field(default=None, alias="AWS_ACCESS_KEY_ID")
-    aws_secret_access_key: str | None = Field(
-        default=None, alias="AWS_SECRET_ACCESS_KEY"
-    )
-    aws_region: str = Field(default="ap-northeast-2", alias="AWS_REGION")
-    s3_bucket_name: str = Field(default="klosetlab-ai-storage", alias="S3_BUCKET_NAME")
-
     hf_home: str = Field(default="./models", alias="HF_HOME")
     upstage_api_key: str | None = Field(default=None, alias="UPSTAGE_API_KEY")
     embedding_model: str = Field(default="embedding-passage", alias="EMBEDDING_MODEL")
@@ -49,6 +42,12 @@ class Settings(BaseSettings):
     openai_chat_model: str = Field(default="gpt-4o-mini", alias="OPENAI_CHAT_MODEL")
     llm_timeout: int = Field(default=30, alias="LLM_TIMEOUT")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
+
+    # Gemini Settings
+    gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
+    gemini_model: str = Field(
+        default="gemini-2.5-flash-preview-05-20", alias="GEMINI_MODEL"
+    )
 
 
 @lru_cache
