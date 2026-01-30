@@ -21,3 +21,4 @@ prometheus-fastapi-instrumentator
 
 numpy
 ray[serve]
+tenacity
