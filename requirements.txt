@@ -7,18 +7,9 @@ boto3
 torch
 transformers
 sentence-transformers
-open_clip_torch
-timm
-einops
-
-ftfy
-regex
 python-dotenv
 httpx
 pillow
-
+tenacity
 prometheus-fastapi-instrumentator
 
-numpy
-ray[serve]
-tenacity
