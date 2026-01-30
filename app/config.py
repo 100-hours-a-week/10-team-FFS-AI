@@ -45,9 +45,7 @@ class Settings(BaseSettings):
 
     # Gemini Settings
     gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
-    gemini_model: str = Field(
-        default="gemini-2.5-flash-preview-05-20", alias="GEMINI_MODEL"
-    )
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
 
 
 @lru_cache
