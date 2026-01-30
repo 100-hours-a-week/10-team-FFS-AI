@@ -7,7 +7,6 @@ from app.outfit.llm_client import LLMClient, OpenAIClient
 from app.outfit.schemas import (
     ClothingCandidate,
     Outfit,
-    OutfitItem,
     OutfitResponse,
     ParsedQuery,
     SearchResult,
@@ -128,29 +127,21 @@ class OutfitComposer:
 
         outfits = []
         for outfit_data in data.get("outfits", []):
-            items = []
+            clothes_ids = []
             for item_data in outfit_data.get("items", []):
                 clothes_id = item_data["clothes_id"]
-                candidate = candidates_map.get(clothes_id)
-
-                if candidate:
-                    items.append(
-                        OutfitItem(
-                            clothes_id=clothes_id,
-                            image_url=candidate.image_url,
-                            category=candidate.category,
-                            role=item_data.get("role", candidate.category),
-                        )
-                    )
+                # 유효한 후보 아이템인지 확인
+                if clothes_id in candidates_map:
+                    clothes_ids.append(clothes_id)
                 else:
                     logger.warning(f"LLM returned invalid clothes_id: {clothes_id}")
 
-            if items:
+            if clothes_ids:
                 outfits.append(
                     Outfit(
                         outfit_id=str(uuid.uuid4()),
                         description=outfit_data.get("description", ""),
-                        items=items,
+                        clothes_ids=clothes_ids,
                     )
                 )
 
