@@ -51,7 +51,7 @@ class GeminiImageAnalyzer:
         self.settings = get_settings()
         if self.settings.gemini_api_key:
             genai.configure(api_key=self.settings.gemini_api_key)
-        
+
         self.model = genai.GenerativeModel(
             model_name=self.settings.gemini_model or "gemini-2.5-flash"
         )
@@ -59,20 +59,28 @@ class GeminiImageAnalyzer:
     async def analyze_image(self, image_bytes: bytes) -> dict[str, Any]:
         try:
             safety_settings = [
-                {"category": HarmCategory.HARM_CATEGORY_HARASSMENT, "threshold": HarmBlockThreshold.BLOCK_NONE},
-                {"category": HarmCategory.HARM_CATEGORY_HATE_SPEECH, "threshold": HarmBlockThreshold.BLOCK_NONE},
-                {"category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, "threshold": HarmBlockThreshold.BLOCK_NONE},
-                {"category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, "threshold": HarmBlockThreshold.BLOCK_NONE},
+                {
+                    "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
+                    "threshold": HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    "category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                    "threshold": HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                    "threshold": HarmBlockThreshold.BLOCK_NONE,
+                },
+                {
+                    "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                    "threshold": HarmBlockThreshold.BLOCK_NONE,
+                },
             ]
 
             parts = [
                 {"mime_type": "image/jpeg", "data": image_bytes},
                 ANALYSIS_PROMPT,
             ]
-
-            generation_config = GenerationConfig(
-                response_mime_type="application/json"
-            )
 
             response = await self.model.generate_content_async(
                 parts,
@@ -81,7 +89,7 @@ class GeminiImageAnalyzer:
                     response_mime_type="application/json",
                 ),
             )
-            
+
             return self._parse_response(response.text)
 
         except Exception as e:

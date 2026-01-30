@@ -1,3 +1,5 @@
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -6,7 +8,7 @@ from app.closet.gemini_client import GeminiImageAnalyzer
 
 
 @pytest.fixture
-def mock_genai():
+def mock_genai() -> Generator[MagicMock | AsyncMock, Any, None]:
     with patch("app.closet.gemini_client.genai") as mock:
         yield mock
 
@@ -16,7 +18,7 @@ async def test_analyze_image_success(mock_genai: MagicMock) -> None:
     # Given
     mock_model = MagicMock()
     mock_response = MagicMock()
-    # JSON 문자열 반환 시뮬레이션
+
     mock_response.text = '{"major": {"category": "셔츠", "color": ["흰색"]}, "extra": {"caption": "흰색 셔츠입니다."}}'
 
     mock_model.generate_content_async = AsyncMock(return_value=mock_response)
@@ -39,7 +41,7 @@ async def test_analyze_image_json_error(mock_genai: MagicMock) -> None:
     # Given
     mock_model = MagicMock()
     mock_response = MagicMock()
-    # 잘못된 JSON 반환
+
     mock_response.text = "Invalid JSON"
 
     mock_model.generate_content_async = AsyncMock(return_value=mock_response)
