@@ -96,3 +96,4 @@ class Outfit(BaseSchema):
 class OutfitResponse(BaseSchema):
     query_summary: str = Field(..., description="사용자 요청 요약")
     outfits: list[Outfit] = Field(default_factory=list, description="추천 코디 목록")
+    session_id: str | None = Field(default=None, description="멀티턴 대화 세션 ID")
