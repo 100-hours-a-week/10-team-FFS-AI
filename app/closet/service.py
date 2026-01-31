@@ -80,7 +80,6 @@ class ClosetService:
     async def start_analysis(
         self, request: AnalyzeRequest, background_tasks: BackgroundTasks
     ) -> AnalyzeResponse:
-        """분석 시작 (비동기)"""
         batch_id = request.batch_id
 
         # 초기 상태: 모든 Task를 PREPROCESSING으로

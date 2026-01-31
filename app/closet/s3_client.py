@@ -27,7 +27,7 @@ class S3Client:
             return "image/png"
         if data.startswith(b"\xff\xd8"):
             return "image/jpeg"
-        # 기본값
+
         return "image/jpeg"
 
     @retry(

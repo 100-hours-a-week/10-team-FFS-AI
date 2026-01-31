@@ -159,10 +159,8 @@ async def test_process_batch_download_failure(
         )
     ]
 
-    # 다운로드 실패 설정
     mock_s3_client.get_image.side_effect = Exception("Download failed")
 
-    # Redis 초기 상태
     initial_state = AnalyzeResponse(
         batch_id=batch_id,
         status=BatchStatus.IN_PROGRESS,
@@ -176,7 +174,6 @@ async def test_process_batch_download_failure(
     # When
     await service.process_batch(batch_id, images)
 
-    # Then - 다운로드 실패 시 FAILED 상태
     call_args = mock_redis.set.call_args_list[-1]
     saved_json = call_args[0][1]
     assert (
@@ -202,10 +199,8 @@ async def test_process_batch_analysis_failure_fallback(
         )
     ]
 
-    # 분석 실패 설정
     mock_gemini_analyzer.analyze_image.side_effect = Exception("Gemini API error")
 
-    # Redis 초기 상태
     initial_state = AnalyzeResponse(
         batch_id=batch_id,
         status=BatchStatus.IN_PROGRESS,
@@ -219,12 +214,11 @@ async def test_process_batch_analysis_failure_fallback(
     # When
     await service.process_batch(batch_id, images)
 
-    # Then - 분석 실패해도 COMPLETED (fallback)
     call_args = mock_redis.set.call_args_list[-1]
     saved_json = call_args[0][1]
-    # 배치는 COMPLETED (fallback으로 처리됨)
+
     assert '"status":"COMPLETED"' in saved_json or '"status": "COMPLETED"' in saved_json
-    # error_message에 PARTIAL 기록
+
     assert "PARTIAL" in saved_json or "ANALYSIS_FAILED" in saved_json
 
 

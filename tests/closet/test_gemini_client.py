@@ -9,15 +9,12 @@ from app.closet.gemini_client import GeminiImageAnalyzer
 
 @pytest.fixture
 def mock_genai() -> Generator[MagicMock, Any, None]:
-    # gemini_client.py 안에서 `from google import genai` 를 했으므로
-    # patch 타겟은 "app.closet.gemini_client.genai"
     with patch("app.closet.gemini_client.genai") as mock:
         yield mock
 
 
 @pytest.fixture
 def mock_settings() -> Generator[MagicMock, Any, None]:
-    # GeminiImageAnalyzer가 get_settings()를 호출하므로 고정값 주입
     with patch("app.closet.gemini_client.get_settings") as mock:
         settings = MagicMock()
         settings.gemini_api_key = "test-api-key"
@@ -30,11 +27,9 @@ def mock_settings() -> Generator[MagicMock, Any, None]:
 async def test_analyze_image_success(
     mock_genai: MagicMock, mock_settings: MagicMock
 ) -> None:
-    # Given: genai.Client() -> client_mock
     client_mock = MagicMock()
     mock_genai.Client.return_value = client_mock
 
-    # client.aio.models.generate_content(...) -> resp
     resp = MagicMock()
     resp.text = (
         '{"major": {"category": "셔츠", "color": ["흰색"]}, '
@@ -55,7 +50,6 @@ async def test_analyze_image_success(
 
     client_mock.aio.models.generate_content.assert_called_once()
 
-    # 옵션까지 검증하고 싶으면(선택):
     _, kwargs = client_mock.aio.models.generate_content.call_args
     assert kwargs["model"] == "gemini-2.5-flash"
     assert "contents" in kwargs

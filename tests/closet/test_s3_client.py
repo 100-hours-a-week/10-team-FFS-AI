@@ -69,7 +69,7 @@ async def test_put_image_success(s3_client: S3Client) -> None:
 async def test_put_image_auto_detect_png(s3_client: S3Client) -> None:
     # Given
     presigned_url = "https://example.com/upload"
-    # PNG Magic Number
+
     image_bytes = b"\x89PNG\r\n\x1a\n" + b"fake_png_data"
 
     mock_response = MagicMock()
@@ -88,7 +88,7 @@ async def test_put_image_auto_detect_png(s3_client: S3Client) -> None:
         # Then
         mock_client_instance.put.assert_called_once()
         call_args = mock_client_instance.put.call_args
-        # 자동 감지된 Content-Type 확인
+
         assert call_args[1]["headers"]["Content-Type"] == "image/png"
         mock_response.raise_for_status.assert_called_once()
 
@@ -96,7 +96,6 @@ async def test_put_image_auto_detect_png(s3_client: S3Client) -> None:
 @pytest.mark.asyncio
 async def test_get_image_retry(s3_client: S3Client) -> None:
     # Given
-    # url 설정을 제거하거나, mock 호출에 사용하지 않으므로 삭제
 
     mock_fail_response = MagicMock()
     mock_fail_response.raise_for_status.side_effect = httpx.HTTPStatusError(
