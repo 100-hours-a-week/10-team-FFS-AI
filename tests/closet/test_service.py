@@ -1,3 +1,5 @@
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,14 +19,14 @@ from app.closet.service import ClosetService
 
 
 @pytest.fixture
-def mock_redis():
+def mock_redis() -> AsyncMock:
     redis = AsyncMock()
     redis.get.return_value = None
     return redis
 
 
 @pytest.fixture
-def mock_s3_client():
+def mock_s3_client() -> MagicMock:
     client = MagicMock()
     client.get_image = AsyncMock(return_value=b"fake_image_bytes")
     client.put_image = AsyncMock()
@@ -32,11 +34,16 @@ def mock_s3_client():
 
 
 @pytest.fixture
-def mock_gemini_analyzer():
+def mock_gemini_analyzer() -> MagicMock:
     analyzer = MagicMock()
     analyzer.analyze_image = AsyncMock(
         return_value={
-            "major": {"category": "셔츠", "color": ["흰색"], "material": [], "style_tags": []},
+            "major": {
+                "category": "셔츠",
+                "color": ["흰색"],
+                "material": [],
+                "style_tags": [],
+            },
             "extra": {"meta_data": {}, "caption": "흰색 셔츠입니다."},
         }
     )
@@ -44,16 +51,23 @@ def mock_gemini_analyzer():
 
 
 @pytest.fixture
-def service(mock_redis, mock_s3_client, mock_gemini_analyzer):
-    with patch("app.closet.service.S3Client", return_value=mock_s3_client), patch(
-        "app.closet.service.GeminiImageAnalyzer", return_value=mock_gemini_analyzer
+def service(
+    mock_redis: AsyncMock,
+    mock_s3_client: MagicMock,
+    mock_gemini_analyzer: MagicMock,
+) -> Generator[ClosetService, Any, None]:
+    with (
+        patch("app.closet.service.S3Client", return_value=mock_s3_client),
+        patch(
+            "app.closet.service.GeminiImageAnalyzer", return_value=mock_gemini_analyzer
+        ),
     ):
         svc = ClosetService(redis_client=mock_redis)
         yield svc
 
 
 @pytest.mark.asyncio
-async def test_start_analysis(service, mock_redis):
+async def test_start_analysis(service: ClosetService, mock_redis: AsyncMock) -> None:
     # Given
     request = AnalyzeRequest(
         user_id=1,
@@ -84,7 +98,9 @@ async def test_start_analysis(service, mock_redis):
 
 
 @pytest.mark.asyncio
-async def test_process_batch_success(service, mock_redis):
+async def test_process_batch_success(
+    service: ClosetService, mock_redis: AsyncMock
+) -> None:
     # Given
     batch_id = "batch-001"
     images = [
@@ -127,7 +143,9 @@ async def test_process_batch_success(service, mock_redis):
 
 
 @pytest.mark.asyncio
-async def test_process_batch_download_failure(service, mock_redis, mock_s3_client):
+async def test_process_batch_download_failure(
+    service: ClosetService, mock_redis: AsyncMock, mock_s3_client: MagicMock
+) -> None:
     # Given
     batch_id = "batch-001"
     images = [
@@ -161,11 +179,16 @@ async def test_process_batch_download_failure(service, mock_redis, mock_s3_clien
     # Then - 다운로드 실패 시 FAILED 상태
     call_args = mock_redis.set.call_args_list[-1]
     saved_json = call_args[0][1]
-    assert '"status":"PARTIAL_FAILURE"' in saved_json or '"status": "PARTIAL_FAILURE"' in saved_json
+    assert (
+        '"status":"PARTIAL_FAILURE"' in saved_json
+        or '"status": "PARTIAL_FAILURE"' in saved_json
+    )
 
 
 @pytest.mark.asyncio
-async def test_process_batch_analysis_failure_fallback(service, mock_redis, mock_gemini_analyzer):
+async def test_process_batch_analysis_failure_fallback(
+    service: ClosetService, mock_redis: AsyncMock, mock_gemini_analyzer: MagicMock
+) -> None:
     # Given
     batch_id = "batch-001"
     images = [
@@ -206,7 +229,9 @@ async def test_process_batch_analysis_failure_fallback(service, mock_redis, mock
 
 
 @pytest.mark.asyncio
-async def test_get_batch_status_found(service, mock_redis):
+async def test_get_batch_status_found(
+    service: ClosetService, mock_redis: AsyncMock
+) -> None:
     # Given
     mock_redis.get.return_value = '{"batch_id": "b1", "status": "COMPLETED", "meta": {"total": 1, "completed": 1, "processing": 0}, "results": []}'
 
@@ -220,7 +245,9 @@ async def test_get_batch_status_found(service, mock_redis):
 
 
 @pytest.mark.asyncio
-async def test_get_batch_status_not_found(service, mock_redis):
+async def test_get_batch_status_not_found(
+    service: ClosetService, mock_redis: AsyncMock
+) -> None:
     # Given
     mock_redis.get.return_value = None
 

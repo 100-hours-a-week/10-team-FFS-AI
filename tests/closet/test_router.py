@@ -1,3 +1,5 @@
+from collections.abc import Generator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,9 +16,8 @@ from app.main import app
 client = TestClient(app)
 
 
-
 @pytest.fixture
-def mock_closet_service():
+def mock_closet_service() -> MagicMock:
     service = MagicMock()
     service.start_analysis = AsyncMock()
     service.get_batch_status = AsyncMock()
@@ -24,13 +25,15 @@ def mock_closet_service():
 
 
 @pytest.fixture
-def override_dependency(mock_closet_service):
+def override_dependency(mock_closet_service: MagicMock) -> Generator[None, Any, None]:
     app.dependency_overrides[get_closet_service] = lambda: mock_closet_service
     yield
     app.dependency_overrides = {}
 
 
-def test_analyze_images_success(mock_closet_service, override_dependency):
+def test_analyze_images_success(
+    mock_closet_service: MagicMock, override_dependency: None
+) -> None:
     # Given
     mock_response = AnalyzeResponse(
         batch_id="batch-123",
@@ -68,7 +71,9 @@ def test_analyze_images_success(mock_closet_service, override_dependency):
     mock_closet_service.start_analysis.assert_called_once()
 
 
-def test_get_batch_status_success(mock_closet_service, override_dependency):
+def test_get_batch_status_success(
+    mock_closet_service: MagicMock, override_dependency: None
+) -> None:
     # Given
     mock_response = AnalyzeResponse(
         batch_id="batch-123",
@@ -88,7 +93,9 @@ def test_get_batch_status_success(mock_closet_service, override_dependency):
     assert data["status"] == "COMPLETED"
 
 
-def test_get_batch_status_not_found(mock_closet_service, override_dependency):
+def test_get_batch_status_not_found(
+    mock_closet_service: MagicMock, override_dependency: None
+) -> None:
     # Given
     mock_closet_service.get_batch_status.return_value = None
 
@@ -98,5 +105,4 @@ def test_get_batch_status_not_found(mock_closet_service, override_dependency):
     # Then
     assert response.status_code == 404
     data = response.json()
-
     assert data["detail"]["code"] == "BATCH_NOT_FOUND"
