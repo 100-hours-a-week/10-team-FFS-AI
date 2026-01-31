@@ -12,5 +12,5 @@ httpx
 pillow
 tenacity
 prometheus-fastapi-instrumentator
-google-generativeai
+google-genai
 aiofiles
