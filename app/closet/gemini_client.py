@@ -56,36 +56,40 @@ class GeminiImageAnalyzer:
 
     async def analyze_image(self, image_bytes: bytes) -> dict[str, Any]:
         try:
-            # google-genai safety settings 포맷 (카테고리 문자열은 SDK가 허용하는 값 사용)
-            # NOTE: 실제 지원 카테고리/표현은 모델/SDK 버전에 따라 다를 수 있어,
-            #       여기서는 가장 보편적인 형태로 둠.
+            from google.genai import types
+
             safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                {
-                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    "threshold": "BLOCK_NONE",
-                },
-                {
-                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                    "threshold": "BLOCK_NONE",
-                },
+                types.SafetySetting(
+                    category="HARM_CATEGORY_HARASSMENT",
+                    threshold="BLOCK_NONE",
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_HATE_SPEECH",
+                    threshold="BLOCK_NONE",
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    threshold="BLOCK_NONE",
+                ),
+                types.SafetySetting(
+                    category="HARM_CATEGORY_DANGEROUS_CONTENT",
+                    threshold="BLOCK_NONE",
+                ),
             ]
 
-            # image part (bytes)
-            image_part = {"mime_type": "image/jpeg", "data": image_bytes}
+            image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
 
-            # aio 비동기 호출
+            config = types.GenerateContentConfig(
+                safety_settings=safety_settings,
+                response_mime_type="application/json",
+            )
+
             resp = await self.client.aio.models.generate_content(
                 model=self.model,
                 contents=[ANALYSIS_PROMPT, image_part],
-                safety_settings=safety_settings,
-                config={
-                    "response_mime_type": "application/json",
-                },
+                config=config,
             )
 
-            # SDK 응답은 보통 resp.text 로 바로 접근 가능
             text = getattr(resp, "text", None)
             if not text:
                 logger.error("Empty response text from Gemini")

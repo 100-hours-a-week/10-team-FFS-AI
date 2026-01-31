@@ -27,7 +27,9 @@ def mock_settings() -> Generator[MagicMock, Any, None]:
 
 
 @pytest.mark.asyncio
-async def test_analyze_image_success(mock_genai: MagicMock, mock_settings: MagicMock) -> None:
+async def test_analyze_image_success(
+    mock_genai: MagicMock, mock_settings: MagicMock
+) -> None:
     # Given: genai.Client() -> client_mock
     client_mock = MagicMock()
     mock_genai.Client.return_value = client_mock
@@ -57,11 +59,13 @@ async def test_analyze_image_success(mock_genai: MagicMock, mock_settings: Magic
     _, kwargs = client_mock.aio.models.generate_content.call_args
     assert kwargs["model"] == "gemini-2.5-flash"
     assert "contents" in kwargs
-    assert kwargs["config"]["response_mime_type"] == "application/json"
+    assert kwargs["config"].response_mime_type == "application/json"
 
 
 @pytest.mark.asyncio
-async def test_analyze_image_json_error(mock_genai: MagicMock, mock_settings: MagicMock) -> None:
+async def test_analyze_image_json_error(
+    mock_genai: MagicMock, mock_settings: MagicMock
+) -> None:
     # Given
     client_mock = MagicMock()
     mock_genai.Client.return_value = client_mock
