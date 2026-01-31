@@ -7,7 +7,7 @@ from app.closet.s3_client import S3Client
 
 
 @pytest.fixture
-def s3_client():
+def s3_client() -> S3Client:
     return S3Client()
 
 
@@ -21,7 +21,6 @@ async def test_get_image_success(s3_client: S3Client) -> None:
     mock_response.status_code = 200
     mock_response.content = image_content
     mock_response.raise_for_status = MagicMock()
-
 
     with patch("httpx.AsyncClient") as mock_client_cls:
         mock_client_instance = AsyncMock()
@@ -55,9 +54,7 @@ async def test_put_image_success(s3_client: S3Client) -> None:
         mock_client_cls.return_value = mock_client_instance
 
         # When
-        await s3_client.put_image(
-            presigned_url, image_bytes, content_type="image/png"
-        )
+        await s3_client.put_image(presigned_url, image_bytes, content_type="image/png")
 
         # Then
         mock_client_instance.put.assert_called_once()
@@ -99,8 +96,7 @@ async def test_put_image_auto_detect_png(s3_client: S3Client) -> None:
 @pytest.mark.asyncio
 async def test_get_image_retry(s3_client: S3Client) -> None:
     # Given
-    url = "https://example.com/image.jpg"
-
+    # url 설정을 제거하거나, mock 호출에 사용하지 않으므로 삭제
 
     mock_fail_response = MagicMock()
     mock_fail_response.raise_for_status.side_effect = httpx.HTTPStatusError(
@@ -121,10 +117,10 @@ async def test_get_image_retry(s3_client: S3Client) -> None:
             mock_success_response,
         ]
         mock_client_cls.return_value = mock_client_instance
-        
-        # 재시도 대기 시간을 최소화하기 위해 tenacity 설정을 오버라이드하거나 
+
+        # 재시도 대기 시간을 최소화하기 위해 tenacity 설정을 오버라이드하거나
         # 모의 객체의 동작만 검증 (여기서는 tenacity 동작은 신뢰하고 호출 횟수 등을 검증)
-        
+
         # When
         # 주의: tenacity의 wait_exponential 때문에 테스트 시간이 길어질 수 있음.
         # 실제로는 retry 설정을 모킹하거나 테스트용 설정을 주입하는 것이 좋음.

@@ -7,8 +7,6 @@ logger = logging.getLogger(__name__)
 
 
 class S3Client:
-
-
     def __init__(self) -> None:
         self.timeout = 30.0
 
@@ -18,7 +16,6 @@ class S3Client:
         reraise=True,
     )
     async def get_image(self, url: str) -> bytes:
-
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.get(url)
             response.raise_for_status()

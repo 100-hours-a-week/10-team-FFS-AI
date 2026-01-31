@@ -2,13 +2,11 @@ import json
 import logging
 from typing import Any
 
-import google.generativeai as genai
-from google.generativeai.types import GenerationConfig, HarmBlockThreshold, HarmCategory
+from google import genai
 
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
-
 
 ANALYSIS_PROMPT = """
 이 옷의 이미지를 분석해서 다음 정보를 JSON 형식으로 추출해줘:
@@ -49,51 +47,54 @@ JSON 응답 형식:
 class GeminiImageAnalyzer:
     def __init__(self) -> None:
         self.settings = get_settings()
-        if self.settings.gemini_api_key:
-            genai.configure(api_key=self.settings.gemini_api_key)
 
-        self.model = genai.GenerativeModel(
-            model_name=self.settings.gemini_model or "gemini-2.5-flash"
-        )
+        if not self.settings.gemini_api_key:
+            raise ValueError("GEMINI_API_KEY is not set")
+
+        self.client = genai.Client(api_key=self.settings.gemini_api_key)
+        self.model = self.settings.gemini_model or "gemini-2.5-flash"
 
     async def analyze_image(self, image_bytes: bytes) -> dict[str, Any]:
         try:
+            # google-genai safety settings 포맷 (카테고리 문자열은 SDK가 허용하는 값 사용)
+            # NOTE: 실제 지원 카테고리/표현은 모델/SDK 버전에 따라 다를 수 있어,
+            #       여기서는 가장 보편적인 형태로 둠.
             safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
                 {
-                    "category": HarmCategory.HARM_CATEGORY_HARASSMENT,
-                    "threshold": HarmBlockThreshold.BLOCK_NONE,
+                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    "threshold": "BLOCK_NONE",
                 },
                 {
-                    "category": HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-                    "threshold": HarmBlockThreshold.BLOCK_NONE,
-                },
-                {
-                    "category": HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-                    "threshold": HarmBlockThreshold.BLOCK_NONE,
-                },
-                {
-                    "category": HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-                    "threshold": HarmBlockThreshold.BLOCK_NONE,
+                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    "threshold": "BLOCK_NONE",
                 },
             ]
 
-            parts = [
-                {"mime_type": "image/jpeg", "data": image_bytes},
-                ANALYSIS_PROMPT,
-            ]
+            # image part (bytes)
+            image_part = {"mime_type": "image/jpeg", "data": image_bytes}
 
-            response = await self.model.generate_content_async(
-                parts,
+            # aio 비동기 호출
+            resp = await self.client.aio.models.generate_content(
+                model=self.model,
+                contents=[ANALYSIS_PROMPT, image_part],
                 safety_settings=safety_settings,
-                generation_config=GenerationConfig(
-                    response_mime_type="application/json",
-                ),
+                config={
+                    "response_mime_type": "application/json",
+                },
             )
 
-            return self._parse_response(response.text)
+            # SDK 응답은 보통 resp.text 로 바로 접근 가능
+            text = getattr(resp, "text", None)
+            if not text:
+                logger.error("Empty response text from Gemini")
+                return self._fallback_parse("")
 
-        except Exception as e:
-            logger.error(f"Gemini analysis failed: {e}")
+            return self._parse_response(text)
+
+        except Exception:
+            logger.exception("Gemini analysis failed")
             raise
 
     @staticmethod
@@ -101,6 +102,20 @@ class GeminiImageAnalyzer:
         try:
             return json.loads(text)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {text}")
-            # 파싱 실패시 재시도 로직 추가
+            logger.error("Failed to parse JSON response: %s", text[:500])
             raise ValueError("Invalid JSON response from Gemini") from e
+
+    @staticmethod
+    def _fallback_parse(text: str) -> dict[str, Any]:
+        return {
+            "major": {
+                "category": "UNKNOWN",
+                "color": [],
+                "material": [],
+                "style_tags": [],
+            },
+            "extra": {
+                "meta_data": {},
+                "caption": text[:200] if text else "의류 아이템",
+            },
+        }
