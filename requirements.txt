@@ -11,4 +11,4 @@ python-dotenv
 httpx
 pillow
 tenacity
-# for cd test
+# for cd test 1
