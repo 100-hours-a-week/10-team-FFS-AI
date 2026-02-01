@@ -15,3 +15,5 @@ tenacity
 prometheus-fastapi-instrumentator
 google-genai
 aiofiles
+
+# for cd test
