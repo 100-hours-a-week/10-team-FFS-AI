@@ -11,5 +11,6 @@ python-dotenv
 httpx
 pillow
 tenacity
+# for cd test
 prometheus-fastapi-instrumentator
 
