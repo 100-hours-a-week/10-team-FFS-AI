@@ -143,9 +143,7 @@ class TestParseResponse:
 
         assert result.query_summary == "면접용 포멀 코디"
         assert len(result.outfits) == 1
-        assert len(result.outfits[0].items) == 2
-        assert result.outfits[0].items[0].clothes_id == 101
-        assert result.outfits[0].items[0].image_url == "https://img.com/101.jpg"
+        assert result.outfits[0].clothes_ids == [101, 201]
 
     def test_skips_invalid_clothes_id(
         self,

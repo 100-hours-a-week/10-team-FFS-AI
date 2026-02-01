@@ -13,4 +13,5 @@ pillow
 tenacity
 # for cd test
 prometheus-fastapi-instrumentator
-
+google-genai
+aiofiles
