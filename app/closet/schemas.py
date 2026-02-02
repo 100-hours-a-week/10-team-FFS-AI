@@ -82,3 +82,11 @@ class AnalyzeResponse(BaseSchema):
     results: list[TaskResult] = Field(
         default_factory=list, description="분석 결과 목록"
     )
+
+
+class EmbeddingRequest(BaseSchema):
+    user_id: int = Field(..., description="사용자 ID")
+    clothes_id: int = Field(..., description="의류 ID")
+    image_url: str = Field(..., description="이미지 URL")
+    major: MajorAttributes = Field(..., description="주요 속성")
+    extra: ExtraAttributes = Field(..., description="추가 속성")
