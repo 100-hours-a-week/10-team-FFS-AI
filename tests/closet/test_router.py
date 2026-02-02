@@ -38,7 +38,7 @@ def test_analyze_images_success(
     mock_response = AnalyzeResponse(
         batch_id="batch-123",
         status=BatchStatus.IN_PROGRESS,
-        meta=BatchMeta(total=1, completed=0, processing=1),
+        meta=BatchMeta(total=1, completed=0, processing=1, is_finished=False),
         results=[],
     )
     mock_closet_service.start_analysis.return_value = mock_response
@@ -78,7 +78,7 @@ def test_get_batch_status_success(
     mock_response = AnalyzeResponse(
         batch_id="batch-123",
         status=BatchStatus.COMPLETED,
-        meta=BatchMeta(total=1, completed=1, processing=0),
+        meta=BatchMeta(total=1, completed=1, processing=0, is_finished=True),
         results=[],
     )
     mock_closet_service.get_batch_status.return_value = mock_response

@@ -62,7 +62,7 @@ class ExtraAttributes(BaseSchema):
 class TaskResult(BaseSchema):
     task_id: str = Field(..., description="태스크 ID")
     status: TaskStatus = Field(..., description="태스크 상태")
-    file_id: int = Field(..., description="파일 ID")
+    file_id: int | None = Field(default=None, description="파일 ID")
     major: MajorAttributes | None = Field(default=None, description="주요 속성")
     extra: ExtraAttributes | None = Field(default=None, description="추가 속성")
     error_message: str | None = Field(default=None, description="에러 메시지")
@@ -72,6 +72,7 @@ class BatchMeta(BaseSchema):
     total: int = Field(..., description="전체 요청 수")
     completed: int = Field(..., description="완료된 요청 수")
     processing: int = Field(..., description="처리 중인 요청 수")
+    is_finished: bool = Field(..., description="완료 여부")
 
 
 class AnalyzeResponse(BaseSchema):
