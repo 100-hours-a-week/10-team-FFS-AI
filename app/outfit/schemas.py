@@ -39,25 +39,25 @@ class SearchQuery(BaseSchema):
     category_filter: str | None = Field(default=None, description="카테고리 필터")
 
 
-class OutfitRequest(BaseSchema):
-    user_id: int = Field(..., description="사용자 ID")
-    query: str = Field(..., description="사용자 자연어 요청")
-    session_id: str | None = Field(default=None, description="멀티턴 대화 세션 ID")
-    weather: "Weather | None" = Field(default=None, description="날씨 정보")
-    urls: "list[UrlInfo] | None" = Field(
-        default=None, description="VTON용 URL 정보 (V1에서는 null)"
-    )
-
-
 class Weather(BaseSchema):
     temperature: int = Field(..., description="온도 (섭씨)")
     condition: str = Field(..., description="날씨 상태 (sunny, cloudy, rainy 등)")
 
 
-class UrlInfo(BaseSchema):
+class UploadSlot(BaseSchema):
     file_id: int = Field(..., description="파일 ID")
-    object_key: str = Field(..., description="S3 오브젝트 키")
-    presigned_url: str = Field(..., description="Presigned URL")
+    object_key: str = Field(..., description="S3에 저장할 이미지 파일의 키")
+    presigned_url: str = Field(..., description="S3에 저장할 이미지 파일의 URL")
+
+
+class OutfitRequest(BaseSchema):
+    user_id: int = Field(..., description="사용자 ID")
+    query: str = Field(..., description="사용자 자연어 요청")
+    session_id: str | None = Field(default=None, description="멀티턴 대화 세션 ID")
+    weather: Weather | None = Field(default=None, description="날씨 정보")
+    urls: list[UploadSlot] = Field(
+        default_factory=list, description="VTON용 업로드 슬롯 정보"
+    )
 
 
 class ClothingCandidate(BaseSchema):
@@ -89,12 +89,15 @@ class OutfitItem(BaseSchema):
 class Outfit(BaseSchema):
     outfit_id: str = Field(..., description="코디 고유 ID (UUID)")
     description: str = Field(..., description="코디 설명")
-    clothes_ids: list[int] = Field(default_factory=list, description="의류 ID 목록")
+    items: list[OutfitItem] = Field(default_factory=list, description="아이템 목록")
     fallback_notice: str | None = Field(
         default=None, description="대체 안내 메시지 (아이템 부족 시)"
     )
     file_id: int | None = Field(
-        default=None, description="VTON 이미지 파일 ID (V1에서는 null)"
+        default=None, description="추천한 코디 조합 착용한 이미지 파일 ID"
+    )
+    vton_error: str | None = Field(
+        default=None, description="VTON 이미지 생성 실패 시 에러 메시지", exclude=True
     )
 
 
