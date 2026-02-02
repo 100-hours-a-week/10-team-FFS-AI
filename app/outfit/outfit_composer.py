@@ -136,7 +136,7 @@ class OutfitComposer:
                 if clothes_id in candidates_map:
                     candidate = candidates_map[clothes_id]
                     clothes_ids.append(clothes_id)
-                    # B안: OutfitItem 객체 생성 및 리스트 추가
+                    # OutfitItem 객체 생성 및 리스트 추가
                     items.append(
                         OutfitItem(
                             clothes_id=clothes_id,
