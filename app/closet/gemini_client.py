@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 ANALYSIS_PROMPT = """
 이 옷의 이미지를 분석해서 다음 정보를 JSON 형식으로 추출해줘:
-1. category: 카테고리 (예: 셔츠, 원피스, 바지, 스커트, 자켓, 코트, 패딩 등)
+1. category: 카테고리 (반드시 다음 중 하나 선택: TOP, BOTTOM, DRESS, SHOES, ACCESSORY, ETC)
 2. color: 색상 목록 (예: ["검정", "흰색"])
 3. material: 소재 목록 (예: ["면", "데님", "가죽"])
 4. style_tags: 스타일 태그 목록 (예: ["캐주얼", "오버핏", "빈티지"])
