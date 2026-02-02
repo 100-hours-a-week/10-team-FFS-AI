@@ -63,7 +63,7 @@ class ClosetService:
             TaskResult(
                 task_id=img.task_id,
                 status=TaskStatus.PREPROCESSING,
-                file_id=img.file_upload_info.file_id,
+                file_id=None,
             )
             for img in request.images
         ]
@@ -75,6 +75,7 @@ class ClosetService:
                 total=len(request.images),
                 completed=0,
                 processing=len(request.images),
+                is_finished=False,
             ),
             results=initial_results,
         )
@@ -86,7 +87,6 @@ class ClosetService:
         return response
 
     async def get_batch_status(self, batch_id: str) -> AnalyzeResponse | None:
-        """배치 상태 조회"""
         data = await self.redis.get(f"closet:batch:{batch_id}")
         if not data:
             return None
@@ -272,7 +272,10 @@ class ClosetService:
                 batch_id=batch_id,
                 status=BatchStatus.IN_PROGRESS,
                 meta=BatchMeta(
-                    total=total, completed=completed, processing=total - completed
+                    total=total,
+                    completed=completed,
+                    processing=total - completed,
+                    is_finished=False,
                 ),
                 results=updated,
             )
@@ -287,7 +290,9 @@ class ClosetService:
         response = AnalyzeResponse(
             batch_id=batch_id,
             status=status,
-            meta=BatchMeta(total=len(results), completed=completed, processing=0),
+            meta=BatchMeta(
+                total=len(results), completed=completed, processing=0, is_finished=True
+            ),
             results=results,
         )
         await self._save_batch(response)

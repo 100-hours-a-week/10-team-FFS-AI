@@ -3,8 +3,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.closet.schemas import EmbeddingRequest
 from app.embedding.exceptions import ExternalAPIError, VectorDBError
-from app.embedding.schemas import DeleteResponse, EmbeddingRequest, EmbeddingResponse
+from app.embedding.schemas import DeleteResponse, EmbeddingResponse
 from app.embedding.service import EmbeddingService, get_embedding_service
 
 router = APIRouter(prefix="/v1/closet", tags=["embedding"])
@@ -28,7 +29,7 @@ async def create_embedding(
         indexed = await service.upsert(request)
         return EmbeddingResponse(
             clothes_id=request.clothes_id,
-            caption=request.caption,
+            caption=request.extra.caption,
             indexed=indexed,
         )
     except ExternalAPIError as err:

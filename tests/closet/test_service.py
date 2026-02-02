@@ -118,9 +118,11 @@ async def test_process_batch_success(
     initial_state = AnalyzeResponse(
         batch_id=batch_id,
         status=BatchStatus.IN_PROGRESS,
-        meta=BatchMeta(total=1, completed=0, processing=1),
+        meta=BatchMeta(total=1, completed=0, processing=1, is_finished=False),
         results=[
-            TaskResult(task_id="task-001", status=TaskStatus.PREPROCESSING, file_id=101)
+            TaskResult(
+                task_id="task-001", status=TaskStatus.PREPROCESSING, file_id=None
+            )
         ],
     )
     mock_redis.get.return_value = initial_state.model_dump_json()
@@ -164,9 +166,11 @@ async def test_process_batch_download_failure(
     initial_state = AnalyzeResponse(
         batch_id=batch_id,
         status=BatchStatus.IN_PROGRESS,
-        meta=BatchMeta(total=1, completed=0, processing=1),
+        meta=BatchMeta(total=1, completed=0, processing=1, is_finished=False),
         results=[
-            TaskResult(task_id="task-001", status=TaskStatus.PREPROCESSING, file_id=101)
+            TaskResult(
+                task_id="task-001", status=TaskStatus.PREPROCESSING, file_id=None
+            )
         ],
     )
     mock_redis.get.return_value = initial_state.model_dump_json()
@@ -204,9 +208,11 @@ async def test_process_batch_analysis_failure_fallback(
     initial_state = AnalyzeResponse(
         batch_id=batch_id,
         status=BatchStatus.IN_PROGRESS,
-        meta=BatchMeta(total=1, completed=0, processing=1),
+        meta=BatchMeta(total=1, completed=0, processing=1, is_finished=False),
         results=[
-            TaskResult(task_id="task-001", status=TaskStatus.PREPROCESSING, file_id=101)
+            TaskResult(
+                task_id="task-001", status=TaskStatus.PREPROCESSING, file_id=None
+            )
         ],
     )
     mock_redis.get.return_value = initial_state.model_dump_json()
@@ -227,7 +233,7 @@ async def test_get_batch_status_found(
     service: ClosetService, mock_redis: AsyncMock
 ) -> None:
     # Given
-    mock_redis.get.return_value = '{"batch_id": "b1", "status": "COMPLETED", "meta": {"total": 1, "completed": 1, "processing": 0}, "results": []}'
+    mock_redis.get.return_value = '{"batch_id": "b1", "status": "COMPLETED", "meta": {"total": 1, "completed": 1, "processing": 0, "is_finished": true}, "results": []}'
 
     # When
     response = await service.get_batch_status("b1")

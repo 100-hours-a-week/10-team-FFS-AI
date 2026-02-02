@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pytest_mock import MockerFixture
 
-from app.embedding.schemas import ClothingMetadata, EmbeddingRequest
+from app.closet.schemas import (
+    EmbeddingRequest,
+    ExtraAttributes,
+    ExtraMetadata,
+    MajorAttributes,
+)
 from app.embedding.service import EmbeddingService
 
 
@@ -53,19 +58,23 @@ async def test_upsert_clothing_success(
 
     service = EmbeddingService()
     request = EmbeddingRequest(
-        user_id="user123",
+        user_id=123,
         clothes_id=1,
         image_url="http://example.com/image.jpg",
-        caption="test caption",
-        metadata=ClothingMetadata(
+        major=MajorAttributes(
             category="상의",
             color=["빨강"],
             material=["니트"],
             style_tags=["캐주얼"],
-            gender="남성",
-            season=["겨울"],
-            formality="캐주얼",
-            fit="오버핏",
+        ),
+        extra=ExtraAttributes(
+            meta_data=ExtraMetadata(
+                gender="남성",
+                season=["겨울"],
+                formality="캐주얼",
+                fit="오버핏",
+            ),
+            caption="test caption",
         ),
     )
 
