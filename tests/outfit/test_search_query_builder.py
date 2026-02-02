@@ -24,9 +24,9 @@ class TestSearchQueryBuilder:
         # Then
         assert len(queries) == 3
         categories = [q.category_filter for q in queries]
-        assert "상의" in categories
-        assert "하의" in categories
-        assert "아우터" in categories
+        assert "TOP" in categories
+        assert "BOTTOM" in categories
+        assert "SHOES" in categories
 
         for q in queries:
             assert "포멀 스타일" in q.text
@@ -37,7 +37,7 @@ class TestSearchQueryBuilder:
         parsed = ParsedQuery(
             occasion="일상",
             style="캐주얼",
-            target_category="바지",
+            target_category="BOTTOM",
         )
 
         # When
@@ -45,8 +45,8 @@ class TestSearchQueryBuilder:
 
         # Then
         assert len(queries) == 1
-        assert queries[0].category_filter == "바지"
-        assert "바지" in queries[0].text
+        assert queries[0].category_filter == "BOTTOM"
+        assert "BOTTOM" in queries[0].text
 
     def test_reference_item_not_included_in_search_query(
         self, builder: SearchQueryBuilder
@@ -58,11 +58,11 @@ class TestSearchQueryBuilder:
             style="포멀",
             formality="포멀",
             reference_item=ReferenceItem(
-                category="코트",
+                category="TOP",
                 color="검정",
                 style="오버핏",
             ),
-            target_category="바지",
+            target_category="BOTTOM",
         )
 
         # When
@@ -71,11 +71,11 @@ class TestSearchQueryBuilder:
         # Then
         assert len(queries) == 1
         query_text = queries[0].text
-        assert "바지" in query_text
+        assert "BOTTOM" in query_text
         assert "포멀 스타일" in query_text
         # reference_item 관련 내용은 검색 쿼리에 포함되지 않음
         assert "검정" not in query_text
-        assert "코트" not in query_text
+        assert "TOP" not in query_text
         assert "매칭" not in query_text
 
     def test_with_season(self, builder: SearchQueryBuilder) -> None:
@@ -84,7 +84,7 @@ class TestSearchQueryBuilder:
             occasion="일상",
             style="깔끔한",
             season="겨울",
-            target_category="아우터",
+            target_category="TOP",
         )
 
         # When
@@ -98,7 +98,7 @@ class TestSearchQueryBuilder:
         parsed = ParsedQuery(
             occasion="일상",
             style="캐주얼",
-            target_category="상의",
+            target_category="TOP",
         )
 
         # When
@@ -113,7 +113,7 @@ class TestSearchQueryBuilder:
         parsed = ParsedQuery(
             occasion="일상",
             style="깔끔한",
-            target_category="상의",
+            target_category="TOP",
         )
 
         # When
@@ -121,8 +121,8 @@ class TestSearchQueryBuilder:
 
         # Then
         assert len(queries) == 1
-        assert queries[0].text == "상의"
-        assert queries[0].category_filter == "상의"
+        assert queries[0].text == "TOP"
+        assert queries[0].category_filter == "TOP"
 
     def test_query_format_matches_hybrid_formatter(
         self, builder: SearchQueryBuilder
@@ -133,7 +133,7 @@ class TestSearchQueryBuilder:
             occasion="면접",
             formality="포멀",
             season="겨울",
-            target_category="상의",
+            target_category="TOP",
         )
 
         # When
@@ -141,6 +141,6 @@ class TestSearchQueryBuilder:
 
         # Then
         # HybridFormatter 포맷: "{category}. {formality} 스타일. {season}용. {occasion}에 적합"
-        expected_parts = ["상의", "포멀 스타일", "겨울용", "면접에 적합"]
+        expected_parts = ["TOP", "포멀 스타일", "겨울용", "면접에 적합"]
         for part in expected_parts:
             assert part in queries[0].text
