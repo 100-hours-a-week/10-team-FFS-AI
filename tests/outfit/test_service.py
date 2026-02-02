@@ -32,8 +32,8 @@ def mock_search_builder() -> MagicMock:
     builder = MagicMock()
     builder.build = MagicMock(
         return_value=[
-            SearchQuery(text="상의 검색", category_filter="상의"),
-            SearchQuery(text="하의 검색", category_filter="하의"),
+            SearchQuery(text="TOP 검색", category_filter="TOP"),
+            SearchQuery(text="BOTTOM 검색", category_filter="BOTTOM"),
         ]
     )
     return builder
@@ -45,12 +45,12 @@ def mock_repository() -> MagicMock:
     repo.search_multiple = AsyncMock(
         return_value=[
             SearchResult(
-                category="상의",
+                category="TOP",
                 candidates=[
                     ClothingCandidate(
                         clothes_id=101,
                         image_url="https://img.com/101.jpg",
-                        category="상의",
+                        category="TOP",
                         color=["흰색"],
                         style_tags=["포멀"],
                         caption="흰색 셔츠",
@@ -59,12 +59,12 @@ def mock_repository() -> MagicMock:
                 ],
             ),
             SearchResult(
-                category="하의",
+                category="BOTTOM",
                 candidates=[
                     ClothingCandidate(
                         clothes_id=201,
                         image_url="https://img.com/201.jpg",
-                        category="하의",
+                        category="BOTTOM",
                         color=["검정"],
                         style_tags=["포멀"],
                         caption="검정 슬랙스",
