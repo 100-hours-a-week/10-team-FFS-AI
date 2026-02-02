@@ -63,7 +63,9 @@ class OutfitService:
         return response
 
     async def _generate_vton_images(
-        self, response: OutfitResponse, upload_slots: list[UploadSlot]
+        self,
+        response: OutfitResponse,
+        upload_slots: list[UploadSlot],
     ) -> None:
         """각 코디에 대해 VTON 이미지 생성 및 S3 업로드"""
         for i, outfit in enumerate(response.outfits):
@@ -72,7 +74,12 @@ class OutfitService:
                 break
 
             slot = upload_slots[i]
+            # B안: outfit.items에 들어있는 정보를 그대로 사용 (클린!)
             garment_urls = [item.image_url for item in outfit.items]
+
+            if not garment_urls:
+                outfit.vton_error = "의류 이미지 URL을 찾을 수 없음"
+                continue
 
             # VTON 이미지 생성
             vton_request = VTONRequest(image_urls=garment_urls)
