@@ -145,7 +145,7 @@ jobs:
             # 로그 디렉토리 준비
             mkdir -p ${{ env.LOG_DIR }}
 
-            # systemd 서비스 재시작
+            # systemd 서비스 재시작 (uvicorn)
             echo "Restarting AI service via systemd..."
             sudo systemctl restart ${{ env.SERVICE_NAME }}
 
@@ -365,24 +365,19 @@ jobs:
             # 로그 디렉토리 준비
             mkdir -p ${{ env.LOG_DIR }}
 
-            # ✅ Zero-downtime reload (Gunicorn의 Graceful reload)
-            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
-              echo "Performing graceful reload..."
-              sudo systemctl reload ${{ env.SERVICE_NAME }}
-              echo "✅ Graceful reload signal sent"
-              sleep 5
-            else
-              echo "Service not running, starting fresh..."
-              sudo systemctl start ${{ env.SERVICE_NAME }}
-              sleep 5
-            fi
+            # systemd 서비스 재시작 (uvicorn)
+            echo "Restarting AI service via systemd..."
+            sudo systemctl restart ${{ env.SERVICE_NAME }}
+
+            # 시작 대기
+            sleep 5
 
             # 서비스 상태 확인
             if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
-              echo "✅ Service is running"
+              echo "✅ Service restarted successfully"
               sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
             else
-              echo "❌ Service failed to start/reload"
+              echo "❌ Service failed to start"
               sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
               exit 1
             fi
@@ -508,7 +503,7 @@ jobs:
             **커밋:** `${{ github.event.workflow_run.head_sha || github.sha }}`
             **서비스:** systemd (${{ env.SERVICE_NAME }})
 
-            ${{ steps.deploy.outcome == 'failure' && '⚠️ 자동 롤백 시도됨' || '🎉 Graceful reload 완료' }}
+            ${{ steps.deploy.outcome == 'failure' && '⚠️ 자동 롤백 시도됨' || '🎉 배포 완료' }}
 
             [📋 배포 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           embed-color: ${{ steps.deploy.outcome == 'success' && '3066993' || '15158332' }}
