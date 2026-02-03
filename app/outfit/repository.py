@@ -36,7 +36,7 @@ class ClothingRepository:
 
     async def search_by_query(
         self,
-        user_id: str,
+        user_id: int,
         query: SearchQuery,
         top_k: int = 5,
     ) -> SearchResult:
@@ -85,7 +85,7 @@ class ClothingRepository:
 
     async def search_multiple(
         self,
-        user_id: str,
+        user_id: int,
         queries: list[SearchQuery],
         top_k: int = 5,
     ) -> list[SearchResult]:

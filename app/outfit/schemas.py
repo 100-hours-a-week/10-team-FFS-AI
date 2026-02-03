@@ -40,14 +40,32 @@ class SearchQuery(BaseSchema):
 
 
 class OutfitRequest(BaseSchema):
-    user_id: str = Field(..., description="사용자 ID")
+    user_id: int = Field(..., description="사용자 ID")
     query: str = Field(..., description="사용자 자연어 요청")
+    session_id: str | None = Field(default=None, description="멀티턴 대화 세션 ID")
+    weather: "Weather | None" = Field(default=None, description="날씨 정보")
+    urls: "list[UrlInfo] | None" = Field(
+        default=None, description="VTON용 URL 정보 (V1에서는 null)"
+    )
+
+
+class Weather(BaseSchema):
+    temperature: int = Field(..., description="온도 (섭씨)")
+    condition: str = Field(..., description="날씨 상태 (sunny, cloudy, rainy 등)")
+
+
+class UrlInfo(BaseSchema):
+    file_id: int = Field(..., description="파일 ID")
+    object_key: str = Field(..., description="S3 오브젝트 키")
+    presigned_url: str = Field(..., description="Presigned URL")
 
 
 class ClothingCandidate(BaseSchema):
     clothes_id: int = Field(..., description="의류 ID")
     image_url: str = Field(..., description="이미지 URL")
-    category: str = Field(..., description="카테고리 (상의, 하의, 아우터 등)")
+    category: str = Field(
+        ..., description="카테고리 (TOP, BOTTOM, DRESS, SHOES, ACCESSORY, ETC)"
+    )
     color: list[str] = Field(default_factory=list, description="색상 목록")
     style_tags: list[str] = Field(default_factory=list, description="스타일 태그")
     caption: str | None = Field(default=None, description="캡션")
@@ -71,12 +89,16 @@ class OutfitItem(BaseSchema):
 class Outfit(BaseSchema):
     outfit_id: str = Field(..., description="코디 고유 ID (UUID)")
     description: str = Field(..., description="코디 설명")
-    items: list[OutfitItem] = Field(default_factory=list, description="아이템 목록")
+    clothes_ids: list[int] = Field(default_factory=list, description="의류 ID 목록")
     fallback_notice: str | None = Field(
         default=None, description="대체 안내 메시지 (아이템 부족 시)"
+    )
+    file_id: int | None = Field(
+        default=None, description="VTON 이미지 파일 ID (V1에서는 null)"
     )
 
 
 class OutfitResponse(BaseSchema):
     query_summary: str = Field(..., description="사용자 요청 요약")
     outfits: list[Outfit] = Field(default_factory=list, description="추천 코디 목록")
+    session_id: str | None = Field(default=None, description="멀티턴 대화 세션 ID")

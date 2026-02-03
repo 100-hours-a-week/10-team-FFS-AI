@@ -5,11 +5,11 @@ from typing import Any
 import httpx
 from qdrant_client.http import models as qdrant_models
 
+from app.closet.schemas import EmbeddingRequest
 from app.config import get_settings
 from app.core.database import get_qdrant_client
 from app.embedding.exceptions import ExternalAPIError, VectorDBError
 from app.embedding.formatter import EmbeddingTextFormatter, HybridFormatter
-from app.embedding.schemas import EmbeddingRequest
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class EmbeddingService:
             raise ExternalAPIError("Upstage", str(err)) from err
 
     async def upsert(self: "EmbeddingService", request: EmbeddingRequest) -> bool:
-        embedding_text = self.formatter.format(request.metadata, request.caption)
+        embedding_text = self.formatter.format(request.major, request.extra)
         logger.info("Formatted embedding text: %s...", embedding_text[:100])
 
         vector = await self.get_embedding(embedding_text)
@@ -64,16 +64,16 @@ class EmbeddingService:
             "userId": request.user_id,
             "clothesId": request.clothes_id,
             "imageUrl": request.image_url,
-            "category": request.metadata.category,
-            "color": request.metadata.color,
-            "material": request.metadata.material,
-            "styleTags": request.metadata.style_tags,
-            "gender": request.metadata.gender,
-            "season": request.metadata.season,
-            "formality": request.metadata.formality,
-            "fit": request.metadata.fit,
-            "occasion": request.metadata.occasion,
-            "caption": request.caption,
+            "category": request.major.category,
+            "color": request.major.color,
+            "material": request.major.material,
+            "styleTags": request.major.style_tags,
+            "gender": request.extra.meta_data.gender,
+            "season": request.extra.meta_data.season,
+            "formality": request.extra.meta_data.formality,
+            "fit": request.extra.meta_data.fit,
+            "occasion": request.extra.meta_data.occasion,
+            "caption": request.extra.caption,
             "embeddingText": embedding_text,
         }
 

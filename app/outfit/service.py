@@ -45,6 +45,7 @@ class OutfitService:
             parsed_query=parsed,
             search_results=search_results,
         )
+        response.session_id = request.session_id
 
         logger.info(f"Generated {len(response.outfits)} outfit recommendations")
 

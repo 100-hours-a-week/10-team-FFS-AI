@@ -17,25 +17,20 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8000, alias="PORT")
 
-    qdrant_host: str = Field(alias="QDRANT_HOST")
-    qdrant_port: int = Field(alias="QDRANT_PORT")
+    qdrant_host: str = Field(default="localhost", alias="QDRANT_HOST")
+    qdrant_port: int = Field(default=6333, alias="QDRANT_PORT")
     qdrant_api_key: str | None = Field(default=None, alias="QDRANT_API_KEY")
-    qdrant_collection_name: str = Field(alias="QDRANT_COLLECTION_NAME")
-    qdrant_use_https: bool = Field(default=True, alias="QDRANT_USE_HTTPS")
+    qdrant_collection_name: str = Field(
+        default="clothes", alias="QDRANT_COLLECTION_NAME"
+    )
+    qdrant_use_https: bool = Field(default=False, alias="QDRANT_USE_HTTPS")
     qdrant_prefer_grpc: bool = Field(default=False, alias="QDRANT_PREFER_GRPC")
 
-    redis_host: str = Field(alias="REDIS_HOST")
-    redis_port: int = Field(alias="REDIS_PORT")
-    redis_db: int = Field(alias="REDIS_DB")
+    redis_host: str = Field(default="localhost", alias="REDIS_HOST")
+    redis_port: int = Field(default=6379, alias="REDIS_PORT")
+    redis_db: int = Field(default=0, alias="REDIS_DB")
     redis_password: str | None = Field(default=None, alias="REDIS_PASSWORD")
     redis_max_connections: int = Field(default=10, alias="REDIS_MAX_CONNECTIONS")
-
-    aws_access_key_id: str | None = Field(default=None, alias="AWS_ACCESS_KEY_ID")
-    aws_secret_access_key: str | None = Field(
-        default=None, alias="AWS_SECRET_ACCESS_KEY"
-    )
-    aws_region: str = Field(default="ap-northeast-2", alias="AWS_REGION")
-    s3_bucket_name: str = Field(default="klosetlab-ai-storage", alias="S3_BUCKET_NAME")
 
     hf_home: str = Field(default="./models", alias="HF_HOME")
     upstage_api_key: str | None = Field(default=None, alias="UPSTAGE_API_KEY")
@@ -49,6 +44,10 @@ class Settings(BaseSettings):
     openai_chat_model: str = Field(default="gpt-4o-mini", alias="OPENAI_CHAT_MODEL")
     llm_timeout: int = Field(default=30, alias="LLM_TIMEOUT")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
+
+    # Gemini Settings
+    gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
 
 
 @lru_cache
