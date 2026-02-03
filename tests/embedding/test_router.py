@@ -12,19 +12,24 @@ def test_create_embedding_api_success(
     # Given
     mock_embedding_service.upsert.return_value = True
     request_data = {
-        "userId": "user123",
+        "userId": 123,
         "clothesId": 1,
-        "imageUrl": "http://example.com/image.jpg",
-        "caption": "test caption",
-        "metadata": {
-            "category": "상의",
+        "imageUrl": "https://s3.example.com/asdfasdfasdfasdf.png",
+        "major": {
+            "category": "TOP",
             "color": ["빨강"],
             "material": ["니트"],
-            "styleTags": ["캐주얼"],
-            "gender": "남성",
-            "season": ["겨울"],
-            "formality": "캐주얼",
-            "fit": "오버핏",
+            "styleTags": ["캐주얼", "따뜻한"],
+        },
+        "extra": {
+            "metaData": {
+                "gender": "남녀공용",
+                "season": ["봄", "가을"],
+                "formality": "세미 포멀",
+                "fit": "오버핏",
+                "occasion": ["면접", "비즈니스 미팅", "출근"],
+            },
+            "caption": "골드 버튼 디테일이 들어간 캐주얼한 스타일의 빨간색 니트입니다.",
         },
     }
 
