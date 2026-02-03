@@ -1,11 +1,11 @@
 from typing import Protocol
 
-from app.embedding.schemas import ClothingMetadata
+from app.closet.schemas import ExtraAttributes, MajorAttributes
 
 
 class EmbeddingTextFormatter(Protocol):
     def format(
-        self: "EmbeddingTextFormatter", metadata: ClothingMetadata, caption: str
+        self: "EmbeddingTextFormatter", major: MajorAttributes, extra: ExtraAttributes
     ) -> str: ...
 
 
@@ -17,41 +17,42 @@ class HybridFormatter:
     """
 
     def format(
-        self: "HybridFormatter", metadata: ClothingMetadata, caption: str
+        self: "HybridFormatter", major: MajorAttributes, extra: ExtraAttributes
     ) -> str:
         parts: list[str] = []
+        meta = extra.meta_data
 
-        color_str = ", ".join(metadata.color) if metadata.color else ""
-        material_str = ", ".join(metadata.material) if metadata.material else ""
+        color_str = ", ".join(major.color) if major.color else ""
+        material_str = ", ".join(major.material) if major.material else ""
 
         if color_str and material_str:
-            parts.append(f"{color_str} {material_str} {metadata.category}")
+            parts.append(f"{color_str} {material_str} {major.category}")
         elif color_str:
-            parts.append(f"{color_str} {metadata.category}")
+            parts.append(f"{color_str} {major.category}")
         elif material_str:
-            parts.append(f"{material_str} {metadata.category}")
+            parts.append(f"{material_str} {major.category}")
         else:
-            parts.append(metadata.category)
+            parts.append(major.category)
 
-        if metadata.formality:
-            parts.append(f"{metadata.formality} 스타일")
+        if meta.formality:
+            parts.append(f"{meta.formality} 스타일")
 
-        if metadata.season:
-            season_str = ", ".join(metadata.season)
+        if meta.season:
+            season_str = ", ".join(meta.season)
             parts.append(f"{season_str}용")
 
-        if metadata.fit:
-            parts.append(metadata.fit)
+        if meta.fit:
+            parts.append(meta.fit)
 
-        if metadata.style_tags:
-            style_tags_str = ", ".join(metadata.style_tags)
+        if major.style_tags:
+            style_tags_str = ", ".join(major.style_tags)
             parts.append(style_tags_str)
 
-        if metadata.occasion:
-            occasion_str = ", ".join(metadata.occasion)
+        if meta.occasion:
+            occasion_str = ", ".join(meta.occasion)
             parts.append(f"{occasion_str}에 적합")
 
-        if caption:
-            parts.append(caption)
+        if extra.caption:
+            parts.append(extra.caption)
 
         return ". ".join(parts)

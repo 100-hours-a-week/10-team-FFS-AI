@@ -11,5 +11,7 @@ python-dotenv
 httpx
 pillow
 tenacity
+
 prometheus-fastapi-instrumentator
-# cd test 5
+google-genai
+aiofiles

@@ -73,12 +73,12 @@ class TestQueryParserSuccess:
                                     "season": None,
                                     "formality": "포멀",
                                     "reference_item": {
-                                        "category": "코트",
+                                        "category": "TOP",
                                         "color": "검정",
                                         "style": "오버핏",
                                         "description": None,
                                     },
-                                    "target_category": "바지",
+                                    "target_category": "BOTTOM",
                                     "constraints": [],
                                 }
                             )
@@ -92,9 +92,9 @@ class TestQueryParserSuccess:
         result = await parser.parse("검정 코트에 어울리는 바지 추천해줘")
 
         # Then
-        assert result.target_category == "바지"
+        assert result.target_category == "BOTTOM"
         assert result.reference_item is not None
-        assert result.reference_item.category == "코트"
+        assert result.reference_item.category == "TOP"
         assert result.reference_item.color == "검정"
         assert result.reference_item.style == "오버핏"
         assert result.is_full_outfit_request() is False
@@ -117,7 +117,7 @@ class TestQueryParserSuccess:
                                     "season": None,
                                     "formality": None,
                                     "reference_item": None,
-                                    "target_category": "바지",
+                                    "target_category": "BOTTOM",
                                     "constraints": [],
                                 }
                             )
@@ -131,7 +131,7 @@ class TestQueryParserSuccess:
         result = await parser.parse("바지 추천해줘")
 
         # Then
-        assert result.target_category == "바지"
+        assert result.target_category == "BOTTOM"
         assert result.reference_item is None
         assert result.is_full_outfit_request() is False
         assert result.is_matching_request() is False
