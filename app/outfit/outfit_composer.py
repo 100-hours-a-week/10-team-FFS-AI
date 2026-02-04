@@ -80,7 +80,6 @@ class OutfitComposer:
             )
             outfit_response = self._parse_response(response, candidates_map)
 
-            # 코디 상세 로깅
             for idx, outfit in enumerate(outfit_response.outfits, 1):
                 items_str = ",".join(str(cid) for cid in outfit.clothes_ids)
                 logger.info(

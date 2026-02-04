@@ -26,7 +26,6 @@ class OutfitService:
         self.composer = composer or OutfitComposer()
 
     async def recommend(self, request: OutfitRequest, trace_id: str | None = None) -> OutfitResponse:
-        # trace_id 생성 (없으면 새로 생성)
         if trace_id is None:
             trace_id = str(uuid.uuid4())
 
@@ -79,7 +78,6 @@ class OutfitService:
         )
         response.session_id = request.session_id
 
-        # 코디 상세 정보 로깅
         outfits_detail = []
         for idx, outfit in enumerate(response.outfits, 1):
             items_str = ",".join(str(cid) for cid in outfit.clothes_ids)
