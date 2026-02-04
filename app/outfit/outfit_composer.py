@@ -47,12 +47,25 @@ class OutfitComposer:
         parsed_query: ParsedQuery,
         search_results: list[SearchResult],
         num_outfits: int = 3,
+        trace_id: str | None = None,
+        user_id: int | None = None,
     ) -> OutfitResponse:
+        log_context = f"trace_id={trace_id}" if trace_id else ""
+        if user_id is not None:
+            log_context += f" user_id={user_id}" if log_context else f"user_id={user_id}"
+
         if not search_results or all(len(r.candidates) == 0 for r in search_results):
+            logger.info(f"No candidates found, returning empty response | {log_context}")
             return self._empty_response(parsed_query)
 
         candidates_map = self._build_candidates_map(search_results)
         prompt = self._build_prompt(parsed_query, search_results, num_outfits)
+
+        logger.info(
+            f"Composing outfits | {log_context} "
+            f"candidate_count={len(candidates_map)} "
+            f"requested_outfits={num_outfits}"
+        )
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -65,13 +78,25 @@ class OutfitComposer:
                 temperature=0.7,
                 max_tokens=1500,
             )
-            return self._parse_response(response, candidates_map)
+            outfit_response = self._parse_response(response, candidates_map)
+
+            for idx, outfit in enumerate(outfit_response.outfits, 1):
+                items_str = ",".join(str(cid) for cid in outfit.clothes_ids)
+                logger.info(
+                    f"Outfit composed | {log_context} "
+                    f"outfit_index={idx} "
+                    f"outfit_id={outfit.outfit_id} "
+                    f"items=[{items_str}] "
+                    f'description="{outfit.description}"'
+                )
+
+            return outfit_response
 
         except LLMError:
             raise
 
         except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to parse LLM response: {e}")
+            logger.error(f"Failed to parse LLM response | {log_context} error={e}")
             raise ParseError(f"Invalid outfit response format: {e}") from e
 
     def _build_prompt(
