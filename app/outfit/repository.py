@@ -88,9 +88,24 @@ class ClothingRepository:
         user_id: int,
         queries: list[SearchQuery],
         top_k: int = 5,
+        trace_id: str | None = None,
     ) -> list[SearchResult]:
+        log_context = f"trace_id={trace_id} " if trace_id else ""
+        logger.info(
+            f"Searching multiple queries | {log_context}"
+            f"user_id={user_id} query_count={len(queries)}"
+        )
+
         tasks = [self.search_by_query(user_id, query, top_k) for query in queries]
-        return await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks)
+
+        total_found = sum(len(r.candidates) for r in results)
+        logger.info(
+            f"Search completed | {log_context}"
+            f"user_id={user_id} total_candidates={total_found}"
+        )
+
+        return results
 
     @staticmethod
     def _to_candidate(hit: ScoredPoint) -> ClothingCandidate:

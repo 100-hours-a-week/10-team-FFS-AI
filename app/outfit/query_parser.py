@@ -48,13 +48,17 @@ class QueryParser:
     def __init__(self, llm_client: LLMClient) -> None:
         self.llm_client = llm_client
 
-    async def parse(self, query: str) -> ParsedQuery:
+    async def parse(self, query: str, trace_id: str | None = None, user_id: int | None = None) -> ParsedQuery:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": query},
         ]
 
-        logger.info(f"Parsing query: {query}")
+        log_context = f"trace_id={trace_id}" if trace_id else ""
+        if user_id is not None:
+            log_context += f" user_id={user_id}" if log_context else f"user_id={user_id}"
+
+        logger.info(f'Parsing query | {log_context} query="{query}"')
 
         try:
             response = await self.llm_client.chat_completion(
@@ -68,11 +72,11 @@ class QueryParser:
             raise
 
         except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to parse LLM response: {e}")
+            logger.error(f"Failed to parse LLM response | {log_context} error={e}")
             raise ParseError(f"Invalid LLM response format: {e}") from e
 
         except Exception as e:
-            logger.exception(f"Unexpected error parsing query: {e}")
+            logger.exception(f"Unexpected error parsing query | {log_context} error={e}")
             raise ParseError(f"Unexpected parsing error: {e}") from e
 
     def _parse_response(self, response: dict[str, Any]) -> ParsedQuery:

@@ -1,4 +1,5 @@
 import logging
+import uuid
 from functools import lru_cache
 
 from app.outfit.llm_client import OpenAIClient
@@ -24,30 +25,79 @@ class OutfitService:
         self.repository = repository or ClothingRepository()
         self.composer = composer or OutfitComposer()
 
-    async def recommend(self, request: OutfitRequest) -> OutfitResponse:
-        logger.info(f"Processing outfit request for user: {request.user_id}")
+    async def recommend(self, request: OutfitRequest, trace_id: str | None = None) -> OutfitResponse:
+        # trace_id 생성 (없으면 새로 생성)
+        if trace_id is None:
+            trace_id = str(uuid.uuid4())
 
-        parsed = await self.query_parser.parse(request.query)
-        logger.info(f"Parsed query: occasion={parsed.occasion}, style={parsed.style}")
+        logger.info(
+            f"Processing outfit request | "
+            f"trace_id={trace_id} "
+            f"user_id={request.user_id} "
+            f"session_id={request.session_id} "
+            f'query="{request.query}"'
+        )
+
+        parsed = await self.query_parser.parse(request.query, trace_id=trace_id, user_id=request.user_id)
+        logger.info(
+            f"Parsed query | "
+            f"trace_id={trace_id} "
+            f"user_id={request.user_id} "
+            f"occasion={parsed.occasion} "
+            f"style={parsed.style} "
+            f"season={parsed.season} "
+            f"formality={parsed.formality}"
+        )
 
         search_queries = self.search_builder.build(parsed)
-        logger.info(f"Generated {len(search_queries)} search queries")
+        logger.info(
+            f"Generated search queries | "
+            f"trace_id={trace_id} "
+            f"user_id={request.user_id} "
+            f"query_count={len(search_queries)}"
+        )
 
         search_results = await self.repository.search_multiple(
             user_id=request.user_id,
             queries=search_queries,
+            trace_id=trace_id,
         )
 
         total_candidates = sum(len(r.candidates) for r in search_results)
-        logger.info(f"Found {total_candidates} total candidates")
+        logger.info(
+            f"Found candidates | "
+            f"trace_id={trace_id} "
+            f"user_id={request.user_id} "
+            f"total_candidates={total_candidates}"
+        )
 
         response = await self.composer.compose(
             parsed_query=parsed,
             search_results=search_results,
+            trace_id=trace_id,
+            user_id=request.user_id,
         )
         response.session_id = request.session_id
 
-        logger.info(f"Generated {len(response.outfits)} outfit recommendations")
+        # 코디 상세 정보 로깅
+        outfits_detail = []
+        for idx, outfit in enumerate(response.outfits, 1):
+            items_str = ",".join(str(cid) for cid in outfit.clothes_ids)
+            desc_preview = outfit.description[:50] if outfit.description else "N/A"
+            outfits_detail.append(
+                f"[outfit_{idx}: id={outfit.outfit_id} "
+                f"items=[{items_str}] "
+                f'desc="{desc_preview}"]'
+            )
+
+        logger.info(
+            f"Generated outfit recommendations | "
+            f"trace_id={trace_id} "
+            f"user_id={request.user_id} "
+            f"session_id={request.session_id} "
+            f"outfit_count={len(response.outfits)} "
+            f"outfits={' '.join(outfits_detail)}"
+        )
 
         return response
 
