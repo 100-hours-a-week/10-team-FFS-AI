@@ -8,7 +8,10 @@ from app.outfit.vton_client import VTONClient, VTONRequest, upload_to_s3
 @pytest.fixture
 def vton_client() -> VTONClient:
     with patch("app.config.get_settings") as mock_settings:
-        mock_settings.return_value = MagicMock(google_api_key="test-key")
+        mock_settings.return_value = MagicMock(
+            gemini_api_key="test-key",
+            vton_model="gemini-3-pro-image-preview",
+        )
         return VTONClient()
 
 
@@ -127,6 +130,8 @@ async def test_upload_to_s3_success(mock_put: MagicMock) -> None:
 async def test_upload_to_s3_failure(mock_put: MagicMock) -> None:
     mock_put.side_effect = Exception("S3 error")
 
-    result = await upload_to_s3("https://s3.presigned.url", b"image-data")
+    with pytest.raises(Exception, match="S3 error"):
+        await upload_to_s3("https://s3.presigned.url", b"image-data")
 
-    assert result is False
+    # Retries validation: tenacity should retry 3 times
+    assert mock_put.call_count == 3

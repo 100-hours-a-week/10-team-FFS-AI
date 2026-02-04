@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -122,20 +122,27 @@ def mock_vton_client() -> MagicMock:
 
 
 @pytest.fixture
+def mock_vton_processor() -> MagicMock:
+    processor = MagicMock()
+    processor.process = AsyncMock()
+    return processor
+
+
+@pytest.fixture
 def service(
     mock_query_parser: MagicMock,
     mock_search_builder: MagicMock,
     mock_repository: MagicMock,
     mock_composer: MagicMock,
-    mock_vton_client: MagicMock,
+    mock_vton_processor: MagicMock,
 ) -> OutfitService:
     service = OutfitService(
         query_parser=mock_query_parser,
         search_builder=mock_search_builder,
         repository=mock_repository,
         composer=mock_composer,
+        vton_processor=mock_vton_processor,
     )
-    service.vton_client = mock_vton_client
     return service
 
 
@@ -176,12 +183,10 @@ class TestOutfitServiceRecommend:
         assert call_args.kwargs["user_id"] == 456
 
     @pytest.mark.asyncio
-    @patch("app.outfit.service.upload_to_s3")
-    async def test_vton_integration_success(
+    async def test_vton_processor_called(
         self,
-        mock_upload: AsyncMock,
         service: OutfitService,
-        mock_vton_client: MagicMock,
+        mock_vton_processor: MagicMock,
     ) -> None:
         # Arrange
         from app.outfit.schemas import UploadSlot
@@ -191,56 +196,21 @@ class TestOutfitServiceRecommend:
         )
         request = OutfitRequest(user_id=123, query="추천해줘", urls=[slot])
 
-        mock_upload.return_value = True
-
         # Act
-        response = await service.recommend(request)
+        await service.recommend(request)
 
         # Assert
-        assert len(response.outfits) == 1
-        outfit = response.outfits[0]
-        assert outfit.file_id == 777
-        assert outfit.vton_error is None
-        mock_vton_client.generate_outfit_image.assert_awaited_once()
-        mock_upload.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    @patch("app.outfit.service.upload_to_s3")
-    async def test_vton_integration_failure(
-        self,
-        mock_upload: AsyncMock,
-        service: OutfitService,
-        mock_vton_client: MagicMock,
-    ) -> None:
-        # Arrange
-        from app.outfit.schemas import UploadSlot
-
-        slot = UploadSlot(
-            file_id=777, object_key="test.jpg", presigned_url="https://s3.com"
-        )
-        request = OutfitRequest(user_id=123, query="추천해줘", urls=[slot])
-
-        mock_vton_client.generate_outfit_image.return_value = VTONResponse(
-            status="failed", error="API Limit Exceeded"
-        )
-
-        # Act
-        response = await service.recommend(request)
-
-        # Assert
-        outfit = response.outfits[0]
-        assert outfit.file_id is None
-        assert "API Limit Exceeded" in outfit.vton_error
+        mock_vton_processor.process.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_no_vton_when_urls_missing(
         self,
         service: OutfitService,
-        mock_vton_client: MagicMock,
+        mock_vton_processor: MagicMock,
     ) -> None:
         request = OutfitRequest(user_id=123, query="추천해줘", urls=[])
 
         response = await service.recommend(request)
 
         assert response.outfits[0].vton_error == "VTON 미요청 (urls 없음)"
-        mock_vton_client.generate_outfit_image.assert_not_called()
+        mock_vton_processor.process.assert_not_called()
