@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
@@ -124,7 +124,9 @@ class TestOutfitServiceRecommend:
 
         response = await service.recommend(request)
 
-        mock_query_parser.parse.assert_awaited_once_with("면접에 입을 옷 추천해줘")
+        mock_query_parser.parse.assert_awaited_once_with(
+            "면접에 입을 옷 추천해줘", trace_id=ANY, user_id=123
+        )
         mock_search_builder.build.assert_called_once()
         mock_repository.search_multiple.assert_awaited_once()
         mock_composer.compose.assert_awaited_once()
