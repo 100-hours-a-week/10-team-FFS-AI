@@ -18,7 +18,9 @@ async def recommend_outfit(
     service: Annotated[OutfitService, Depends(get_outfit_service)],
 ) -> OutfitResponse:
     trace_id = str(uuid.uuid4())
-    query_preview = f"{request.query[:50]}..." if len(request.query) > 50 else request.query
+    query_preview = (
+        f"{request.query[:50]}..." if len(request.query) > 50 else request.query
+    )
 
     logger.info(
         f"Received outfit recommendation request | "

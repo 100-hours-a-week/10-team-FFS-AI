@@ -52,10 +52,14 @@ class OutfitComposer:
     ) -> OutfitResponse:
         log_context = f"trace_id={trace_id}" if trace_id else ""
         if user_id is not None:
-            log_context += f" user_id={user_id}" if log_context else f"user_id={user_id}"
+            log_context += (
+                f" user_id={user_id}" if log_context else f"user_id={user_id}"
+            )
 
         if not search_results or all(len(r.candidates) == 0 for r in search_results):
-            logger.info(f"No candidates found, returning empty response | {log_context}")
+            logger.info(
+                f"No candidates found, returning empty response | {log_context}"
+            )
             return self._empty_response(parsed_query)
 
         candidates_map = self._build_candidates_map(search_results)
@@ -79,6 +83,13 @@ class OutfitComposer:
                 max_tokens=1500,
             )
             outfit_response = self._parse_response(response, candidates_map)
+
+            actual_count = len(outfit_response.outfits)
+            if actual_count < num_outfits:
+                logger.warning(
+                    f"Insufficient outfits generated | {log_context}"
+                    f"requested={num_outfits} actual={actual_count}"
+                )
 
             for idx, outfit in enumerate(outfit_response.outfits, 1):
                 items_str = ",".join(str(cid) for cid in outfit.clothes_ids)

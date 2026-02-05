@@ -48,7 +48,9 @@ class QueryParser:
     def __init__(self, llm_client: LLMClient) -> None:
         self.llm_client = llm_client
 
-    async def parse(self, query: str, trace_id: str | None = None, user_id: int | None = None) -> ParsedQuery:
+    async def parse(
+        self, query: str, trace_id: str | None = None, user_id: int | None = None
+    ) -> ParsedQuery:
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": query},
@@ -56,7 +58,9 @@ class QueryParser:
 
         log_context = f"trace_id={trace_id}" if trace_id else ""
         if user_id is not None:
-            log_context += f" user_id={user_id}" if log_context else f"user_id={user_id}"
+            log_context += (
+                f" user_id={user_id}" if log_context else f"user_id={user_id}"
+            )
 
         logger.info(f'Parsing query | {log_context} query="{query}"')
 
@@ -76,7 +80,9 @@ class QueryParser:
             raise ParseError(f"Invalid LLM response format: {e}") from e
 
         except Exception as e:
-            logger.exception(f"Unexpected error parsing query | {log_context} error={e}")
+            logger.exception(
+                f"Unexpected error parsing query | {log_context} error={e}"
+            )
             raise ParseError(f"Unexpected parsing error: {e}") from e
 
     def _parse_response(self, response: dict[str, Any]) -> ParsedQuery:

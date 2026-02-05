@@ -25,7 +25,9 @@ class OutfitService:
         self.repository = repository or ClothingRepository()
         self.composer = composer or OutfitComposer()
 
-    async def recommend(self, request: OutfitRequest, trace_id: str | None = None) -> OutfitResponse:
+    async def recommend(
+        self, request: OutfitRequest, trace_id: str | None = None
+    ) -> OutfitResponse:
         if trace_id is None:
             trace_id = str(uuid.uuid4())
 
@@ -37,7 +39,9 @@ class OutfitService:
             f'query="{request.query}"'
         )
 
-        parsed = await self.query_parser.parse(request.query, trace_id=trace_id, user_id=request.user_id)
+        parsed = await self.query_parser.parse(
+            request.query, trace_id=trace_id, user_id=request.user_id
+        )
         logger.info(
             f"Parsed query | "
             f"trace_id={trace_id} "
