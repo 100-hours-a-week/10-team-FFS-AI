@@ -4,6 +4,7 @@ from typing import Any
 
 from app.outfit.exceptions import LLMError, ParseError
 from app.outfit.llm_client import LLMClient
+from app.outfit.metrics import measure_time
 from app.outfit.schemas import ParsedQuery, ReferenceItem
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ class QueryParser:
     def __init__(self, llm_client: LLMClient) -> None:
         self.llm_client = llm_client
 
+    @measure_time("query_parser")
     async def parse(
         self, query: str, trace_id: str | None = None, user_id: int | None = None
     ) -> ParsedQuery:

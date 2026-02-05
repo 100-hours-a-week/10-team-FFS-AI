@@ -11,21 +11,20 @@ logger = logging.getLogger(__name__)
 
 
 class VectorRepository(Protocol):
+    async def upsert(
+        self, point_id: int, vector: list[float], payload: dict[str, Any]
+    ) -> bool: ...
 
-    async def upsert(self, point_id: int, vector: list[float], payload: dict[str, Any]) -> bool:
-        ...
-
-    async def delete(self, point_id: int) -> bool:
-        ...
+    async def delete(self, point_id: int) -> bool: ...
 
 
 class QdrantVectorRepository:
-
-
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    async def upsert(self, point_id: int, vector: list[float], payload: dict[str, Any]) -> bool:
+    async def upsert(
+        self, point_id: int, vector: list[float], payload: dict[str, Any]
+    ) -> bool:
         qdrant = await get_qdrant_client()
 
         try:

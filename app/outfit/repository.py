@@ -8,6 +8,7 @@ from qdrant_client.http.models import ScoredPoint
 from app.config import Settings, get_settings
 from app.core.database import get_qdrant_client
 from app.embedding.service import EmbeddingService, get_embedding_service
+from app.outfit.metrics import measure_time
 from app.outfit.schemas import ClothingCandidate, SearchQuery, SearchResult
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,6 @@ class ClothingRepository:
 
         query_vector = await embedding_service.get_embedding(query.text)
 
-        # 필터 구성: user_id 필수 + category 선택
         must_conditions: list[qdrant_models.Condition] = [
             qdrant_models.FieldCondition(
                 key="userId",
@@ -83,6 +83,7 @@ class ClothingRepository:
 
         return SearchResult(category=category, candidates=candidates)
 
+    @measure_time("vector_search")
     async def search_multiple(
         self,
         user_id: int,
@@ -114,7 +115,7 @@ class ClothingRepository:
         raw_color = payload.get("color")
         if raw_color is None:
             color_list: list[str] = []
-        # 하위호환성 추후 제거
+
         elif isinstance(raw_color, str):
             color_list = [raw_color] if raw_color else []
         else:
