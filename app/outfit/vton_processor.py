@@ -1,7 +1,8 @@
 import logging
 
+from app.closet.s3_client import S3Client
 from app.outfit.schemas import OutfitResponse, UploadSlot
-from app.outfit.vton_client import VTONClient, VTONRequest, upload_to_s3
+from app.outfit.vton_client import VTONClient, VTONRequest
 
 logger = logging.getLogger(__name__)
 
@@ -9,6 +10,7 @@ logger = logging.getLogger(__name__)
 class VTONProcessor:
     def __init__(self, vton_client: VTONClient | None = None) -> None:
         self.vton_client = vton_client or VTONClient()
+        self.s3_client = S3Client()
 
     async def process(
         self,
@@ -19,6 +21,8 @@ class VTONProcessor:
         for i, outfit in enumerate(response.outfits):
             if i >= len(upload_slots):
                 logger.warning(f"Not enough upload slots for outfit {i}")
+                # 슬롯이 모자라도 남은 의류는 처리하거나, 여기서 멈추거나 정책 결정 필요
+                # 일단은 break
                 break
 
             slot = upload_slots[i]
@@ -33,7 +37,24 @@ class VTONProcessor:
 
             if vton_response.status == "completed" and vton_response.image_data:
                 try:
-                    await upload_to_s3(slot.presigned_url, vton_response.image_data)
+                    # [Standardization] WEBP/PNG -> JPEG 변환
+                    import io
+
+                    from PIL import Image
+
+                    with Image.open(io.BytesIO(vton_response.image_data)) as img:
+                        img = img.convert("RGB")  # 투명도 제거 및 호환성 확보
+                        buffer = io.BytesIO()
+                        img.save(buffer, format="JPEG", quality=95)
+                        final_image_data = buffer.getvalue()
+
+                    logger.info(
+                        f"Converted image format to JPEG (Size: {len(final_image_data)} bytes)"
+                    )
+
+                    await self.s3_client.put_image(
+                        slot.presigned_url, final_image_data, content_type="image/jpeg"
+                    )
                     outfit.file_id = slot.file_id
                     logger.info(
                         f"VTON completed for outfit {outfit.outfit_id}, file_id={slot.file_id}"
