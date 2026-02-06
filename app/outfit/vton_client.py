@@ -138,8 +138,9 @@ Generate a single image of a fashion model wearing ALL of these items as a coord
                                     image_data = base64.b64decode(
                                         part["inlineData"]["data"]
                                     )
+                                    size_kb = len(image_data) / 1024
                                     logger.info(
-                                        f"Outfit image generated! Size: {len(image_data) / 1024:.1f} KB"
+                                        f"Outfit image generated! Size: {size_kb:.1f} KB"
                                     )
 
                                     return VTONResponse(
