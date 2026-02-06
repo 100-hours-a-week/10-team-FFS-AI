@@ -1,4 +1,7 @@
+import io
 import logging
+
+from PIL import Image
 
 from app.closet.s3_client import S3Client
 from app.outfit.schemas import OutfitResponse, UploadSlot
@@ -38,10 +41,6 @@ class VTONProcessor:
             if vton_response.status == "completed" and vton_response.image_data:
                 try:
                     # [Standardization] WEBP/PNG -> JPEG 변환
-                    import io
-
-                    from PIL import Image
-
                     with Image.open(io.BytesIO(vton_response.image_data)) as img:
                         img = img.convert("RGB")  # 투명도 제거 및 호환성 확보
                         buffer = io.BytesIO()

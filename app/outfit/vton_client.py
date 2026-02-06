@@ -128,10 +128,12 @@ Generate a single image of a fashion model wearing ALL of these items as a coord
 
         # 3. API 호출
         try:
-            url = f"{self.api_url}?key={self.api_key}"
+            headers = {"x-goog-api-key": self.api_key}
 
             async with httpx.AsyncClient(timeout=180.0) as client:
-                response = await client.post(url, json=payload)
+                response = await client.post(
+                    self.api_url, json=payload, headers=headers
+                )
 
                 if response.status_code == 200:
                     result = response.json()
