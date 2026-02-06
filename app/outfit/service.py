@@ -10,6 +10,7 @@ from app.outfit.query_parser import QueryParser
 from app.outfit.repository import ClothingRepository
 from app.outfit.schemas import OutfitRequest, OutfitResponse
 from app.outfit.search_query_builder import SearchQueryBuilder
+from app.outfit.vton_processor import VTONProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,13 @@ class OutfitService:
         search_builder: SearchQueryBuilder | None = None,
         repository: ClothingRepository | None = None,
         composer: OutfitComposer | None = None,
+        vton_processor: VTONProcessor | None = None,
     ) -> None:
         self.query_parser = query_parser or QueryParser(llm_client=OpenAIClient())
         self.search_builder = search_builder or SearchQueryBuilder()
         self.repository = repository or ClothingRepository()
         self.composer = composer or OutfitComposer()
+        self.vton_processor = vton_processor or VTONProcessor()
 
     async def recommend(
         self, request: OutfitRequest, trace_id: str | None = None
@@ -105,6 +108,14 @@ class OutfitService:
             f"outfit_count={len(response.outfits)} "
             f"outfits={' '.join(outfits_detail)}"
         )
+
+        # VTON 이미지 생성 (urls가 있는 경우에만)
+        if request.urls:
+            await self.vton_processor.process(response, request.urls)
+        else:
+            # urls가 없으면 VTON 미요청으로 표시
+            for outfit in response.outfits:
+                outfit.vton_error = "VTON 미요청 (urls 없음)"
 
         return response
 

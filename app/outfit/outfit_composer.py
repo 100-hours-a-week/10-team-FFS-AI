@@ -8,6 +8,7 @@ from app.outfit.metrics import measure_time
 from app.outfit.schemas import (
     ClothingCandidate,
     Outfit,
+    OutfitItem,
     OutfitResponse,
     ParsedQuery,
     SearchResult,
@@ -166,11 +167,22 @@ class OutfitComposer:
         outfits = []
         for outfit_data in data.get("outfits", []):
             clothes_ids = []
+            items = []
             for item_data in outfit_data.get("items", []):
                 clothes_id = item_data["clothes_id"]
 
                 if clothes_id in candidates_map:
+                    candidate = candidates_map[clothes_id]
                     clothes_ids.append(clothes_id)
+                    # OutfitItem 객체 생성 및 리스트 추가
+                    items.append(
+                        OutfitItem(
+                            clothes_id=clothes_id,
+                            image_url=candidate.image_url,
+                            category=candidate.category,
+                            role=item_data.get("role", "기타"),
+                        )
+                    )
                 else:
                     logger.warning(f"LLM returned invalid clothes_id: {clothes_id}")
 
@@ -180,6 +192,7 @@ class OutfitComposer:
                         outfit_id=str(uuid.uuid4()),
                         description=outfit_data.get("description", ""),
                         clothes_ids=clothes_ids,
+                        items=items,
                     )
                 )
 
