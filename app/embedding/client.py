@@ -10,12 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 class EmbeddingClient(Protocol):
+    async def embed(self, text: str) -> list[float]: ...
 
-    async def embed(self, text: str) -> list[float]:
-        ...
 
 class UpstageEmbeddingClient:
-
     def __init__(self) -> None:
         self.settings = get_settings()
         self.base_url = "https://api.upstage.ai/v1/solar/embeddings"

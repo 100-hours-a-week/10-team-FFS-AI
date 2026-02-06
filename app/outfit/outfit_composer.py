@@ -4,6 +4,7 @@ import uuid
 
 from app.outfit.exceptions import LLMError, ParseError
 from app.outfit.llm_client import LLMClient, OpenAIClient
+from app.outfit.metrics import measure_time
 from app.outfit.schemas import (
     ClothingCandidate,
     Outfit,
@@ -42,6 +43,7 @@ class OutfitComposer:
     def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm_client = llm_client or OpenAIClient()
 
+    @measure_time("outfit_composer")
     async def compose(
         self,
         parsed_query: ParsedQuery,
@@ -166,7 +168,7 @@ class OutfitComposer:
             clothes_ids = []
             for item_data in outfit_data.get("items", []):
                 clothes_id = item_data["clothes_id"]
-                # 유효한 후보 아이템인지 확인
+
                 if clothes_id in candidates_map:
                     clothes_ids.append(clothes_id)
                 else:
