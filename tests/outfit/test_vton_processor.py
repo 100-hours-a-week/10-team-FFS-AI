@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -10,8 +10,10 @@ from app.outfit.vton_processor import VTONProcessor
 @pytest.fixture
 def mock_vton_client() -> MagicMock:
     client = MagicMock()
+    # Valid 1x1 PNG image bytes
+    valid_image_data = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
     client.generate_outfit_image = AsyncMock(
-        return_value=VTONResponse(status="completed", image_data=b"generated-image")
+        return_value=VTONResponse(status="completed", image_data=valid_image_data)
     )
     return client
 
@@ -51,10 +53,8 @@ def sample_outfit_response() -> OutfitResponse:
 
 class TestVTONProcessor:
     @pytest.mark.asyncio
-    @patch("app.outfit.vton_processor.upload_to_s3")
     async def test_process_success(
         self,
-        mock_upload: AsyncMock,
         processor: VTONProcessor,
         mock_vton_client: MagicMock,
         sample_outfit_response: OutfitResponse,
@@ -62,7 +62,9 @@ class TestVTONProcessor:
         # Arrange
         slot = UploadSlot(file_id=123, object_key="key", presigned_url="http://s3.url")
         upload_slots = [slot]
-        mock_upload.return_value = True
+
+        # Mock S3Client within processor
+        processor.s3_client.put_image = AsyncMock(return_value=True)
 
         # Act
         await processor.process(sample_outfit_response, upload_slots)
@@ -72,13 +74,11 @@ class TestVTONProcessor:
         assert outfit.file_id == 123
         assert outfit.vton_error is None
         mock_vton_client.generate_outfit_image.assert_awaited_once()
-        mock_upload.assert_awaited_once()
+        processor.s3_client.put_image.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch("app.outfit.vton_processor.upload_to_s3")
     async def test_process_failed_generation(
         self,
-        mock_upload: AsyncMock,
         processor: VTONProcessor,
         mock_vton_client: MagicMock,
         sample_outfit_response: OutfitResponse,
@@ -88,6 +88,10 @@ class TestVTONProcessor:
             status="failed", error="Generation Error"
         )
         slot = UploadSlot(file_id=123, object_key="key", presigned_url="http://s3.url")
+
+        # Mock S3Client
+        processor.s3_client.put_image = AsyncMock()
+
         # Act
         await processor.process(sample_outfit_response, [slot])
 
@@ -95,19 +99,19 @@ class TestVTONProcessor:
         outfit = sample_outfit_response.outfits[0]
         assert outfit.file_id is None
         assert "Generation Error" in outfit.vton_error
-        mock_upload.assert_not_called()
+        processor.s3_client.put_image.assert_not_called()
 
     @pytest.mark.asyncio
-    @patch("app.outfit.vton_processor.upload_to_s3")
     async def test_process_failed_upload(
         self,
-        mock_upload: AsyncMock,
         processor: VTONProcessor,
         sample_outfit_response: OutfitResponse,
     ) -> None:
         # Arrange
-        mock_upload.side_effect = Exception("S3 Error")
         slot = UploadSlot(file_id=123, object_key="key", presigned_url="http://s3.url")
+
+        # Mock S3Client to raise exception
+        processor.s3_client.put_image = AsyncMock(side_effect=Exception("S3 Error"))
 
         # Act
         await processor.process(sample_outfit_response, [slot])

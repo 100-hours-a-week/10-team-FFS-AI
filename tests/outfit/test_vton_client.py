@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.outfit.vton_client import VTONClient, VTONRequest, upload_to_s3
+from app.outfit.vton_client import VTONClient, VTONRequest
 
 
 @pytest.fixture
@@ -111,27 +111,3 @@ class TestVTONClient:
 
         assert response.status == "failed"
         assert "API Error: 400" in response.error
-
-
-@pytest.mark.asyncio
-@patch("httpx.AsyncClient.put")
-async def test_upload_to_s3_success(mock_put: MagicMock) -> None:
-    mock_put.return_value = MagicMock(status_code=200)
-    mock_put.return_value.raise_for_status = MagicMock()
-
-    result = await upload_to_s3("https://s3.presigned.url", b"image-data")
-
-    assert result is True
-    mock_put.assert_called_once()
-
-
-@pytest.mark.asyncio
-@patch("httpx.AsyncClient.put")
-async def test_upload_to_s3_failure(mock_put: MagicMock) -> None:
-    mock_put.side_effect = Exception("S3 error")
-
-    with pytest.raises(Exception, match="S3 error"):
-        await upload_to_s3("https://s3.presigned.url", b"image-data")
-
-    # Retries validation: tenacity should retry 3 times
-    assert mock_put.call_count == 3
