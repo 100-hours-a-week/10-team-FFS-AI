@@ -1,8 +1,10 @@
 import logging
+import time
 import uuid
 from functools import lru_cache
 
 from app.outfit.llm_client import OpenAIClient
+from app.outfit.metrics import PIPELINE_TOTAL_DURATION
 from app.outfit.outfit_composer import OutfitComposer
 from app.outfit.query_parser import QueryParser
 from app.outfit.repository import ClothingRepository
@@ -38,6 +40,7 @@ class OutfitService:
             f"session_id={request.session_id} "
             f'query="{request.query}"'
         )
+        total_start = time.perf_counter()
 
         parsed = await self.query_parser.parse(
             request.query, trace_id=trace_id, user_id=request.user_id
@@ -81,6 +84,8 @@ class OutfitService:
             user_id=request.user_id,
         )
         response.session_id = request.session_id
+
+        PIPELINE_TOTAL_DURATION.observe(time.perf_counter() - total_start)
 
         outfits_detail = []
         for idx, outfit in enumerate(response.outfits, 1):
