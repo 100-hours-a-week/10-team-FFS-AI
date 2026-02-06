@@ -9,7 +9,6 @@ import logging
 
 import httpx
 from pydantic import BaseModel, Field
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 logger = logging.getLogger(__name__)
 
@@ -167,35 +166,3 @@ Generate a single image of a fashion model wearing ALL of these items as a coord
         except Exception as e:
             logger.error(f"Exception during API call: {e}")
             return VTONResponse(status="failed", error=str(e))
-
-
-# ... (helper function)
-def detect_content_type(data: bytes) -> str:
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if data.startswith(b"\xff\xd8"):
-        return "image/jpeg"
-    return "image/png"  # Default fallback
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=4, max=10),
-    reraise=True,
-)
-async def upload_to_s3(presigned_url: str, image_data: bytes) -> bool:
-    """S3에 이미지 업로드 (Retry 적용)"""
-    try:
-        content_type = detect_content_type(image_data)
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.put(
-                presigned_url,
-                content=image_data,
-                headers={"Content-Type": content_type},
-            )
-            response.raise_for_status()
-            return True
-    except Exception as e:
-        logger.error(f"S3 upload failed: {e}")
-        raise  # tenacity가 잡아서 재시도할 수 있도록 raise
