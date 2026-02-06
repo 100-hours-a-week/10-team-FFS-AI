@@ -37,6 +37,9 @@ class EmbeddingService:
     async def delete(self, clothes_id: int) -> bool:
         return await self.repository.delete(point_id=clothes_id)
 
+    async def get_embedding(self, text: str) -> list[float]:
+        return await self.client.embed(text)
+
     @staticmethod
     def _build_payload(request: EmbeddingRequest, embedding_text: str) -> dict:
         return {

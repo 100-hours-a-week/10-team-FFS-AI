@@ -31,6 +31,7 @@ def measure_time(stage: str):
                     PIPELINE_STAGE_DURATION.labels(stage=stage).observe(
                         time.perf_counter() - start
                     )
+
             return async_wrapper
         else:
 
@@ -45,4 +46,5 @@ def measure_time(stage: str):
                     )
 
             return sync_wrapper
+
     return decorator
