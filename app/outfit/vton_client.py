@@ -139,7 +139,7 @@ Generate a single image of a fashion model wearing ALL of these items as a coord
                                         part["inlineData"]["data"]
                                     )
                                     logger.info(
-                                        f"Outfit image generated! Size: {len(image_data)/1024:.1f} KB"
+                                        f"Outfit image generated! Size: {len(image_data) / 1024:.1f} KB"
                                     )
 
                                     return VTONResponse(
