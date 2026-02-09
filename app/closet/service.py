@@ -9,6 +9,7 @@ from redis.asyncio import Redis
 from app.closet.gemini_client import GeminiImageAnalyzer
 from app.closet.s3_client import S3Client
 from app.closet.schemas import (
+    AnalyzedItemResult,
     AnalyzeImageItem,
     AnalyzeRequest,
     AnalyzeResponse,
@@ -20,6 +21,7 @@ from app.closet.schemas import (
     TaskResult,
     TaskStatus,
 )
+from app.closet.segmentation import SegmentationService
 from app.core.database import get_redis_client
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,7 @@ class ClosetService:
         self.redis = redis_client
         self.s3_client = S3Client()
         self.gemini_analyzer = GeminiImageAnalyzer()
+        self.segmentation_service = SegmentationService(self.gemini_analyzer)
 
     async def start_analysis(
         self, request: AnalyzeRequest, background_tasks: BackgroundTasks
@@ -63,7 +66,6 @@ class ClosetService:
             TaskResult(
                 task_id=img.task_id,
                 status=TaskStatus.PREPROCESSING,
-                file_id=None,
             )
             for img in request.images
         ]
@@ -123,33 +125,60 @@ class ClosetService:
         self, batch_id: str, item: AnalyzeImageItem
     ) -> TaskResult:
         task_id = item.task_id
-        file_id = item.file_upload_info.file_id
-        fallbacks: list[str] = []
+        slots = item.file_upload_info or []
 
-        await self._update_task_status(batch_id, task_id, TaskStatus.PREPROCESSING)
-
-        image_bytes, error = await self._safe_download(item.target_image)
-        if image_bytes is None:
+        if not slots:
             return TaskResult(
                 task_id=task_id,
                 status=TaskStatus.FAILED,
-                file_id=file_id,
-                error_message=error,
+                error_message="No upload slots provided",
+            )
+
+        await self._update_task_status(batch_id, task_id, TaskStatus.PREPROCESSING)
+
+        # 1. Segmentation: 모델 이미지 → 개별 아이템 추출
+        try:
+            item_images = await self.segmentation_service.segment(item.target_image)
+        except Exception as e:
+            logger.error(f"Segmentation failed: {e}")
+            return TaskResult(
+                task_id=task_id,
+                status=TaskStatus.FAILED,
+                error_message=f"SEGMENTATION_FAILED: {type(e).__name__}",
             )
 
         await self._update_task_status(batch_id, task_id, TaskStatus.ANALYZING)
 
-        analysis, error = await self._safe_analyze(image_bytes)
-        if error:
-            fallbacks.append(error)
+        # 2. 각 아이템 처리 (슬롯 개수만큼)
+        results: list[AnalyzedItemResult] = []
+        fallbacks: list[str] = []
 
-        error = await self._safe_upload(
-            item.file_upload_info.presigned_url, image_bytes
+        for i, image_bytes in enumerate(item_images[: len(slots)]):
+            slot = slots[i]
+
+            if error := await self._safe_upload(slot.presigned_url, image_bytes):
+                fallbacks.append(error)
+                continue
+
+            analysis, error = await self._safe_analyze(image_bytes)
+            if error:
+                fallbacks.append(error)
+
+            results.append(self._build_item_result(slot.file_id, analysis))
+
+        if not results:
+            return TaskResult(
+                task_id=task_id,
+                status=TaskStatus.FAILED,
+                error_message=f"All items failed: {', '.join(fallbacks)}",
+            )
+
+        return TaskResult(
+            task_id=task_id,
+            status=TaskStatus.COMPLETED,
+            items=results,
+            error_message=f"PARTIAL: {', '.join(fallbacks)}" if fallbacks else None,
         )
-        if error:
-            fallbacks.append(error)
-
-        return self._build_result(task_id, file_id, analysis, fallbacks)
 
     async def _safe_download(self, url: str) -> tuple[bytes | None, str | None]:
         try:
@@ -207,27 +236,18 @@ class ClosetService:
             return value
         return [value] if value else []
 
-    def _build_result(
-        self,
-        task_id: str,
-        file_id: int,
-        analysis: dict,
-        fallbacks: list[str],
-    ) -> TaskResult:
+    def _build_item_result(self, file_id: int, analysis: dict) -> AnalyzedItemResult:
         major = analysis["major"]
         extra = analysis["extra"]
         meta = extra["meta_data"]
 
-        return TaskResult(
-            task_id=task_id,
-            status=TaskStatus.COMPLETED,
+        return AnalyzedItemResult(
             file_id=file_id,
             major=MajorAttributes(**major),
             extra=ExtraAttributes(
                 meta_data=ExtraMetadata(**meta),
                 caption=extra.get("caption"),
             ),
-            error_message=f"PARTIAL: {', '.join(fallbacks)}" if fallbacks else None,
         )
 
     async def _save_batch(self, response: AnalyzeResponse) -> None:
@@ -314,7 +334,6 @@ class ClosetService:
                         TaskResult(
                             task_id=img.task_id,
                             status=TaskStatus.FAILED,
-                            file_id=img.file_upload_info.file_id,
                             error_message=f"BATCH_FAILED: {error}",
                         )
                     )

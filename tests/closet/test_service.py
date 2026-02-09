@@ -51,15 +51,27 @@ def mock_gemini_analyzer() -> MagicMock:
 
 
 @pytest.fixture
+def mock_segmentation_service() -> MagicMock:
+    service = MagicMock()
+    service.segment = AsyncMock(return_value=[b"fake_item_bytes"])
+    return service
+
+
+@pytest.fixture
 def service(
     mock_redis: AsyncMock,
     mock_s3_client: MagicMock,
     mock_gemini_analyzer: MagicMock,
+    mock_segmentation_service: MagicMock,
 ) -> Generator[ClosetService, Any, None]:
     with (
         patch("app.closet.service.S3Client", return_value=mock_s3_client),
         patch(
             "app.closet.service.GeminiImageAnalyzer", return_value=mock_gemini_analyzer
+        ),
+        patch(
+            "app.closet.service.SegmentationService",
+            return_value=mock_segmentation_service,
         ),
     ):
         svc = ClosetService(redis_client=mock_redis)
@@ -77,11 +89,13 @@ async def test_start_analysis(service: ClosetService, mock_redis: AsyncMock) -> 
                 sequence=1,
                 target_image="http://example.com/img.jpg",
                 task_id="task-001",
-                file_upload_info=FileUploadInfo(
-                    file_id=101,
-                    object_key="key/img.jpg",
-                    presigned_url="http://s3.com/put",
-                ),
+                file_upload_info=[
+                    FileUploadInfo(
+                        file_id=101,
+                        object_key="key/img.jpg",
+                        presigned_url="http://s3.com/put",
+                    )
+                ],
             )
         ],
     )
@@ -108,9 +122,9 @@ async def test_process_batch_success(
             sequence=1,
             target_image="http://example.com/img.jpg",
             task_id="task-001",
-            file_upload_info=FileUploadInfo(
-                file_id=101, object_key="key", presigned_url="url"
-            ),
+            file_upload_info=[
+                FileUploadInfo(file_id=101, object_key="key", presigned_url="url")
+            ],
         )
     ]
 
@@ -145,8 +159,8 @@ async def test_process_batch_success(
 
 
 @pytest.mark.asyncio
-async def test_process_batch_download_failure(
-    service: ClosetService, mock_redis: AsyncMock, mock_s3_client: MagicMock
+async def test_process_batch_segmentation_failure(
+    service: ClosetService, mock_redis: AsyncMock, mock_segmentation_service: MagicMock
 ) -> None:
     # Given
     batch_id = "batch-001"
@@ -155,13 +169,13 @@ async def test_process_batch_download_failure(
             sequence=1,
             target_image="http://example.com/img.jpg",
             task_id="task-001",
-            file_upload_info=FileUploadInfo(
-                file_id=101, object_key="key", presigned_url="url"
-            ),
+            file_upload_info=[
+                FileUploadInfo(file_id=101, object_key="key", presigned_url="url")
+            ],
         )
     ]
 
-    mock_s3_client.get_image.side_effect = Exception("Download failed")
+    mock_segmentation_service.segment.side_effect = Exception("Segmentation failed")
 
     initial_state = AnalyzeResponse(
         batch_id=batch_id,
@@ -197,9 +211,9 @@ async def test_process_batch_analysis_failure_fallback(
             sequence=1,
             target_image="http://example.com/img.jpg",
             task_id="task-001",
-            file_upload_info=FileUploadInfo(
-                file_id=101, object_key="key", presigned_url="url"
-            ),
+            file_upload_info=[
+                FileUploadInfo(file_id=101, object_key="key", presigned_url="url")
+            ],
         )
     ]
 

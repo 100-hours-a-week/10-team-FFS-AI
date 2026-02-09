@@ -51,11 +51,13 @@ def test_analyze_images_success(
                 "sequence": 1,
                 "targetImage": "http://example.com/img.jpg",
                 "taskId": "task-1",
-                "fileUploadInfo": {
-                    "fileId": 100,
-                    "objectKey": "key/img.jpg",
-                    "presignedUrl": "http://upload.com",
-                },
+                "fileUploadInfo": [
+                    {
+                        "fileId": 100,
+                        "objectKey": "key/img.jpg",
+                        "presignedUrl": "http://upload.com",
+                    }
+                ],
             }
         ],
     }
