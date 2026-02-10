@@ -119,7 +119,7 @@ class TestVTONProcessor:
         # Assert
         outfit = sample_outfit_response.outfits[0]
         assert outfit.file_id is None
-        assert "S3 업로드 실패" in outfit.vton_error
+        assert "VTON 처리 실패" in outfit.vton_error
 
     @pytest.mark.asyncio
     async def test_process_not_enough_slots(
