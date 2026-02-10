@@ -6,6 +6,8 @@ from inspect import iscoroutinefunction
 
 from prometheus_client import Counter, Histogram
 
+logger = logging.getLogger("performance")
+
 PIPELINE_ERRORS = Counter(
     name="outfit_pipeline_errors_total",
     documentation="Total number of errors in outfit pipeline",
