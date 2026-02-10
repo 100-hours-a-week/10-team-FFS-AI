@@ -34,14 +34,14 @@ class VTONClient:
     OUTFIT_PROMPT = """
 [Outfit Coordination Request]
 I am providing multiple fashion item images.
-Generate a single image of a fashion model wearing ALL of these items as a coordinated outfit.
+Generate a single image of a white mannequin wearing ALL of these items as a coordinated outfit.
 
 [Rules]
-1. Generate a high-end fashion model (NOT an existing person)
-2. The model must wear ALL provided items seamlessly
+1. Use a clean, featureless white mannequin (no face, no skin texture)
+2. The mannequin must wear ALL provided items seamlessly
 3. Keep each item's original design, color, and texture unchanged
-4. Choose an appropriate fashion background
-5. Full body shot, photorealistic, 4K quality
+4. Use a clean white or light gray studio background
+5. Full body shot, photorealistic, 4K quality, studio lighting
 """
 
     def __init__(self) -> None:
