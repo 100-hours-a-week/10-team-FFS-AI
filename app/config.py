@@ -23,8 +23,15 @@ class Settings(BaseSettings):
     qdrant_collection_name: str = Field(
         default="clothes", alias="QDRANT_COLLECTION_NAME"
     )
+    qdrant_commerce_collection_name: str = Field(
+        default="commerce", alias="QDRANT_COMMERCE_COLLECTION_NAME"
+    )
     qdrant_use_https: bool = Field(default=False, alias="QDRANT_USE_HTTPS")
     qdrant_prefer_grpc: bool = Field(default=False, alias="QDRANT_PREFER_GRPC")
+
+    # Naver Shopping API
+    naver_client_id: str | None = Field(default=None, alias="NAVER_CLIENT_ID")
+    naver_client_secret: str | None = Field(default=None, alias="NAVER_CLIENT_SECRET")
 
     redis_host: str = Field(default="localhost", alias="REDIS_HOST")
     redis_port: int = Field(default=6379, alias="REDIS_PORT")

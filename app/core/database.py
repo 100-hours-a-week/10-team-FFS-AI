@@ -55,21 +55,26 @@ async def init_databases() -> None:
             f"Qdrant connected successfully. Collections: {len(collections.collections)}"
         )
 
-        collection_exists = any(
-            col.name == settings.qdrant_collection_name
-            for col in collections.collections
-        )
-        if not collection_exists:
-            logger.info(f"Creating collection '{settings.qdrant_collection_name}'")
-            await _qdrant_client.create_collection(
-                collection_name=settings.qdrant_collection_name,
-                vectors_config=qdrant_models.VectorParams(
-                    size=4096, distance=qdrant_models.Distance.COSINE
-                ),
-            )
-            logger.info(f"Collection '{settings.qdrant_collection_name}' created")
-        else:
-            logger.info(f"Collection '{settings.qdrant_collection_name}' found")
+        existing_names = {col.name for col in collections.collections}
+
+        # 자동 생성할 컬렉션 목록
+        required_collections = [
+            settings.qdrant_collection_name,  # clothes (사용자 옷장)
+            settings.qdrant_commerce_collection_name,  # commerce (커머스 상품)
+        ]
+
+        for col_name in required_collections:
+            if col_name not in existing_names:
+                logger.info(f"Creating collection '{col_name}'")
+                await _qdrant_client.create_collection(
+                    collection_name=col_name,
+                    vectors_config=qdrant_models.VectorParams(
+                        size=4096, distance=qdrant_models.Distance.COSINE
+                    ),
+                )
+                logger.info(f"Collection '{col_name}' created")
+            else:
+                logger.info(f"Collection '{col_name}' found")
 
     except Exception as e:
         logger.error(f"Failed to connect to Qdrant: {e}")

@@ -56,3 +56,6 @@ logs/
 # Cache
 .cache/
 .pytest_cache/
+
+# Data
+commerce_data/
