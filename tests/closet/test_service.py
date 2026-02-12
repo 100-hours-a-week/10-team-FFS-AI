@@ -56,13 +56,11 @@ def service(
     mock_s3_client: MagicMock,
     mock_gemini_analyzer: MagicMock,
 ) -> Generator[ClosetService, Any, None]:
-    with (
-        patch("app.closet.service.S3Client", return_value=mock_s3_client),
-        patch(
-            "app.closet.service.GeminiImageAnalyzer", return_value=mock_gemini_analyzer
-        ),
-    ):
-        svc = ClosetService(redis_client=mock_redis)
+    with patch("app.closet.service.S3Client", return_value=mock_s3_client):
+        svc = ClosetService(
+            redis_client=mock_redis,
+            image_analyzer=mock_gemini_analyzer,
+        )
         yield svc
 
 

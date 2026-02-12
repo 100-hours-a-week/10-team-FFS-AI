@@ -6,7 +6,9 @@ from typing import Annotated
 from fastapi import BackgroundTasks, Depends
 from redis.asyncio import Redis
 
+from app.closet.analyzer_protocol import ImageAnalyzer
 from app.closet.gemini_client import GeminiImageAnalyzer
+from app.closet.mock_analyzer import MockImageAnalyzer
 from app.closet.s3_client import S3Client
 from app.closet.schemas import (
     AnalyzeImageItem,
@@ -20,6 +22,7 @@ from app.closet.schemas import (
     TaskResult,
     TaskStatus,
 )
+from app.config import get_settings
 from app.core.database import get_redis_client
 
 logger = logging.getLogger(__name__)
@@ -49,10 +52,11 @@ class ClosetService:
     def __init__(
         self,
         redis_client: Annotated[Redis, Depends(get_redis_client)],
+        image_analyzer: ImageAnalyzer | None = None,
     ) -> None:
         self.redis = redis_client
         self.s3_client = S3Client()
-        self.gemini_analyzer = GeminiImageAnalyzer()
+        self.image_analyzer: ImageAnalyzer = image_analyzer or GeminiImageAnalyzer()
 
     async def start_analysis(
         self, request: AnalyzeRequest, background_tasks: BackgroundTasks
@@ -161,7 +165,7 @@ class ClosetService:
 
     async def _safe_analyze(self, image_bytes: bytes) -> tuple[dict, str | None]:
         try:
-            result = await self.gemini_analyzer.analyze_image(image_bytes)
+            result = await self.image_analyzer.analyze_image(image_bytes)
             return self._normalize_analysis(result), None
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
@@ -329,4 +333,9 @@ class ClosetService:
 def get_closet_service(
     redis_client: Annotated[Redis, Depends(get_redis_client)],
 ) -> ClosetService:
-    return ClosetService(redis_client=redis_client)
+    settings = get_settings()
+    analyzer: ImageAnalyzer | None = None
+    if settings.use_mock_analyzer:
+        analyzer = MockImageAnalyzer(delay_seconds=4.0)
+        logger.info("Using MockImageAnalyzer for load testing")
+    return ClosetService(redis_client=redis_client, image_analyzer=analyzer)
