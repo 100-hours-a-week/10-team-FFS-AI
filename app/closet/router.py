@@ -4,6 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from app.closet.schemas import AnalyzeRequest, AnalyzeResponse
 from app.closet.service import ClosetService, get_closet_service
+from app.common.metrics import BATCH_STATUS_REQUESTS
 
 router = APIRouter(prefix="/v1/closet", tags=["closet"])
 
@@ -33,6 +34,7 @@ async def get_batch_status(
     batch_id: str,
     service: Annotated[ClosetService, Depends(get_closet_service)],
 ) -> AnalyzeResponse:
+    BATCH_STATUS_REQUESTS.inc()
     response = await service.get_batch_status(batch_id)
     if not response:
         raise HTTPException(status_code=404, detail={"code": "BATCH_NOT_FOUND"})

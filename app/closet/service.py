@@ -22,6 +22,12 @@ from app.closet.schemas import (
     TaskResult,
     TaskStatus,
 )
+from app.common.metrics import (
+    CLOSET_PIPELINE_ERRORS,
+    CLOSET_STAGE_DURATION,
+    REDIS_QUERIES,
+    measure_time,
+)
 from app.config import get_settings
 from app.core.database import get_redis_client
 
@@ -92,10 +98,16 @@ class ClosetService:
 
     async def get_batch_status(self, batch_id: str) -> AnalyzeResponse | None:
         data = await self.redis.get(f"closet:batch:{batch_id}")
+        REDIS_QUERIES.labels(operation="get").inc()
         if not data:
             return None
         return AnalyzeResponse.model_validate_json(data)
 
+    @measure_time(
+        stage="batch_processing",
+        metric=CLOSET_STAGE_DURATION,
+        error_counter=CLOSET_PIPELINE_ERRORS,
+    )
     async def process_batch(
         self, batch_id: str, images: list[AnalyzeImageItem]
     ) -> None:
@@ -155,6 +167,11 @@ class ClosetService:
 
         return self._build_result(task_id, file_id, analysis, fallbacks)
 
+    @measure_time(
+        stage="image_download",
+        metric=CLOSET_STAGE_DURATION,
+        error_counter=CLOSET_PIPELINE_ERRORS,
+    )
     async def _safe_download(self, url: str) -> tuple[bytes | None, str | None]:
         try:
             image_bytes = await self.s3_client.get_image(url)
@@ -163,6 +180,7 @@ class ClosetService:
             logger.error(f"Download failed: {e}")
             return None, f"DOWNLOAD_FAILED: {type(e).__name__}"
 
+    @measure_time("image_analyzer", CLOSET_STAGE_DURATION, CLOSET_PIPELINE_ERRORS)
     async def _safe_analyze(self, image_bytes: bytes) -> tuple[dict, str | None]:
         try:
             result = await self.image_analyzer.analyze_image(image_bytes)
@@ -171,6 +189,11 @@ class ClosetService:
             logger.error(f"Analysis failed: {e}")
             return DEFAULT_ANALYSIS.copy(), f"ANALYSIS_FAILED: {type(e).__name__}"
 
+    @measure_time(
+        stage="image_upload",
+        metric=CLOSET_STAGE_DURATION,
+        error_counter=CLOSET_PIPELINE_ERRORS,
+    )
     async def _safe_upload(self, presigned_url: str, image_bytes: bytes) -> str | None:
         try:
             await self.s3_client.put_image(presigned_url, image_bytes)
@@ -237,6 +260,7 @@ class ClosetService:
     async def _save_batch(self, response: AnalyzeResponse) -> None:
         key = f"closet:batch:{response.batch_id}"
         await self.redis.set(key, response.model_dump_json(), ex=3600)
+        REDIS_QUERIES.labels(operation="set").inc()
 
     async def _update_task_status(
         self, batch_id: str, task_id: str, status: TaskStatus
