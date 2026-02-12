@@ -2,8 +2,8 @@ import logging
 import uuid
 from functools import lru_cache
 
+from app.common.metrics import PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.llm_client import OpenAIClient
-from app.outfit.metrics import PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.outfit_composer import OutfitComposer
 from app.outfit.query_parser import QueryParser
 from app.outfit.repository import ClothingRepository

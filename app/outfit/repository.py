@@ -5,10 +5,10 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qdrant_models
 from qdrant_client.http.models import ScoredPoint
 
+from app.common.metrics import measure_time
 from app.config import Settings, get_settings
 from app.core.database import get_qdrant_client
 from app.embedding.service import EmbeddingService, get_embedding_service
-from app.outfit.metrics import measure_time
 from app.outfit.schemas import ClothingCandidate, SearchQuery, SearchResult
 
 logger = logging.getLogger(__name__)

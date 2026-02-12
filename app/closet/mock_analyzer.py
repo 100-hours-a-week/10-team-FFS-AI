@@ -1,12 +1,9 @@
-
-
 import asyncio
 import copy
 import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
-
 
 
 DEFAULT_MOCK_RESULT: dict[str, Any] = {
@@ -30,8 +27,6 @@ DEFAULT_MOCK_RESULT: dict[str, Any] = {
 
 
 class MockImageAnalyzer:
-
-
     def __init__(self, delay_seconds: float = 4.0) -> None:
         self.delay_seconds = delay_seconds
         logger.info(
@@ -40,9 +35,6 @@ class MockImageAnalyzer:
         )
 
     async def analyze_image(self, image_bytes: bytes) -> dict[str, Any]:
-
         await asyncio.sleep(self.delay_seconds)
-        logger.debug(
-            "Mock analysis completed (%ss)", self.delay_seconds
-        )
+        logger.debug("Mock analysis completed (%ss)", self.delay_seconds)
         return copy.deepcopy(DEFAULT_MOCK_RESULT)
