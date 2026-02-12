@@ -86,6 +86,8 @@ async def init_databases() -> None:
             db=settings.redis_db,
             password=settings.redis_password if settings.redis_password else None,
             max_connections=settings.redis_max_connections,
+            socket_timeout=5.0,
+            socket_connect_timeout=3.0,
             decode_responses=True,
         )
 
