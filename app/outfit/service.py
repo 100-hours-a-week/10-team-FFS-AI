@@ -2,8 +2,8 @@ import logging
 import uuid
 from functools import lru_cache
 
+from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.llm_client import OpenAIClient
-from app.outfit.metrics import PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.outfit_composer import OutfitComposer
 from app.outfit.query_parser import QueryParser
 from app.outfit.repository import ClothingRepository
@@ -29,7 +29,7 @@ class OutfitService:
         self.composer = composer or OutfitComposer()
         self.vton_processor = vton_processor or VTONProcessor()
 
-    @measure_time(stage="total_pipeline", metric=PIPELINE_TOTAL_DURATION)
+    @measure_time(stage="total_pipeline", metric=OUTFIT_PIPELINE_TOTAL_DURATION)
     async def recommend(
         self, request: OutfitRequest, trace_id: str | None = None
     ) -> OutfitResponse:

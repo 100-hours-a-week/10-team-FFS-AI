@@ -40,7 +40,7 @@ ignore = [
 fixable = ["ALL"]
 
 [lint.per-file-ignores]
-"app/outfit/metrics.py" = ["ANN"]
+"app/common/metrics.py" = ["ANN"]
 
 [lint.isort]
 # import 정렬 설정

@@ -2,9 +2,9 @@ import json
 import logging
 from typing import Any
 
+from app.common.metrics import measure_time
 from app.outfit.exceptions import LLMError, ParseError
 from app.outfit.llm_client import LLMClient
-from app.outfit.metrics import measure_time
 from app.outfit.schemas import ParsedQuery, ReferenceItem
 
 logger = logging.getLogger(__name__)

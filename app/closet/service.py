@@ -6,7 +6,9 @@ from typing import Annotated
 from fastapi import BackgroundTasks, Depends
 from redis.asyncio import Redis
 
+from app.closet.analyzer_protocol import ImageAnalyzer
 from app.closet.gemini_client import GeminiImageAnalyzer
+from app.closet.mock_analyzer import MockImageAnalyzer
 from app.closet.s3_client import S3Client
 from app.closet.schemas import (
     AnalyzeImageItem,
@@ -20,6 +22,13 @@ from app.closet.schemas import (
     TaskResult,
     TaskStatus,
 )
+from app.common.metrics import (
+    CLOSET_PIPELINE_ERRORS,
+    CLOSET_STAGE_DURATION,
+    REDIS_QUERIES,
+    measure_time,
+)
+from app.config import get_settings
 from app.core.database import get_redis_client
 
 logger = logging.getLogger(__name__)
@@ -49,10 +58,11 @@ class ClosetService:
     def __init__(
         self,
         redis_client: Annotated[Redis, Depends(get_redis_client)],
+        image_analyzer: ImageAnalyzer | None = None,
     ) -> None:
         self.redis = redis_client
         self.s3_client = S3Client()
-        self.gemini_analyzer = GeminiImageAnalyzer()
+        self.image_analyzer: ImageAnalyzer = image_analyzer or GeminiImageAnalyzer()
 
     async def start_analysis(
         self, request: AnalyzeRequest, background_tasks: BackgroundTasks
@@ -88,10 +98,16 @@ class ClosetService:
 
     async def get_batch_status(self, batch_id: str) -> AnalyzeResponse | None:
         data = await self.redis.get(f"closet:batch:{batch_id}")
+        REDIS_QUERIES.labels(operation="get").inc()
         if not data:
             return None
         return AnalyzeResponse.model_validate_json(data)
 
+    @measure_time(
+        stage="batch_processing",
+        metric=CLOSET_STAGE_DURATION,
+        error_counter=CLOSET_PIPELINE_ERRORS,
+    )
     async def process_batch(
         self, batch_id: str, images: list[AnalyzeImageItem]
     ) -> None:
@@ -151,6 +167,11 @@ class ClosetService:
 
         return self._build_result(task_id, file_id, analysis, fallbacks)
 
+    @measure_time(
+        stage="image_download",
+        metric=CLOSET_STAGE_DURATION,
+        error_counter=CLOSET_PIPELINE_ERRORS,
+    )
     async def _safe_download(self, url: str) -> tuple[bytes | None, str | None]:
         try:
             image_bytes = await self.s3_client.get_image(url)
@@ -159,14 +180,20 @@ class ClosetService:
             logger.error(f"Download failed: {e}")
             return None, f"DOWNLOAD_FAILED: {type(e).__name__}"
 
+    @measure_time("image_analyzer", CLOSET_STAGE_DURATION, CLOSET_PIPELINE_ERRORS)
     async def _safe_analyze(self, image_bytes: bytes) -> tuple[dict, str | None]:
         try:
-            result = await self.gemini_analyzer.analyze_image(image_bytes)
+            result = await self.image_analyzer.analyze_image(image_bytes)
             return self._normalize_analysis(result), None
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
             return DEFAULT_ANALYSIS.copy(), f"ANALYSIS_FAILED: {type(e).__name__}"
 
+    @measure_time(
+        stage="image_upload",
+        metric=CLOSET_STAGE_DURATION,
+        error_counter=CLOSET_PIPELINE_ERRORS,
+    )
     async def _safe_upload(self, presigned_url: str, image_bytes: bytes) -> str | None:
         try:
             await self.s3_client.put_image(presigned_url, image_bytes)
@@ -233,6 +260,7 @@ class ClosetService:
     async def _save_batch(self, response: AnalyzeResponse) -> None:
         key = f"closet:batch:{response.batch_id}"
         await self.redis.set(key, response.model_dump_json(), ex=3600)
+        REDIS_QUERIES.labels(operation="set").inc()
 
     async def _update_task_status(
         self, batch_id: str, task_id: str, status: TaskStatus
@@ -329,4 +357,9 @@ class ClosetService:
 def get_closet_service(
     redis_client: Annotated[Redis, Depends(get_redis_client)],
 ) -> ClosetService:
-    return ClosetService(redis_client=redis_client)
+    settings = get_settings()
+    analyzer: ImageAnalyzer | None = None
+    if settings.use_mock_analyzer:
+        analyzer = MockImageAnalyzer(delay_seconds=4.0)
+        logger.info("Using MockImageAnalyzer for load testing")
+    return ClosetService(redis_client=redis_client, image_analyzer=analyzer)

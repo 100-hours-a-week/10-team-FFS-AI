@@ -8,21 +8,21 @@ from prometheus_client import Counter, Histogram
 
 logger = logging.getLogger("performance")
 
-PIPELINE_ERRORS = Counter(
+
+OUTFIT_PIPELINE_ERRORS = Counter(
     name="outfit_pipeline_errors_total",
     documentation="Total number of errors in outfit pipeline",
     labelnames=["stage", "error_type"],
 )
 
-PIPELINE_STAGE_DURATION = Histogram(
+OUTFIT_PIPELINE_STAGE_DURATION = Histogram(
     name="outfit_pipeline_stage_duration_seconds",
     documentation="Duration of each outfit pipeline stage",
     labelnames=["stage", "status"],
     buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0],
 )
 
-
-PIPELINE_TOTAL_DURATION = Histogram(
+OUTFIT_PIPELINE_TOTAL_DURATION = Histogram(
     name="outfit_pipeline_total_duration_seconds",
     documentation="Total duration of outfit recommendation pipeline",
     labelnames=["status"],
@@ -30,7 +30,37 @@ PIPELINE_TOTAL_DURATION = Histogram(
 )
 
 
-def measure_time(stage: str, metric: Histogram = PIPELINE_STAGE_DURATION):
+CLOSET_PIPELINE_ERRORS = Counter(
+    name="closet_pipeline_errors_total",
+    documentation="Total number of errors in closet analysis pipeline",
+    labelnames=["stage", "error_type"],
+)
+
+CLOSET_STAGE_DURATION = Histogram(
+    name="closet_pipeline_stage_duration_seconds",
+    documentation="Duration of closet analysis stages",
+    labelnames=["stage", "status"],
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0],
+)
+
+
+BATCH_STATUS_REQUESTS = Counter(
+    name="batch_status_requests_total",
+    documentation="Total batch status check requests (Polling)",
+)
+
+REDIS_QUERIES = Counter(
+    name="redis_queries_total",
+    documentation="Total Redis queries",
+    labelnames=["operation"],
+)
+
+
+def measure_time(
+    stage: str,
+    metric: Histogram = OUTFIT_PIPELINE_STAGE_DURATION,
+    error_counter: Counter = OUTFIT_PIPELINE_ERRORS,
+):
     def decorator(func):
         def _get_trace_id(*args, **kwargs):
             if "trace_id" in kwargs:
@@ -57,7 +87,8 @@ def measure_time(stage: str, metric: Histogram = PIPELINE_STAGE_DURATION):
                 except Exception as e:
                     status = "error"
                     error_type = type(e).__name__
-                    PIPELINE_ERRORS.labels(stage=stage, error_type=error_type).inc()
+
+                    error_counter.labels(stage=stage, error_type=error_type).inc()
                     raise e
                 finally:
                     duration = time.perf_counter() - start
@@ -67,7 +98,7 @@ def measure_time(stage: str, metric: Histogram = PIPELINE_STAGE_DURATION):
                     else:
                         metric.labels(status=status).observe(duration)
 
-                    logging.info(
+                    logger.info(
                         f"[PERF] stage={stage} duration={duration:.4f}s "
                         f"trace_id={trace_id} success={status == 'success'}"
                     )
@@ -88,7 +119,7 @@ def measure_time(stage: str, metric: Histogram = PIPELINE_STAGE_DURATION):
                 except Exception as e:
                     status = "error"
                     error_type = type(e).__name__
-                    PIPELINE_ERRORS.labels(stage=stage, error_type=error_type).inc()
+                    error_counter.labels(stage=stage, error_type=error_type).inc()
                     raise e
                 finally:
                     duration = time.perf_counter() - start
@@ -98,7 +129,7 @@ def measure_time(stage: str, metric: Histogram = PIPELINE_STAGE_DURATION):
                     else:
                         metric.labels(status=status).observe(duration)
 
-                    logging.info(
+                    logger.info(
                         f"[PERF] stage={stage} duration={duration:.4f}s "
                         f"trace_id={trace_id} success={status == 'success'}"
                     )

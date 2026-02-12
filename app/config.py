@@ -35,16 +35,17 @@ class Settings(BaseSettings):
     hf_home: str = Field(default="./models", alias="HF_HOME")
     upstage_api_key: str | None = Field(default=None, alias="UPSTAGE_API_KEY")
     embedding_model: str = Field(default="embedding-passage", alias="EMBEDDING_MODEL")
-    # LLM Settings
+
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     openai_chat_model: str = Field(default="gpt-4o-mini", alias="OPENAI_CHAT_MODEL")
     llm_timeout: int = Field(default=30, alias="LLM_TIMEOUT")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
 
-    # Gemini Settings
     gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
     gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     vton_model: str = Field(default="gemini-3-pro-image-preview", alias="VTON_MODEL")
+
+    use_mock_analyzer: bool = Field(default=False, alias="USE_MOCK_ANALYZER")
 
 
 @lru_cache
