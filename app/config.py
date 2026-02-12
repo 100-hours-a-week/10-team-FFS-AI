@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     redis_port: int = Field(default=6379, alias="REDIS_PORT")
     redis_db: int = Field(default=0, alias="REDIS_DB")
     redis_password: str | None = Field(default=None, alias="REDIS_PASSWORD")
-    redis_max_connections: int = Field(default=10, alias="REDIS_MAX_CONNECTIONS")
+    redis_max_connections: int = Field(default=15, alias="REDIS_MAX_CONNECTIONS")
 
     hf_home: str = Field(default="./models", alias="HF_HOME")
     upstage_api_key: str | None = Field(default=None, alias="UPSTAGE_API_KEY")
