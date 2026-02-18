@@ -32,8 +32,6 @@ class Settings(BaseSettings):
     redis_password: str | None = Field(default=None, alias="REDIS_PASSWORD")
     redis_max_connections: int = Field(default=50, alias="REDIS_MAX_CONNECTIONS")
 
-
-
     hf_home: str = Field(default="./models", alias="HF_HOME")
     upstage_api_key: str | None = Field(default=None, alias="UPSTAGE_API_KEY")
     embedding_model: str = Field(default="embedding-passage", alias="EMBEDDING_MODEL")
@@ -48,6 +46,9 @@ class Settings(BaseSettings):
     vton_model: str = Field(default="gemini-3-pro-image-preview", alias="VTON_MODEL")
 
     use_mock_analyzer: bool = Field(default=False, alias="USE_MOCK_ANALYZER")
+
+    # GCP L4 vLLM 서버 주소 (인스턴스 생성 후 .env에 설정)
+    ai_server_url: str = Field(default="", alias="AI_SERVER_URL")
 
 
 @lru_cache

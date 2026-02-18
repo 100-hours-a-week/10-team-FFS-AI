@@ -7,8 +7,8 @@ from fastapi import BackgroundTasks, Depends
 from redis.asyncio import Redis
 
 from app.closet.analyzer_protocol import ImageAnalyzer
-from app.closet.gemini_client import GeminiImageAnalyzer
 from app.closet.mock_analyzer import MockImageAnalyzer
+from app.closet.model_analyzer import ModelServerAnalyzer
 from app.closet.s3_client import S3Client
 from app.closet.schemas import (
     AnalyzeImageItem,
@@ -62,7 +62,12 @@ class ClosetService:
     ) -> None:
         self.redis = redis_client
         self.s3_client = S3Client()
-        self.image_analyzer: ImageAnalyzer = image_analyzer or GeminiImageAnalyzer()
+        if image_analyzer:
+            self.image_analyzer: ImageAnalyzer = image_analyzer
+        elif get_settings().use_mock_analyzer:
+            self.image_analyzer = MockImageAnalyzer()
+        else:
+            self.image_analyzer = ModelServerAnalyzer()
 
     async def start_analysis(
         self, request: AnalyzeRequest, background_tasks: BackgroundTasks
