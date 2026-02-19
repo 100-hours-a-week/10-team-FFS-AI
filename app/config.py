@@ -49,7 +49,9 @@ class Settings(BaseSettings):
 
     # GCP L4 vLLM 서버 주소 (인스턴스 생성 후 .env에 설정)
     ai_server_url: str = Field(default="", alias="AI_SERVER_URL")
-    ai_model_name: str = Field(default="skt/A.X-4.0-VL-Light", alias="AI_MODEL_NAME")
+    ai_model_name: str = Field(
+        default="NCSOFT/VARCO-VISION-2.0-14B", alias="AI_MODEL_NAME"
+    )
 
 
 @lru_cache

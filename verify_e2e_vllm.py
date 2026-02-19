@@ -64,7 +64,7 @@ async def analyze_image(image_bytes: bytes) -> tuple[dict, float]:
     content_type = "image/png" if image_bytes[:4] == b"\x89PNG" else "image/jpeg"
 
     payload = {
-        "model": "skt/A.X-4.0-VL-Light",
+        "model": "NCSOFT/VARCO-VISION-2.0-14B",
         "messages": [
             {
                 "role": "user",

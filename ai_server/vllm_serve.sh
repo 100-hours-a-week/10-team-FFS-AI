@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
-# A.X 4.0 VL Light (SKT) vLLM 서빙 스크립트 (GCP L4 GPU 인스턴스용)
+# VARCO-VISION-2.0-14B (NCSOFT) vLLM 서빙 스크립트 (GCP L4 GPU 인스턴스용)
 #
 # 사용법:
 #   chmod +x vllm_serve.sh
@@ -13,7 +13,7 @@
 
 set -e
 
-MODEL="skt/A.X-4.0-VL-Light"
+MODEL="NCSOFT/VARCO-VISION-2.0-14B"
 PORT=8001
 HOST="0.0.0.0"
 
@@ -23,7 +23,8 @@ echo "   Port:  ${PORT}"
 
 vllm serve "${MODEL}" \
   --dtype float16 \
-  --max-model-len 4096 \
-  --gpu-memory-utilization 0.85 \
+  --max-model-len 2048 \
+  --gpu-memory-utilization 0.92 \
+  --trust-remote-code \
   --port "${PORT}" \
   --host "${HOST}"
