@@ -1,4 +1,4 @@
-"""Qwen2.5-VL-7B 모델 사전 다운로드 스크립트
+"""A.X 4.0 VL Light (SKT) 모델 사전 다운로드 스크립트
 
 GCP 인스턴스에서 vLLM 서버 시작 전에 실행하여
 HuggingFace 모델을 미리 캐싱합니다.
@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "Qwen/Qwen2.5-VL-7B-Instruct"
+MODEL_NAME = "skt/A.X-4.0-VL-Light"
 
 
 def download() -> None:

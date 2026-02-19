@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
-# Qwen2.5-VL-7B vLLM 서빙 스크립트 (GCP L4 GPU 인스턴스용)
+# A.X 4.0 VL Light (SKT) vLLM 서빙 스크립트 (GCP L4 GPU 인스턴스용)
 #
 # 사용법:
 #   chmod +x vllm_serve.sh
@@ -13,7 +13,7 @@
 
 set -e
 
-MODEL="Qwen/Qwen2.5-VL-7B-Instruct"
+MODEL="skt/A.X-4.0-VL-Light"
 PORT=8001
 HOST="0.0.0.0"
 

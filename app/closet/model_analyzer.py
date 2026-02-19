@@ -93,7 +93,7 @@ class ModelServerAnalyzer:
         settings = get_settings()
         self._base_url = base_url or settings.ai_server_url
         self._timeout = timeout
-        self._model = "Qwen/Qwen2.5-VL-7B-Instruct"
+        self._model = settings.ai_model_name
         logger.info(f"ModelServerAnalyzer 초기화: {self._base_url}")
 
     async def analyze_image(self, image_bytes: bytes) -> dict[str, Any]:
