@@ -13,7 +13,7 @@
 
 set -e
 
-MODEL="NCSOFT/VARCO-VISION-2.0-14B"
+MODEL="lee980925/VARCO-VISION-14B-INT4-GPTQ"
 PORT=8001
 HOST="0.0.0.0"
 
@@ -23,8 +23,8 @@ echo "   Port:  ${PORT}"
 
 vllm serve "${MODEL}" \
   --dtype float16 \
-  --max-model-len 2048 \
-  --gpu-memory-utilization 0.92 \
+  --max-model-len 4096 \
+  --gpu-memory-utilization 0.90 \
   --trust-remote-code \
   --port "${PORT}" \
   --host "${HOST}"

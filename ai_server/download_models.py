@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "NCSOFT/VARCO-VISION-2.0-14B"
+MODEL_NAME = "lee980925/VARCO-VISION-14B-INT4-GPTQ"
 
 
 def download() -> None:
