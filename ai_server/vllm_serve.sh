@@ -13,7 +13,7 @@
 
 set -e
 
-MODEL="Bllossom/llama-3.1-Korean-Bllossom-Vision-8B"
+MODEL="lmms-lab/llama3-llava-next-8b"
 PORT=8001
 HOST="0.0.0.0"
 

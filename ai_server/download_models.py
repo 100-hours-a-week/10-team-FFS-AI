@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "Bllossom/llama-3.1-Korean-Bllossom-Vision-8B"
+MODEL_NAME = "lmms-lab/llama3-llava-next-8b"
 
 
 def download() -> None:
