@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
-# VARCO-VISION-2.0-14B (NCSOFT) vLLM 서빙 스크립트 (GCP L4 GPU 인스턴스용)
+# Korean-Bllossom-Vision-8B vLLM 서빙 스크립트 (GCP L4 GPU 인스턴스용)
 #
 # 사용법:
 #   chmod +x vllm_serve.sh
@@ -13,7 +13,7 @@
 
 set -e
 
-MODEL="lee980925/VARCO-VISION-14B-INT4-GPTQ"
+MODEL="Bllossom/llama-3.1-Korean-Bllossom-Vision-8B"
 PORT=8001
 HOST="0.0.0.0"
 
@@ -23,7 +23,7 @@ echo "   Port:  ${PORT}"
 
 vllm serve "${MODEL}" \
   --dtype float16 \
-  --max-model-len 4096 \
+  --max-model-len 8192 \
   --gpu-memory-utilization 0.90 \
   --trust-remote-code \
   --port "${PORT}" \
