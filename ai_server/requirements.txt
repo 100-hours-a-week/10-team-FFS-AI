@@ -1,2 +1,4 @@
-vllm
+vllm==0.15.1
 huggingface_hub
+fastapi
+uvicorn
