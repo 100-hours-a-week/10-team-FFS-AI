@@ -25,7 +25,7 @@ echo "   Port:  ${PORT}"
 vllm serve "${MODEL}" \
   --dtype bfloat16 \
   --max-model-len 4096 \
-  --limit-mm-per-prompt image=1 \
+  --limit-mm-per-prompt '{"image": 1}' \
   --gpu-memory-utilization 0.90 \
   --trust-remote-code \
   --port "${PORT}" \
