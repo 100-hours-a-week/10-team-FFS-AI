@@ -23,7 +23,7 @@ echo "   Port:  ${PORT}"
 
 vllm serve "${MODEL}" \
   --dtype float16 \
-  --max-model-len 8192 \
+  --max-model-len 2048 \
   --gpu-memory-utilization 0.90 \
   --trust-remote-code \
   --port "${PORT}" \
