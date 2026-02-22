@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "lmms-lab/llama3-llava-next-8b"
+MODEL_NAME = "google/gemma-3-4b-it"
 
 
 def download() -> None:

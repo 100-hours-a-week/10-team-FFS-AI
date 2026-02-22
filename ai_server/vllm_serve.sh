@@ -12,8 +12,9 @@
 # ─────────────────────────────────────────────────────────────
 
 set -e
+export VLLM_USE_V1=0
 
-MODEL="lmms-lab/llama3-llava-next-8b"
+MODEL="google/gemma-3-4b-it"
 PORT=8001
 HOST="0.0.0.0"
 
@@ -22,8 +23,9 @@ echo "   Model: ${MODEL}"
 echo "   Port:  ${PORT}"
 
 vllm serve "${MODEL}" \
-  --dtype float16 \
-  --max-model-len 2048 \
+  --dtype bfloat16 \
+  --max-model-len 4096 \
+  --limit-mm-per-prompt image=1 \
   --gpu-memory-utilization 0.90 \
   --trust-remote-code \
   --port "${PORT}" \
