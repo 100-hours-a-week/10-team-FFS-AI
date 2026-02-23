@@ -18,33 +18,44 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 # ── 패션 분석 프롬프트 (Colab 검증 완료) ──
-ANALYSIS_PROMPT = """너는 글로벌 패션 매거진의 에디터이자 15년 경력의 베테랑 패션 MD야.
-제공된 이미지를 전문가의 시각으로 정밀 분석하되, 반드시 약속된 JSON 구조 내에서만 응답해.
+ANALYSIS_PROMPT = """
+[가장 중요한 규칙]
+모든 JSON 필드의 값(Value)은 반드시 **'한국어(Korean)'**로만 작성해줘 (caption 포함).
+단, `category` 필드의 값은 반드시 제공된 대문자 영어만을 사용해야 해.
 
-### 작성 지침 (데이터 퀄리티):
-1. **전문 어휘 사용**: '단순한 빨강' 대신 '버건디', '실버' 대신 '메탈릭 실버' 등 구체적인 색상명을 사용하고, 소재와 핏에 전문 용어를 적용해.
-2. **카테고리 분류**: 반드시 다음 6종 중 하나만 선택해: TOP, BOTTOM, DRESS, SHOES, ACCESSORY, ETC
-3. **디테일 반영**: 이미지에서 보이는 특징적인 디테일(넥라인, 실루엣, 워싱 등)을 style_tags와 caption에 충분히 녹여내.
+이 옷의 이미지를 분석해서 다음 정보를 JSON 형식으로 추출해줘:
+1. category: 카테고리 (반드시 다음 중 하나 선택: TOP, BOTTOM, DRESS, SHOES, ACCESSORY, ETC)
+2. color: 색상 목록 (예: ["검정", "흰색"])
+3. material: 소재 목록 (예: ["면", "데님", "가죽"])
+4. style_tags: 스타일 태그 목록 (예: ["캐주얼", "오버핏", "빈티지"])
+5. gender: 성별 (남성, 여성, 유니섹스 중 하나)
+6. season: 착용 계절 목록 (예: ["봄", "여름", "가을", "겨울 중 해당하는 것"])
+7. formality: 격식 수준 (캐주얼, 세미포멀, 비즈니스캐주얼, 포멀 중 가장 적절한 것)
+8. fit: 핏 (슬림핏, 레귤러핏, 오버핏 등)
+9. occasion: 적절한 상황/장소 목록 (예: ["데이트", "출근", "파티"])
 
-반드시 아래 JSON 구조를 유지하고, 다른 설명 없이 JSON 데이터만 출력해:
+추가로 이미지에 대한 자연스러운 설명을 caption 필드에 작성해줘.
+
+JSON 응답 형식:
 {
   "major": {
-    "category": "TOP, BOTTOM, DRESS, SHOES, ACCESSORY, ETC 중 택1",
-    "color": ["구체적 색상명"],
-    "material": ["소재"],
-    "style_tags": ["전문적인 스타일 명칭 및 트렌드 키워드 (예: 시티보이, 올드머니, 고프코어 등)"]
+    "category": "...",
+    "color": ["..."],
+    "material": ["..."],
+    "style_tags": ["..."]
   },
   "extra": {
     "meta_data": {
-        "gender": "남성, 여성, 유니섹스 중 택1",
-        "season": ["봄", "여름", "가을", "겨울 중 해당하는 것"],
-        "formality": "캐주얼, 세미포멀, 비즈니스캐주얼, 포멀 중 가장 적절한 것",
-        "fit": "실루엣 및 기장감 (예: 오버사이즈드 핏, 크롭 핏, 와이드 실루엣 등)",
-        "occasion": ["적합한 상황/장소"]
+        "gender": "...",
+        "season": ["..."],
+        "formality": "...",
+        "fit": "...",
+        "occasion": ["..."]
     },
-    "caption": "이미지의 시각적 특징(실루엣, 디테일, 분위기 등)을 포함하여 전문가의 관점에서 2문장 내외로 서술"
+    "caption": "..."
   }
-}"""
+}
+"""
 
 # ── 카테고리 정규화 ──
 VALID_CATEGORIES = {"TOP", "BOTTOM", "DRESS", "SHOES", "ACCESSORY", "ETC"}
@@ -73,9 +84,14 @@ CATEGORY_MAP = {
     "SHIRT": "TOP",
     "BLOUSE": "TOP",
     "SWEATER": "TOP",
+    "SWEATSHIRT": "TOP",
     "HOODIE": "TOP",
     "T-SHIRT": "TOP",
     "TSHIRT": "TOP",
+    "KNIT": "TOP",
+    "KNITWEAR": "TOP",
+    "CARDIGAN": "TOP",
+    "PULLOVER": "TOP",
     "SUIT": "TOP",
     "JUMPER": "TOP",
     "UNKNOWN": "ETC",

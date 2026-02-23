@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────────
-# Korean-Bllossom-Vision-8B vLLM 서빙 스크립트 (GCP L4 GPU 인스턴스용)
+# (GCP L4 GPU 인스턴스용)
 #
 # 사용법:
 #   chmod +x vllm_serve.sh
@@ -14,7 +14,7 @@
 set -e
 export VLLM_USE_V1=0
 
-MODEL="google/gemma-3-4b-it"
+MODEL="MISHANM/google-gemma-3-12b-it-fp8"
 PORT=8001
 HOST="0.0.0.0"
 

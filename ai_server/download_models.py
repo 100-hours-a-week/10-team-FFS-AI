@@ -12,7 +12,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "google/gemma-3-4b-it"
+MODEL_NAME = "MISHANM/google-gemma-3-12b-it-fp8"
 
 
 def download() -> None:
