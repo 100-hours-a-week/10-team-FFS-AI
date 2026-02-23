@@ -14,7 +14,7 @@
 set -e
 export VLLM_USE_V1=0
 
-MODEL="MISHANM/google-gemma-3-12b-it-fp8"
+MODEL="RedHatAI/gemma-3-12b-it-quantized.w8a8"
 PORT=8001
 HOST="0.0.0.0"
 

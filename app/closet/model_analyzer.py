@@ -121,10 +121,40 @@ class ModelServerAnalyzer:
         Returns:
             정규화된 분석 결과 dict (major/extra 구조)
         """
-        # 1. 이미지 → base64 인코딩
+        # 1. 이미지 해상도 최적화 (Resizing)
+        # 이미지 크기가 너무 크면 vLLM 메모리/연산 시간에 막대한 악영향을 미침 (12B 속도 최적화)
+        try:
+            import io
+
+            from PIL import Image
+
+            # 원본 이미지 로드
+            img = Image.open(io.BytesIO(image_bytes))
+
+            # 알파 채널 제거 (JPEG 포맷 안전 변환용)
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+
+            # 비율을 유지하면서 가로/세로 중 긴 쪽이 768px을 넘지 않도록 크기 조절
+            max_size = (768, 768)
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+
+            # RAM에 변환된 이미지를 다시 저장
+            output_buffer = io.BytesIO()
+            img.save(output_buffer, format="JPEG", quality=85)
+            image_bytes = output_buffer.getvalue()
+
+            logger.info(
+                f"이미지 최적화 성공: {img.size} 해상도 ({len(image_bytes)} bytes)"
+            )
+
+        except Exception as e:
+            logger.warning(f"이미지 최적화 실패 (원본 이미지로 진행): {e}")
+
+        # 2. 이미지 → base64 인코딩
         image_b64 = base64.b64encode(image_bytes).decode()
 
-        # 2. OpenAI 호환 요청 구성
+        # 3. OpenAI 호환 요청 구성
         payload = {
             "model": self._model,
             "messages": [
