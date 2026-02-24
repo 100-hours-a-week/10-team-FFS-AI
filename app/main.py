@@ -10,6 +10,7 @@ from app.closet.router import router as closet_router
 from app.core.database import check_health, close_databases, init_databases
 from app.embedding.router import router as embedding_router
 from app.outfit.router import router as outfit_router
+from app.shop.router import router as shop_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,6 +51,7 @@ Instrumentator().instrument(app).expose(app)
 app.include_router(embedding_router, prefix="/ai")
 app.include_router(outfit_router, prefix="/ai")
 app.include_router(closet_router, prefix="/ai")
+app.include_router(shop_router, prefix="/ai")
 
 
 @app.get("/")
