@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     qdrant_collection_name: str = Field(
         default="clothes", alias="QDRANT_COLLECTION_NAME"
     )
+    qdrant_shop_collection_name: str = Field(
+        default="commerce", alias="QDRANT_SHOP_COLLECTION_NAME"
+    )
     qdrant_use_https: bool = Field(default=False, alias="QDRANT_USE_HTTPS")
     qdrant_prefer_grpc: bool = Field(default=False, alias="QDRANT_PREFER_GRPC")
 
@@ -31,8 +34,6 @@ class Settings(BaseSettings):
     redis_db: int = Field(default=0, alias="REDIS_DB")
     redis_password: str | None = Field(default=None, alias="REDIS_PASSWORD")
     redis_max_connections: int = Field(default=50, alias="REDIS_MAX_CONNECTIONS")
-
-
 
     hf_home: str = Field(default="./models", alias="HF_HOME")
     upstage_api_key: str | None = Field(default=None, alias="UPSTAGE_API_KEY")
