@@ -1,5 +1,10 @@
 import pytest
 
+from app.common.llm_schemas import (
+    OutfitCombination,
+    OutfitCompositionLLMResponse,
+    OutfitItemLLM,
+)
 from app.outfit.outfit_composer import OutfitComposer
 from app.outfit.schemas import ClothingCandidate, ParsedQuery, SearchResult
 
@@ -107,39 +112,30 @@ class TestBuildPrompt:
         sample_search_results: list[SearchResult],
     ) -> None:
         prompt = composer._build_prompt(sample_parsed_query, sample_search_results, 5)
-
         assert "5개의 코디를 추천" in prompt
 
 
-class TestParseResponse:
+class TestBuildResponse:
     def test_parses_valid_response(
         self,
         composer: OutfitComposer,
         sample_search_results: list[SearchResult],
     ) -> None:
         candidates_map = OutfitComposer._build_candidates_map(sample_search_results)
-        llm_response = {
-            "choices": [
-                {
-                    "message": {
-                        "content": """{
-                            "query_summary": "면접용 포멀 코디",
-                            "outfits": [
-                                {
-                                    "description": "깔끔한 비즈니스 룩",
-                                    "items": [
-                                        {"clothes_id": 101, "role": "상의"},
-                                        {"clothes_id": 201, "role": "하의"}
-                                    ]
-                                }
-                            ]
-                        }"""
-                    }
-                }
-            ]
-        }
+        llm_response = OutfitCompositionLLMResponse(
+            query_summary="면접용 포멀 코디",
+            outfits=[
+                OutfitCombination(
+                    description="깔끔한 비즈니스 룩",
+                    items=[
+                        OutfitItemLLM(clothes_id=101, role="상의"),
+                        OutfitItemLLM(clothes_id=201, role="하의"),
+                    ],
+                )
+            ],
+        )
 
-        result = composer._parse_response(llm_response, candidates_map)
+        result = composer._build_response(llm_response, candidates_map)
 
         assert result.query_summary == "면접용 포멀 코디"
         assert len(result.outfits) == 1
@@ -151,27 +147,17 @@ class TestParseResponse:
         sample_search_results: list[SearchResult],
     ) -> None:
         candidates_map = OutfitComposer._build_candidates_map(sample_search_results)
-        llm_response = {
-            "choices": [
-                {
-                    "message": {
-                        "content": """{
-                            "query_summary": "테스트",
-                            "outfits": [
-                                {
-                                    "description": "테스트 코디",
-                                    "items": [
-                                        {"clothes_id": 999, "role": "상의"}
-                                    ]
-                                }
-                            ]
-                        }"""
-                    }
-                }
-            ]
-        }
+        llm_response = OutfitCompositionLLMResponse(
+            query_summary="테스트",
+            outfits=[
+                OutfitCombination(
+                    description="테스트 코디",
+                    items=[OutfitItemLLM(clothes_id=999, role="상의")],
+                )
+            ],
+        )
 
-        result = composer._parse_response(llm_response, candidates_map)
+        result = composer._build_response(llm_response, candidates_map)
 
         assert len(result.outfits) == 0
 
