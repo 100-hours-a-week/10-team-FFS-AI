@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock
 
 from app.common.llm_schemas import (
     OutfitCombination,
@@ -11,7 +12,9 @@ from app.outfit.schemas import ClothingCandidate, ParsedQuery, SearchResult
 
 @pytest.fixture
 def composer() -> OutfitComposer:
-    return OutfitComposer(llm_client=None)
+    # 순수 로직 테스트에서는 llm_client가 불필요하므로 Mock 주입
+    # llm_client=None 전달 시 OpenAIClient()가 즉시 생성되어 OPENAI_API_KEY 예외 발생
+    return OutfitComposer(llm_client=MagicMock())
 
 
 @pytest.fixture
