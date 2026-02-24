@@ -27,9 +27,7 @@ class TestShopSearchQueryBuilder:
         self,
     ) -> None:
         """특정 카테고리 요청 시 단일 쿼리 생성"""
-        parsed = ShopParsedQuery(
-            style="캐주얼", target_category="BOTTOM"
-        )
+        parsed = ShopParsedQuery(style="캐주얼", target_category="BOTTOM")
 
         queries = self.builder.build(parsed)
 
@@ -38,9 +36,7 @@ class TestShopSearchQueryBuilder:
 
     def test_style_included_in_query_text(self) -> None:
         """스타일이 검색 텍스트에 포함됨"""
-        parsed = ShopParsedQuery(
-            style="Y2K", target_category="TOP"
-        )
+        parsed = ShopParsedQuery(style="Y2K", target_category="TOP")
 
         queries = self.builder.build(parsed)
 
@@ -48,9 +44,7 @@ class TestShopSearchQueryBuilder:
 
     def test_default_style_excluded(self) -> None:
         """기본 스타일('깔끔한')은 텍스트에 포함 안 됨"""
-        parsed = ShopParsedQuery(
-            style="깔끔한", target_category="TOP"
-        )
+        parsed = ShopParsedQuery(style="깔끔한", target_category="TOP")
 
         queries = self.builder.build(parsed)
 
@@ -109,9 +103,7 @@ class TestShopSearchQueryBuilder:
 
     def test_query_type_is_shop_search_query(self) -> None:
         """반환 타입이 ShopSearchQuery인지 확인"""
-        parsed = ShopParsedQuery(
-            style="캐주얼", target_category="TOP"
-        )
+        parsed = ShopParsedQuery(style="캐주얼", target_category="TOP")
 
         queries = self.builder.build(parsed)
 
