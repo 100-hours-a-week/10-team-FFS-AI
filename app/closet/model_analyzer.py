@@ -1,7 +1,7 @@
-"""vLLM 기반 이미지 분석기 — Qwen2.5-VL-7B
+"""vLLM 기반 이미지 분석기 — Gemma-3-12B-it-INT8
 
 ImageAnalyzer 프로토콜을 구현합니다.
-GCP L4에서 실행 중인 vLLM 서버의 OpenAI 호환 API를 호출하여
+GCP L4에서 실행 중인 vLLM 서버(Gemma-3 12B)의 OpenAI 호환 API를 호출하여
 패션 이미지를 분석하고 구조화된 JSON을 반환합니다.
 """
 
@@ -101,7 +101,7 @@ CATEGORY_MAP = {
 class ModelServerAnalyzer:
     """vLLM OpenAI 호환 API를 호출하여 패션 이미지를 분석합니다.
 
-    GCP L4에서 실행 중인 vLLM 서버(Qwen2.5-VL-7B)에 이미지를 전송하고
+    GCP L4에서 실행 중인 vLLM 서버(Gemma-3 12B)에 이미지를 전송하고
     분석 결과를 파싱·정규화하여 반환합니다.
     """
 

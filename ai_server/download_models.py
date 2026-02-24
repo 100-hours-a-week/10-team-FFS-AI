@@ -1,4 +1,4 @@
-"""Korean-Bllossom-Vision-8B 사전 다운로드 스크립트
+"""Gemma-3-12B-it-INT8 (Quantized) 사전 다운로드 스크립트
 
 GCP 인스턴스에서 vLLM 서버 시작 전에 실행하여
 HuggingFace 모델을 미리 캐싱합니다.
