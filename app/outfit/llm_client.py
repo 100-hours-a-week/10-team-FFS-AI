@@ -31,7 +31,7 @@ class OpenAIClient(LLMClient):
 
         self._client = openai.AsyncOpenAI(
             api_key=self.settings.openai_api_key,
-            base_url=self.settings.openai_base_url,
+            base_url=self.settings.openai_base_url or None,
             timeout=float(self.settings.llm_timeout),
             max_retries=self.settings.llm_max_retries,
         )

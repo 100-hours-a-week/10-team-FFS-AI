@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from app.common.llm_schemas import (
     OutfitCombination,
