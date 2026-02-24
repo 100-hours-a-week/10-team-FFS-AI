@@ -22,6 +22,12 @@ from app.closet.schemas import (
     TaskResult,
     TaskStatus,
 )
+from app.common.llm_schemas import (
+    ImageAnalysisResult,
+    ImageExtraAttributes,
+    ImageExtraMetadata,
+    ImageMajorAttributes,
+)
 from app.common.metrics import (
     CLOSET_PIPELINE_ERRORS,
     CLOSET_STAGE_DURATION,
@@ -34,24 +40,13 @@ from app.core.database import get_redis_client
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_ANALYSIS = {
-    "major": {
-        "category": "UNKNOWN",
-        "color": [],
-        "material": [],
-        "style_tags": [],
-    },
-    "extra": {
-        "meta_data": {
-            "gender": None,
-            "season": [],
-            "formality": None,
-            "fit": None,
-            "occasion": [],
-        },
-        "caption": "의류 아이템",
-    },
-}
+_FALLBACK_ANALYSIS = ImageAnalysisResult(
+    major=ImageMajorAttributes(category="ETC"),
+    extra=ImageExtraAttributes(
+        meta_data=ImageExtraMetadata(),
+        caption="의류 아이템",
+    ),
+)
 
 
 class ClosetService:
@@ -181,13 +176,15 @@ class ClosetService:
             return None, f"DOWNLOAD_FAILED: {type(e).__name__}"
 
     @measure_time("image_analyzer", CLOSET_STAGE_DURATION, CLOSET_PIPELINE_ERRORS)
-    async def _safe_analyze(self, image_bytes: bytes) -> tuple[dict, str | None]:
+    async def _safe_analyze(
+        self, image_bytes: bytes
+    ) -> tuple[ImageAnalysisResult, str | None]:
         try:
             result = await self.image_analyzer.analyze_image(image_bytes)
-            return self._normalize_analysis(result), None
+            return result, None
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
-            return DEFAULT_ANALYSIS.copy(), f"ANALYSIS_FAILED: {type(e).__name__}"
+            return _FALLBACK_ANALYSIS, f"ANALYSIS_FAILED: {type(e).__name__}"
 
     @measure_time(
         stage="image_upload",
@@ -202,57 +199,32 @@ class ClosetService:
             logger.error(f"Upload failed: {e}")
             return f"UPLOAD_FAILED: {type(e).__name__}"
 
-    def _normalize_analysis(self, data: dict) -> dict:
-        major = data.get("major", {})
-        extra = data.get("extra", {})
-        meta = extra.get("meta_data", {})
-
-        return {
-            "major": {
-                "category": major.get("category") or "UNKNOWN",
-                "color": self._to_list(major.get("color")),
-                "material": self._to_list(major.get("material")),
-                "style_tags": self._to_list(major.get("style_tags")),
-            },
-            "extra": {
-                "meta_data": {
-                    "gender": meta.get("gender"),
-                    "season": self._to_list(meta.get("season")),
-                    "formality": meta.get("formality"),
-                    "fit": meta.get("fit"),
-                    "occasion": self._to_list(meta.get("occasion")),
-                },
-                "caption": extra.get("caption") or "의류 아이템",
-            },
-        }
-
-    @staticmethod
-    def _to_list(value: object | None) -> list[object]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return value
-        return [value] if value else []
-
     def _build_result(
         self,
         task_id: str,
         file_id: int,
-        analysis: dict,
+        analysis: ImageAnalysisResult,
         fallbacks: list[str],
     ) -> TaskResult:
-        major = analysis["major"]
-        extra = analysis["extra"]
-        meta = extra["meta_data"]
-
         return TaskResult(
             task_id=task_id,
             status=TaskStatus.COMPLETED,
             file_id=file_id,
-            major=MajorAttributes(**major),
+            major=MajorAttributes(
+                category=analysis.major.category,
+                color=analysis.major.color,
+                material=analysis.major.material,
+                style_tags=analysis.major.style_tags,
+            ),
             extra=ExtraAttributes(
-                meta_data=ExtraMetadata(**meta),
-                caption=extra.get("caption"),
+                meta_data=ExtraMetadata(
+                    gender=analysis.extra.meta_data.gender,
+                    season=analysis.extra.meta_data.season,
+                    formality=analysis.extra.meta_data.formality,
+                    fit=analysis.extra.meta_data.fit,
+                    occasion=analysis.extra.meta_data.occasion,
+                ),
+                caption=analysis.extra.caption,
             ),
             error_message=f"PARTIAL: {', '.join(fallbacks)}" if fallbacks else None,
         )

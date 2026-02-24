@@ -30,11 +30,6 @@ class ImageAnalysisResult(BaseModel):
     extra: ImageExtraAttributes
 
 
-# ---------------------------------------------------------------------------
-# Outfit: Query Parser 응답 모델
-# ---------------------------------------------------------------------------
-
-
 class ReferenceItemLLM(BaseModel):
     category: CategoryType | None = Field(default=None, description="카테고리")
     color: str | None = Field(default=None, description="색상")
