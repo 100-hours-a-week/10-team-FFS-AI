@@ -1,17 +1,11 @@
-import json
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.shop.exceptions import ShopParseError
+from app.common.llm_schemas import ShopQueryLLMResponse
+from app.shop.exceptions import ShopLLMError, ShopParseError
 from app.shop.query_parser import ShopQueryParser
 from app.shop.schemas import ShopParsedQuery
-
-
-def _make_llm_response(data: dict[str, Any]) -> dict[str, Any]:
-    """LLM 응답 형식으로 래핑"""
-    return {"choices": [{"message": {"content": json.dumps(data, ensure_ascii=False)}}]}
 
 
 @pytest.fixture
@@ -29,19 +23,12 @@ class TestShopQueryParser:
     async def test_parse_basic_query(
         self, parser: ShopQueryParser, mock_llm: MagicMock
     ) -> None:
-        """기본 쿼리 파싱 확인"""
         mock_llm.chat_completion = AsyncMock(
-            return_value=_make_llm_response(
-                {
-                    "occasion": "일상",
-                    "style": "Y2K",
-                    "season": None,
-                    "price_max": 30000,
-                    "price_min": None,
-                    "brand": None,
-                    "target_category": None,
-                    "constraints": ["크롭탑"],
-                }
+            return_value=ShopQueryLLMResponse(
+                occasion="일상",
+                style="Y2K",
+                price_max=30000,
+                constraints=["크롭탑"],
             )
         )
 
@@ -56,17 +43,11 @@ class TestShopQueryParser:
     async def test_parse_with_brand(
         self, parser: ShopQueryParser, mock_llm: MagicMock
     ) -> None:
-        """브랜드 포함 쿼리 파싱"""
         mock_llm.chat_completion = AsyncMock(
-            return_value=_make_llm_response(
-                {
-                    "occasion": "일상",
-                    "style": "캐주얼",
-                    "brand": "나이키",
-                    "price_max": None,
-                    "price_min": None,
-                    "constraints": [],
-                }
+            return_value=ShopQueryLLMResponse(
+                occasion="일상",
+                style="캐주얼",
+                brand="나이키",
             )
         )
 
@@ -79,8 +60,7 @@ class TestShopQueryParser:
     async def test_parse_defaults(
         self, parser: ShopQueryParser, mock_llm: MagicMock
     ) -> None:
-        """필드 누락 시 기본값 확인"""
-        mock_llm.chat_completion = AsyncMock(return_value=_make_llm_response({}))
+        mock_llm.chat_completion = AsyncMock(return_value=ShopQueryLLMResponse())
 
         result = await parser.parse("아무 옷")
 
@@ -90,55 +70,15 @@ class TestShopQueryParser:
         assert result.constraints == []
 
     @pytest.mark.asyncio
-    async def test_parse_markdown_wrapped_json(
-        self, parser: ShopQueryParser, mock_llm: MagicMock
-    ) -> None:
-        """마크다운 코드블록으로 감싼 JSON 처리"""
-        wrapped = '```json\n{"occasion": "데이트", "style": "로맨틱"}\n```'
-        mock_llm.chat_completion = AsyncMock(
-            return_value={"choices": [{"message": {"content": wrapped}}]}
-        )
-
-        result = await parser.parse("데이트 코디")
-
-        assert result.occasion == "데이트"
-        assert result.style == "로맨틱"
-
-    @pytest.mark.asyncio
-    async def test_parse_invalid_json_raises_error(
-        self, parser: ShopQueryParser, mock_llm: MagicMock
-    ) -> None:
-        """잘못된 JSON 응답 시 ShopParseError 발생"""
-        mock_llm.chat_completion = AsyncMock(
-            return_value={"choices": [{"message": {"content": "이건 JSON이 아닙니다"}}]}
-        )
-
-        with pytest.raises(ShopParseError):
-            await parser.parse("테스트")
-
-    @pytest.mark.asyncio
-    async def test_parse_llm_error_propagation(
-        self, parser: ShopQueryParser, mock_llm: MagicMock
-    ) -> None:
-        """LLMError는 ShopLLMError가 아니므로 ShopParseError로 래핑"""
-        mock_llm.chat_completion = AsyncMock(side_effect=Exception("API 장애"))
-
-        with pytest.raises(ShopParseError):
-            await parser.parse("테스트")
-
-    @pytest.mark.asyncio
     async def test_parse_with_price_range(
         self, parser: ShopQueryParser, mock_llm: MagicMock
     ) -> None:
-        """가격 범위 파싱"""
         mock_llm.chat_completion = AsyncMock(
-            return_value=_make_llm_response(
-                {
-                    "occasion": "일상",
-                    "style": "캐주얼",
-                    "price_min": 10000,
-                    "price_max": 50000,
-                }
+            return_value=ShopQueryLLMResponse(
+                occasion="일상",
+                style="캐주얼",
+                price_min=10000,
+                price_max=50000,
             )
         )
 
@@ -151,13 +91,10 @@ class TestShopQueryParser:
     async def test_parse_with_target_category(
         self, parser: ShopQueryParser, mock_llm: MagicMock
     ) -> None:
-        """특정 카테고리 요청 파싱"""
         mock_llm.chat_completion = AsyncMock(
-            return_value=_make_llm_response(
-                {
-                    "style": "캐주얼",
-                    "target_category": "TOP",
-                }
+            return_value=ShopQueryLLMResponse(
+                style="캐주얼",
+                target_category="TOP",
             )
         )
 
@@ -165,3 +102,35 @@ class TestShopQueryParser:
 
         assert result.target_category == "TOP"
         assert result.is_full_outfit_request() is False
+
+    @pytest.mark.asyncio
+    async def test_response_format_passed_to_llm(
+        self, parser: ShopQueryParser, mock_llm: MagicMock
+    ) -> None:
+        mock_llm.chat_completion = AsyncMock(return_value=ShopQueryLLMResponse())
+
+        await parser.parse("코디 추천")
+
+        call_kwargs = mock_llm.chat_completion.call_args.kwargs
+        assert call_kwargs["response_format"] is ShopQueryLLMResponse
+        assert call_kwargs["temperature"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_llm_error_propagates(
+        self, parser: ShopQueryParser, mock_llm: MagicMock
+    ) -> None:
+        mock_llm.chat_completion = AsyncMock(side_effect=ShopLLMError("API 장애"))
+
+        with pytest.raises(ShopLLMError):
+            await parser.parse("테스트")
+
+    @pytest.mark.asyncio
+    async def test_unexpected_error_raises_parse_error(
+        self, parser: ShopQueryParser, mock_llm: MagicMock
+    ) -> None:
+        mock_llm.chat_completion = AsyncMock(
+            side_effect=RuntimeError("예상치 못한 에러")
+        )
+
+        with pytest.raises(ShopParseError, match="Unexpected parsing error"):
+            await parser.parse("테스트")
