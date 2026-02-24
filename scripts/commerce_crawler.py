@@ -297,7 +297,7 @@ async def process_all_products(products: list[dict]) -> tuple[int, int]:
     embedding_client = UpstageEmbeddingClient()
 
     qdrant = await get_qdrant_client()
-    collection = settings.qdrant_commerce_collection_name
+    collection = settings.qdrant_shop_collection_name
 
     success, fail = 0, 0
 

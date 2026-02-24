@@ -57,7 +57,7 @@ async def init_databases() -> None:
 
         for coll_name in [
             settings.qdrant_collection_name,
-            settings.qdrant_commerce_collection_name,
+            settings.qdrant_shop_collection_name,
         ]:
             collection_exists = any(
                 col.name == coll_name for col in collections.collections
