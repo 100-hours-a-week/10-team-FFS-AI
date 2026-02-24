@@ -14,11 +14,7 @@ from app.shop.shop_composer import ShopComposer
 
 
 def _make_llm_response(data: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "choices": [
-            {"message": {"content": json.dumps(data, ensure_ascii=False)}}
-        ]
-    }
+    return {"choices": [{"message": {"content": json.dumps(data, ensure_ascii=False)}}]}
 
 
 def _make_candidates() -> list[ProductSearchResult]:
@@ -110,9 +106,7 @@ class TestShopComposer:
         assert item.brand == "무신사스탠다드"
 
     @pytest.mark.asyncio
-    async def test_compose_empty_candidates(
-        self, composer: ShopComposer
-    ) -> None:
+    async def test_compose_empty_candidates(self, composer: ShopComposer) -> None:
         """후보 없을 때 빈 응답 반환"""
         parsed = ShopParsedQuery(style="Y2K")
         empty_results: list[ProductSearchResult] = []
@@ -126,18 +120,12 @@ class TestShopComposer:
         assert response.outfits == []
 
     @pytest.mark.asyncio
-    async def test_compose_all_empty_candidates(
-        self, composer: ShopComposer
-    ) -> None:
+    async def test_compose_all_empty_candidates(self, composer: ShopComposer) -> None:
         """모든 카테고리 결과가 비어있을 때"""
         parsed = ShopParsedQuery(style="Y2K")
         results = [
-            ProductSearchResult(
-                category="TOP", candidates=[]
-            ),
-            ProductSearchResult(
-                category="BOTTOM", candidates=[]
-            ),
+            ProductSearchResult(category="TOP", candidates=[]),
+            ProductSearchResult(category="BOTTOM", candidates=[]),
         ]
 
         response = await composer.compose(
@@ -218,11 +206,7 @@ class TestShopComposer:
     ) -> None:
         """잘못된 JSON 응답 시 ShopParseError"""
         mock_llm.chat_completion = AsyncMock(
-            return_value={
-                "choices": [
-                    {"message": {"content": "이건 JSON이 아닙니다"}}
-                ]
-            }
+            return_value={"choices": [{"message": {"content": "이건 JSON이 아닙니다"}}]}
         )
 
         parsed = ShopParsedQuery(style="캐주얼")
@@ -248,9 +232,7 @@ class TestShopComposer:
             )
         )
 
-        parsed = ShopParsedQuery(
-            style="캐주얼", price_max=30000
-        )
+        parsed = ShopParsedQuery(style="캐주얼", price_max=30000)
         results = _make_candidates()
 
         await composer.compose(

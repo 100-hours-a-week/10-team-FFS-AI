@@ -17,8 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class ShopService:
-
-
     def __init__(
         self,
         query_parser: ShopQueryParser | None = None,
@@ -26,15 +24,9 @@ class ShopService:
         repository: ShopProductRepository | None = None,
         composer: ShopComposer | None = None,
     ) -> None:
-        self.query_parser = query_parser or ShopQueryParser(
-            llm_client=OpenAIClient()
-        )
-        self.search_builder = (
-            search_builder or ShopSearchQueryBuilder()
-        )
-        self.repository = (
-            repository or ShopProductRepository()
-        )
+        self.query_parser = query_parser or ShopQueryParser(llm_client=OpenAIClient())
+        self.search_builder = search_builder or ShopSearchQueryBuilder()
+        self.repository = repository or ShopProductRepository()
         self.composer = composer or ShopComposer()
 
     @measure_time(
@@ -46,7 +38,6 @@ class ShopService:
         request: ShopSearchRequest,
         trace_id: str | None = None,
     ) -> ShopSearchResponse:
-
         if trace_id is None:
             trace_id = str(uuid.uuid4())
 
@@ -57,7 +48,6 @@ class ShopService:
             f"session_id={request.session_id} "
             f'query="{request.query}"'
         )
-
 
         parsed = await self.query_parser.parse(
             request.query,
@@ -74,7 +64,6 @@ class ShopService:
             f"brand={parsed.brand}"
         )
 
-
         search_queries = self.search_builder.build(parsed)
         logger.info(
             f"Generated shop search queries | "
@@ -82,24 +71,18 @@ class ShopService:
             f"query_count={len(search_queries)}"
         )
 
-
-        search_results = (
-            await self.repository.search_multiple(
-                queries=search_queries,
-                parsed=parsed,
-                trace_id=trace_id,
-            )
+        search_results = await self.repository.search_multiple(
+            queries=search_queries,
+            parsed=parsed,
+            trace_id=trace_id,
         )
 
-        total_candidates = sum(
-            len(r.candidates) for r in search_results
-        )
+        total_candidates = sum(len(r.candidates) for r in search_results)
         logger.info(
             f"Found shop candidates | "
             f"trace_id={trace_id} "
             f"total_candidates={total_candidates}"
         )
-
 
         response = await self.composer.compose(
             parsed_query=parsed,
@@ -109,11 +92,9 @@ class ShopService:
         )
         response.session_id = request.session_id
 
-
         for idx, outfit in enumerate(response.outfits, 1):
             items_str = ", ".join(
-                f"{item.title}({item.price:,}원)"
-                for item in outfit.items
+                f"{item.title}({item.price:,}원)" for item in outfit.items
             )
             logger.info(
                 f"Shop outfit composed | "
@@ -124,7 +105,6 @@ class ShopService:
             )
 
         return response
-
 
 
 @lru_cache

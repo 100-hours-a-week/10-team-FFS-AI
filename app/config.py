@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     vton_model: str = Field(default="gemini-3-pro-image-preview", alias="VTON_MODEL")
 
+    naver_client_id: str | None = Field(default=None, alias="NAVER_CLIENT_ID")
+    naver_client_secret: str | None = Field(default=None, alias="NAVER_CLIENT_SECRET")
+
     use_mock_analyzer: bool = Field(default=False, alias="USE_MOCK_ANALYZER")
 
 

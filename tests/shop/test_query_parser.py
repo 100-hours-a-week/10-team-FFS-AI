@@ -4,18 +4,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.shop.exceptions import ShopLLMError, ShopParseError
+from app.shop.exceptions import ShopParseError
 from app.shop.query_parser import ShopQueryParser
 from app.shop.schemas import ShopParsedQuery
 
 
 def _make_llm_response(data: dict[str, Any]) -> dict[str, Any]:
     """LLM 응답 형식으로 래핑"""
-    return {
-        "choices": [
-            {"message": {"content": json.dumps(data, ensure_ascii=False)}}
-        ]
-    }
+    return {"choices": [{"message": {"content": json.dumps(data, ensure_ascii=False)}}]}
 
 
 @pytest.fixture
@@ -84,9 +80,7 @@ class TestShopQueryParser:
         self, parser: ShopQueryParser, mock_llm: MagicMock
     ) -> None:
         """필드 누락 시 기본값 확인"""
-        mock_llm.chat_completion = AsyncMock(
-            return_value=_make_llm_response({})
-        )
+        mock_llm.chat_completion = AsyncMock(return_value=_make_llm_response({}))
 
         result = await parser.parse("아무 옷")
 
@@ -102,9 +96,7 @@ class TestShopQueryParser:
         """마크다운 코드블록으로 감싼 JSON 처리"""
         wrapped = '```json\n{"occasion": "데이트", "style": "로맨틱"}\n```'
         mock_llm.chat_completion = AsyncMock(
-            return_value={
-                "choices": [{"message": {"content": wrapped}}]
-            }
+            return_value={"choices": [{"message": {"content": wrapped}}]}
         )
 
         result = await parser.parse("데이트 코디")
@@ -118,9 +110,7 @@ class TestShopQueryParser:
     ) -> None:
         """잘못된 JSON 응답 시 ShopParseError 발생"""
         mock_llm.chat_completion = AsyncMock(
-            return_value={
-                "choices": [{"message": {"content": "이건 JSON이 아닙니다"}}]
-            }
+            return_value={"choices": [{"message": {"content": "이건 JSON이 아닙니다"}}]}
         )
 
         with pytest.raises(ShopParseError):
@@ -131,9 +121,7 @@ class TestShopQueryParser:
         self, parser: ShopQueryParser, mock_llm: MagicMock
     ) -> None:
         """LLMError는 ShopLLMError가 아니므로 ShopParseError로 래핑"""
-        mock_llm.chat_completion = AsyncMock(
-            side_effect=Exception("API 장애")
-        )
+        mock_llm.chat_completion = AsyncMock(side_effect=Exception("API 장애"))
 
         with pytest.raises(ShopParseError):
             await parser.parse("테스트")

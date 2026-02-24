@@ -34,9 +34,7 @@ def mock_search_builder() -> MagicMock:
     builder = MagicMock()
     builder.build = MagicMock(
         return_value=[
-            ShopSearchQuery(
-                text="TOP Y2K", category_filter="TOP"
-            ),
+            ShopSearchQuery(text="TOP Y2K", category_filter="TOP"),
             ShopSearchQuery(
                 text="BOTTOM Y2K",
                 category_filter="BOTTOM",
@@ -202,9 +200,7 @@ class TestShopServiceSearch:
 
         await service.search(request)
 
-        call_args = (
-            mock_repository.search_multiple.call_args
-        )
+        call_args = mock_repository.search_multiple.call_args
         assert "parsed" in call_args.kwargs
         assert "queries" in call_args.kwargs
 
@@ -222,8 +218,6 @@ class TestShopServiceSearch:
 
         await service.search(request)
 
-        call_args = (
-            mock_repository.search_multiple.call_args
-        )
+        call_args = mock_repository.search_multiple.call_args
         # repository.search_multiple에 user_id가 인자로 전달되지 않음
         assert "user_id" not in call_args.kwargs
