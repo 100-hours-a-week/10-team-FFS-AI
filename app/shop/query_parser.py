@@ -40,8 +40,6 @@ SHOP_SYSTEM_PROMPT = """당신은 사용자의 쇼핑 검색 요청을 분석하
 
 
 class ShopQueryParser:
-    
-
     def __init__(self, llm_client: LLMClient) -> None:
         self.llm_client = llm_client
 
@@ -52,7 +50,6 @@ class ShopQueryParser:
         trace_id: str | None = None,
         user_id: int | None = None,
     ) -> ShopParsedQuery:
-        
         messages = [
             {"role": "system", "content": SHOP_SYSTEM_PROMPT},
             {"role": "user", "content": query},
@@ -79,26 +76,17 @@ class ShopQueryParser:
 
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             logger.error(
-                f"Failed to parse shop LLM response | "
-                f"{log_context} error={e}"
+                f"Failed to parse shop LLM response | " f"{log_context} error={e}"
             )
-            raise ShopParseError(
-                f"Invalid LLM response format: {e}"
-            ) from e
+            raise ShopParseError(f"Invalid LLM response format: {e}") from e
 
         except Exception as e:
             logger.exception(
-                f"Unexpected error parsing shop query | "
-                f"{log_context} error={e}"
+                f"Unexpected error parsing shop query | " f"{log_context} error={e}"
             )
-            raise ShopParseError(
-                f"Unexpected parsing error: {e}"
-            ) from e
+            raise ShopParseError(f"Unexpected parsing error: {e}") from e
 
-    def _parse_response(
-        self, response: dict[str, Any]
-    ) -> ShopParsedQuery:
-        
+    def _parse_response(self, response: dict[str, Any]) -> ShopParsedQuery:
         content = response["choices"][0]["message"]["content"]
         data = self._extract_json(content)
 
@@ -114,14 +102,11 @@ class ShopQueryParser:
         )
 
     def _extract_json(self, content: str) -> dict[str, Any]:
-    
         content = content.strip()
 
         if content.startswith("```"):
             lines = content.split("\n")
-            lines = [
-                line for line in lines if not line.startswith("```")
-            ]
+            lines = [line for line in lines if not line.startswith("```")]
             content = "\n".join(lines)
 
         return json.loads(content)

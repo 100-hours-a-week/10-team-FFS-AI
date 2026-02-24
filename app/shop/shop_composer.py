@@ -41,11 +41,7 @@ JSON 형식으로만 응답하세요:
 
 
 class ShopComposer:
-
-
-    def __init__(
-        self, llm_client: LLMClient | None = None
-    ) -> None:
+    def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm_client = llm_client or OpenAIClient()
 
     @measure_time("shop_composer")
@@ -57,33 +53,18 @@ class ShopComposer:
         trace_id: str | None = None,
         user_id: int | None = None,
     ) -> ShopSearchResponse:
-
-        log_context = (
-            f"trace_id={trace_id}" if trace_id else ""
-        )
+        log_context = f"trace_id={trace_id}" if trace_id else ""
         if user_id is not None:
             log_context += (
-                f" user_id={user_id}"
-                if log_context
-                else f"user_id={user_id}"
+                f" user_id={user_id}" if log_context else f"user_id={user_id}"
             )
 
-
-        if not search_results or all(
-            len(r.candidates) == 0 for r in search_results
-        ):
-            logger.info(
-                f"No product candidates, returning empty | "
-                f"{log_context}"
-            )
+        if not search_results or all(len(r.candidates) == 0 for r in search_results):
+            logger.info(f"No product candidates, returning empty | " f"{log_context}")
             return self._empty_response(parsed_query)
 
-        candidates_map = self._build_candidates_map(
-            search_results
-        )
-        prompt = self._build_prompt(
-            parsed_query, search_results, num_outfits
-        )
+        candidates_map = self._build_candidates_map(search_results)
+        prompt = self._build_prompt(parsed_query, search_results, num_outfits)
 
         logger.info(
             f"Composing shop outfits | {log_context} "
@@ -102,9 +83,7 @@ class ShopComposer:
                 temperature=0.7,
                 max_tokens=1500,
             )
-            outfit_response = self._parse_response(
-                response, candidates_map
-            )
+            outfit_response = self._parse_response(response, candidates_map)
 
             actual_count = len(outfit_response.outfits)
             if actual_count < num_outfits:
@@ -126,12 +105,9 @@ class ShopComposer:
             json.JSONDecodeError,
         ) as e:
             logger.error(
-                f"Failed to parse shop LLM response | "
-                f"{log_context} error={e}"
+                f"Failed to parse shop LLM response | " f"{log_context} error={e}"
             )
-            raise ShopParseError(
-                f"Invalid shop outfit response: {e}"
-            ) from e
+            raise ShopParseError(f"Invalid shop outfit response: {e}") from e
 
     def _build_prompt(
         self,
@@ -139,7 +115,6 @@ class ShopComposer:
         results: list[ProductSearchResult],
         num_outfits: int,
     ) -> str:
-
         lines = [
             f"상황: {parsed.occasion}",
             f"스타일: {parsed.style}",
@@ -154,9 +129,7 @@ class ShopComposer:
         if parsed.brand:
             lines.append(f"브랜드: {parsed.brand}")
         if parsed.constraints:
-            lines.append(
-                f"제약사항: {', '.join(parsed.constraints)}"
-            )
+            lines.append(f"제약사항: {', '.join(parsed.constraints)}")
 
         lines.append("")
         lines.append("후보 상품:")
@@ -164,11 +137,7 @@ class ShopComposer:
         for result in results:
             lines.append(f"\n[{result.category}]")
             for c in result.candidates:
-                tags = (
-                    ", ".join(c.style_tags)
-                    if c.style_tags
-                    else "없음"
-                )
+                tags = ", ".join(c.style_tags) if c.style_tags else "없음"
                 lines.append(
                     f"  - ID: {c.product_id}, "
                     f"이름: {c.title}, "
@@ -177,9 +146,7 @@ class ShopComposer:
                     f"스타일: {tags}"
                 )
 
-        lines.append(
-            f"\n{num_outfits}개의 코디를 추천해주세요."
-        )
+        lines.append(f"\n{num_outfits}개의 코디를 추천해주세요.")
 
         return "\n".join(lines)
 
@@ -191,9 +158,7 @@ class ShopComposer:
         candidates_map: dict[str, ProductCandidate] = {}
         for result in results:
             for candidate in result.candidates:
-                candidates_map[candidate.product_id] = (
-                    candidate
-                )
+                candidates_map[candidate.product_id] = candidate
         return candidates_map
 
     def _parse_response(
@@ -201,10 +166,7 @@ class ShopComposer:
         response: dict,
         candidates_map: dict[str, ProductCandidate],
     ) -> ShopSearchResponse:
-
-        content = response["choices"][0]["message"][
-            "content"
-        ]
+        content = response["choices"][0]["message"]["content"]
         data = self._extract_json(content)
 
         outfits = []
@@ -228,10 +190,7 @@ class ShopComposer:
                         )
                     )
                 else:
-                    logger.warning(
-                        f"LLM returned invalid "
-                        f"product_id: {product_id}"
-                    )
+                    logger.warning(f"LLM returned invalid " f"product_id: {product_id}")
 
             if items:
                 outfits.append(
@@ -242,23 +201,16 @@ class ShopComposer:
                 )
 
         return ShopSearchResponse(
-            query_summary=data.get(
-                "query_summary", "쇼핑 코디 추천"
-            ),
+            query_summary=data.get("query_summary", "쇼핑 코디 추천"),
             outfits=outfits,
         )
 
     @staticmethod
     def _extract_json(content: str) -> dict:
-
         content = content.strip()
         if content.startswith("```"):
             lines = content.split("\n")
-            lines = [
-                line
-                for line in lines
-                if not line.startswith("```")
-            ]
+            lines = [line for line in lines if not line.startswith("```")]
             content = "\n".join(lines)
         return json.loads(content)
 
@@ -266,7 +218,6 @@ class ShopComposer:
     def _empty_response(
         parsed: ShopParsedQuery,
     ) -> ShopSearchResponse:
-
         return ShopSearchResponse(
             query_summary="검색 결과가 없습니다",
             outfits=[],
