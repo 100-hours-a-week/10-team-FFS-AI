@@ -16,6 +16,12 @@ from app.closet.schemas import (
     TaskStatus,
 )
 from app.closet.service import ClosetService
+from app.common.llm_schemas import (
+    ImageAnalysisResult,
+    ImageExtraAttributes,
+    ImageExtraMetadata,
+    ImageMajorAttributes,
+)
 
 
 @pytest.fixture
@@ -37,15 +43,18 @@ def mock_s3_client() -> MagicMock:
 def mock_gemini_analyzer() -> MagicMock:
     analyzer = MagicMock()
     analyzer.analyze_image = AsyncMock(
-        return_value={
-            "major": {
-                "category": "셔츠",
-                "color": ["흰색"],
-                "material": [],
-                "style_tags": [],
-            },
-            "extra": {"meta_data": {}, "caption": "흰색 셔츠입니다."},
-        }
+        return_value=ImageAnalysisResult(
+            major=ImageMajorAttributes(
+                category="TOP",
+                color=["흰색"],
+                material=[],
+                style_tags=[],
+            ),
+            extra=ImageExtraAttributes(
+                meta_data=ImageExtraMetadata(),
+                caption="흰색 셔츠입니다.",
+            ),
+        )
     )
     return analyzer
 

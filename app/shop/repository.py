@@ -111,7 +111,7 @@ class ShopProductRepository:
     ) -> list[ProductSearchResult]:
         log_context = f"trace_id={trace_id} " if trace_id else ""
         logger.info(
-            f"Searching shop products | {log_context}query_count={len(queries)}"
+            f"Searching shop products | {log_context}" f"query_count={len(queries)}"
         )
 
         tasks = [self.search_by_query(query, parsed, top_k) for query in queries]
@@ -119,7 +119,7 @@ class ShopProductRepository:
 
         total_found = sum(len(r.candidates) for r in results)
         logger.info(
-            f"Shop search completed | {log_context}total_candidates={total_found}"
+            f"Shop search completed | {log_context}" f"total_candidates={total_found}"
         )
 
         return results

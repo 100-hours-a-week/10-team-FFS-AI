@@ -1,7 +1,6 @@
-import json
 import logging
-from typing import Any
 
+from app.common.llm_schemas import OutfitQueryLLMResponse
 from app.common.metrics import measure_time
 from app.outfit.exceptions import LLMError, ParseError
 from app.outfit.llm_client import LLMClient
@@ -23,26 +22,7 @@ SYSTEM_PROMPT = """당신은 사용자의 코디 요청을 분석하는 AI입니
    - style: 스타일 (오버핏 등)
    - description: 기타 설명
 6. target_category: 찾고 있는 아이템 카테고리 (반드시 다음 중 하나로 매핑: TOP, BOTTOM, DRESS, SHOES, ACCESSORY, ETC). 전체 코디 요청이면 null
-7. constraints: 추가 제약사항 배열 (밝은 색으로, 편한 신발 등)
-
-반드시 JSON만 응답하세요. 설명이나 마크다운 없이 순수 JSON만 출력하세요.
-
-예시 입력: "내일 면접인데 검정 코트에 어울리는 바지 추천해줘"
-예시 출력:
-{
-  "occasion": "면접",
-  "style": "포멀",
-  "season": null,
-  "formality": "포멀",
-  "reference_item": {
-    "category": "TOP",
-    "color": "검정",
-    "style": null,
-    "description": null
-  },
-  "target_category": "BOTTOM",
-  "constraints": []
-}"""
+7. constraints: 추가 제약사항 배열 (밝은 색으로, 편한 신발 등)"""
 
 
 class QueryParser:
@@ -67,19 +47,16 @@ class QueryParser:
         logger.info(f'Parsing query | {log_context} query="{query}"')
 
         try:
-            response = await self.llm_client.chat_completion(
+            response: OutfitQueryLLMResponse = await self.llm_client.chat_completion(
                 messages=messages,
+                response_format=OutfitQueryLLMResponse,
                 temperature=0.0,
                 max_tokens=500,
             )
-            return self._parse_response(response)
+            return self._to_parsed_query(response)
 
         except LLMError:
             raise
-
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to parse LLM response | {log_context} error={e}")
-            raise ParseError(f"Invalid LLM response format: {e}") from e
 
         except Exception as e:
             logger.exception(
@@ -87,31 +64,22 @@ class QueryParser:
             )
             raise ParseError(f"Unexpected parsing error: {e}") from e
 
-    def _parse_response(self, response: dict[str, Any]) -> ParsedQuery:
-        content = response["choices"][0]["message"]["content"]
-        data = self._extract_json(content)
-
+    @staticmethod
+    def _to_parsed_query(response: OutfitQueryLLMResponse) -> ParsedQuery:
         reference_item = None
-        if data.get("reference_item"):
-            reference_item = ReferenceItem(**data["reference_item"])
-
+        if response.reference_item:
+            reference_item = ReferenceItem(
+                category=response.reference_item.category,
+                color=response.reference_item.color,
+                style=response.reference_item.style,
+                description=response.reference_item.description,
+            )
         return ParsedQuery(
-            occasion=data.get("occasion", "일상"),
-            style=data.get("style", "깔끔한"),
-            season=data.get("season"),
-            formality=data.get("formality"),
+            occasion=response.occasion,
+            style=response.style,
+            season=response.season,
+            formality=response.formality,
             reference_item=reference_item,
-            target_category=data.get("target_category"),
-            constraints=data.get("constraints", []),
+            target_category=response.target_category,
+            constraints=response.constraints,
         )
-
-    def _extract_json(self, content: str) -> dict[str, Any]:
-        content = content.strip()
-
-        if content.startswith("```"):
-            lines = content.split("\n")
-
-            lines = [line for line in lines if not line.startswith("```")]
-            content = "\n".join(lines)
-
-        return json.loads(content)

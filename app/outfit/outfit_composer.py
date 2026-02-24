@@ -1,7 +1,7 @@
-import json
 import logging
 import uuid
 
+from app.common.llm_schemas import OutfitCompositionLLMResponse
 from app.common.metrics import measure_time
 from app.outfit.exceptions import LLMError, ParseError
 from app.outfit.llm_client import LLMClient, OpenAIClient
@@ -23,21 +23,7 @@ SYSTEM_PROMPT = """당신은 패션 스타일리스트입니다.
 1. 반드시 주어진 후보 아이템의 clothes_id만 사용하세요.
 2. 각 코디는 서로 다른 스타일/분위기를 가져야 합니다.
 3. 색상 조화, TPO, 계절감을 고려하세요.
-4. 3가지 코디를 추천하고, 각각에 대해 간단한 설명을 제공하세요.
-
-JSON 형식으로만 응답하세요:
-{
-  "query_summary": "사용자 요청 한 줄 요약",
-  "outfits": [
-    {
-      "description": "코디 설명",
-      "items": [
-        {"clothes_id": 123, "role": "상의"},
-        {"clothes_id": 456, "role": "하의"}
-      ]
-    }
-  ]
-}"""
+4. 3가지 코디를 추천하고, 각각에 대해 간단한 설명을 제공하세요."""
 
 
 class OutfitComposer:
@@ -80,12 +66,15 @@ class OutfitComposer:
         ]
 
         try:
-            response = await self.llm_client.chat_completion(
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1500,
+            response: OutfitCompositionLLMResponse = (
+                await self.llm_client.chat_completion(
+                    messages=messages,
+                    response_format=OutfitCompositionLLMResponse,
+                    temperature=0.7,
+                    max_tokens=1500,
+                )
             )
-            outfit_response = self._parse_response(response, candidates_map)
+            outfit_response = self._build_response(response, candidates_map)
 
             actual_count = len(outfit_response.outfits)
             if actual_count < num_outfits:
@@ -109,8 +98,10 @@ class OutfitComposer:
         except LLMError:
             raise
 
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to parse LLM response | {log_context} error={e}")
+        except Exception as e:
+            logger.exception(
+                f"Failed to build outfit response | {log_context} error={e}"
+            )
             raise ParseError(f"Invalid outfit response format: {e}") from e
 
     def _build_prompt(
@@ -143,7 +134,6 @@ class OutfitComposer:
                 )
 
         lines.append(f"\n{num_outfits}개의 코디를 추천해주세요.")
-
         return "\n".join(lines)
 
     @staticmethod
@@ -156,31 +146,26 @@ class OutfitComposer:
                 candidates_map[candidate.clothes_id] = candidate
         return candidates_map
 
-    def _parse_response(
+    def _build_response(
         self,
-        response: dict,
+        response: OutfitCompositionLLMResponse,
         candidates_map: dict[int, ClothingCandidate],
     ) -> OutfitResponse:
-        content = response["choices"][0]["message"]["content"]
-        data = self._extract_json(content)
-
         outfits = []
-        for outfit_data in data.get("outfits", []):
+        for outfit_data in response.outfits:
             clothes_ids = []
             items = []
-            for item_data in outfit_data.get("items", []):
-                clothes_id = item_data["clothes_id"]
-
+            for item_data in outfit_data.items:
+                clothes_id = item_data.clothes_id
                 if clothes_id in candidates_map:
                     candidate = candidates_map[clothes_id]
                     clothes_ids.append(clothes_id)
-                    # OutfitItem 객체 생성 및 리스트 추가
                     items.append(
                         OutfitItem(
                             clothes_id=clothes_id,
                             image_url=candidate.image_url,
                             category=candidate.category,
-                            role=item_data.get("role", "기타"),
+                            role=item_data.role,
                         )
                     )
                 else:
@@ -190,25 +175,16 @@ class OutfitComposer:
                 outfits.append(
                     Outfit(
                         outfit_id=str(uuid.uuid4()),
-                        description=outfit_data.get("description", ""),
+                        description=outfit_data.description,
                         clothes_ids=clothes_ids,
                         items=items,
                     )
                 )
 
         return OutfitResponse(
-            query_summary=data.get("query_summary", "코디 추천"),
+            query_summary=response.query_summary,
             outfits=outfits,
         )
-
-    @staticmethod
-    def _extract_json(content: str) -> dict:
-        content = content.strip()
-        if content.startswith("```"):
-            lines = content.split("\n")
-            lines = [line for line in lines if not line.startswith("```")]
-            content = "\n".join(lines)
-        return json.loads(content)
 
     @staticmethod
     def _empty_response(parsed: ParsedQuery) -> OutfitResponse:

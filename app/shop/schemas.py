@@ -1,5 +1,6 @@
 from pydantic import Field
 
+from app.common.llm_schemas import CategoryType
 from app.common.schemas import BaseSchema
 
 
@@ -10,7 +11,7 @@ class ShopParsedQuery(BaseSchema):
     price_max: int | None = Field(default=None, description="최대 가격 (원)")
     price_min: int | None = Field(default=None, description="최소 가격 (원)")
     brand: str | None = Field(default=None, description="브랜드 필터")
-    target_category: str | None = Field(
+    target_category: CategoryType | None = Field(
         default=None, description="찾는 아이템 카테고리"
     )
     constraints: list[str] = Field(default_factory=list, description="추가 제약사항")

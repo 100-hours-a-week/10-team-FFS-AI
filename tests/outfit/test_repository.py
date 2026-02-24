@@ -80,7 +80,7 @@ class TestSearchByQuery:
             payload={
                 "clothesId": 123,
                 "imageUrl": "https://example.com/img.jpg",
-                "category": "상의",
+                "category": "TOP",
                 "color": "검정",
                 "styleTags": ["캐주얼", "베이직"],
                 "caption": "검은색 반팔 티셔츠",
@@ -100,7 +100,7 @@ class TestSearchByQuery:
         assert len(result.candidates) == 1
         candidate = result.candidates[0]
         assert candidate.clothes_id == 123
-        assert candidate.category == "상의"
+        assert candidate.category == "TOP"
         assert candidate.color == ["검정"]
         assert candidate.similarity_score == 0.95
 
@@ -136,7 +136,7 @@ class TestToCandidateStatic:
             payload={
                 "clothesId": 456,
                 "imageUrl": "https://img.com/456.jpg",
-                "category": "하의",
+                "category": "BOTTOM",
                 "color": "네이비",
                 "styleTags": ["포멀"],
                 "caption": "네이비 슬랙스",
@@ -147,7 +147,7 @@ class TestToCandidateStatic:
 
         assert candidate.clothes_id == 456
         assert candidate.image_url == "https://img.com/456.jpg"
-        assert candidate.category == "하의"
+        assert candidate.category == "BOTTOM"
         assert candidate.color == ["네이비"]
         assert candidate.style_tags == ["포멀"]
         assert candidate.caption == "네이비 슬랙스"
@@ -161,7 +161,7 @@ class TestToCandidateStatic:
             payload={
                 "clothesId": 789,
                 "imageUrl": "https://img.com/789.jpg",
-                "category": "아우터",
+                "category": "ETC",
             },
         )
 

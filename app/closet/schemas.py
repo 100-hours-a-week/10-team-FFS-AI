@@ -2,6 +2,7 @@ from enum import StrEnum
 
 from pydantic import Field
 
+from app.common.llm_schemas import CategoryType
 from app.common.schemas import BaseSchema
 
 
@@ -38,7 +39,7 @@ class AnalyzeRequest(BaseSchema):
 
 
 class MajorAttributes(BaseSchema):
-    category: str = Field(..., description="카테고리")
+    category: CategoryType = Field(..., description="카테고리")
     color: list[str] = Field(default_factory=list, description="색상 목록")
     material: list[str] = Field(default_factory=list, description="소재 목록")
     style_tags: list[str] = Field(default_factory=list, description="스타일 태그 목록")
