@@ -29,12 +29,12 @@ def sample_parsed_query() -> ParsedQuery:
 def sample_search_results() -> list[SearchResult]:
     return [
         SearchResult(
-            category="상의",
+            category="TOP",
             candidates=[
                 ClothingCandidate(
                     clothes_id=101,
                     image_url="https://img.com/101.jpg",
-                    category="상의",
+                    category="TOP",
                     color=["흰색"],
                     style_tags=["포멀", "베이직"],
                     caption="흰색 셔츠",
@@ -43,7 +43,7 @@ def sample_search_results() -> list[SearchResult]:
                 ClothingCandidate(
                     clothes_id=102,
                     image_url="https://img.com/102.jpg",
-                    category="상의",
+                    category="TOP",
                     color=["네이비"],
                     style_tags=["캐주얼"],
                     caption="네이비 폴로셔츠",
@@ -52,12 +52,12 @@ def sample_search_results() -> list[SearchResult]:
             ],
         ),
         SearchResult(
-            category="하의",
+            category="BOTTOM",
             candidates=[
                 ClothingCandidate(
                     clothes_id=201,
                     image_url="https://img.com/201.jpg",
-                    category="하의",
+                    category="BOTTOM",
                     color=["검정"],
                     style_tags=["포멀"],
                     caption="검정 슬랙스",
@@ -102,8 +102,8 @@ class TestBuildPrompt:
 
         assert "ID: 101" in prompt
         assert "색상: 흰색" in prompt
-        assert "[상의]" in prompt
-        assert "[하의]" in prompt
+        assert "[TOP]" in prompt
+        assert "[BOTTOM]" in prompt
 
     def test_requests_correct_number_of_outfits(
         self,
