@@ -3,6 +3,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from langfuse.decorators import langfuse_context, observe
 
 from app.outfit.exceptions import LLMError, ParseError
 from app.outfit.schemas import OutfitRequest, OutfitResponse
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/outfit", response_model=OutfitResponse, status_code=status.HTTP_200_OK)
+@observe(name="outfit_recommend")
 async def recommend_outfit(
     request: OutfitRequest,
     service: Annotated[OutfitService, Depends(get_outfit_service)],
@@ -20,6 +22,15 @@ async def recommend_outfit(
     trace_id = str(uuid.uuid4())
     query_preview = (
         f"{request.query[:50]}..." if len(request.query) > 50 else request.query
+    )
+
+    # Langfuse 트레이스 메타데이터 설정
+    langfuse_context.update_current_trace(
+        name="outfit_recommend",
+        user_id=str(request.user_id),
+        session_id=request.session_id,
+        metadata={"trace_id": trace_id},
+        input={"query": request.query, "user_id": request.user_id},
     )
 
     logger.info(
@@ -37,6 +48,9 @@ async def recommend_outfit(
             f"trace_id={trace_id} "
             f"user_id={request.user_id} "
             f"outfit_count={len(response.outfits)}"
+        )
+        langfuse_context.update_current_trace(
+            output={"outfit_count": len(response.outfits)},
         )
         return response
 

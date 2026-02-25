@@ -2,6 +2,8 @@ import logging
 import uuid
 from functools import lru_cache
 
+from langfuse.decorators import observe
+
 from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.llm_client import OpenAIClient
 from app.outfit.outfit_composer import OutfitComposer
@@ -29,6 +31,7 @@ class OutfitService:
         self.composer = composer or OutfitComposer()
         self.vton_processor = vton_processor or VTONProcessor()
 
+    @observe(name="outfit_service.recommend")
     @measure_time(stage="total_pipeline", metric=OUTFIT_PIPELINE_TOTAL_DURATION)
     async def recommend(
         self, request: OutfitRequest, trace_id: str | None = None

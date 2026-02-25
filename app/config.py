@@ -54,6 +54,11 @@ class Settings(BaseSettings):
 
     use_mock_analyzer: bool = Field(default=False, alias="USE_MOCK_ANALYZER")
 
+    langfuse_enabled: bool = Field(default=True, alias="LANGFUSE_ENABLED")
+    langfuse_secret_key: str | None = Field(default=None, alias="LANGFUSE_SECRET_KEY")
+    langfuse_public_key: str | None = Field(default=None, alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_host: str = Field(default="http://localhost:3000", alias="LANGFUSE_HOST")
+
 
 @lru_cache
 def get_settings() -> Settings:

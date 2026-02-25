@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from langfuse.decorators import observe
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qdrant_models
 from qdrant_client.http.models import ScoredPoint
@@ -83,6 +84,7 @@ class ClothingRepository:
 
         return SearchResult(category=category, candidates=candidates)
 
+    @observe(name="outfit_vector_search")
     @measure_time("vector_search")
     async def search_multiple(
         self,

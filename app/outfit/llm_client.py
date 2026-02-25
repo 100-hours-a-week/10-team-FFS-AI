@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import openai
+from langfuse.decorators import langfuse_context, observe
 from pydantic import BaseModel
 
 from app.config import Settings, get_settings
@@ -37,6 +38,7 @@ class OpenAIClient(LLMClient):
         )
         self.model = self.settings.openai_chat_model
 
+    @observe(as_type="generation", name="openai_chat_completion")
     async def chat_completion(
         self: "OpenAIClient",
         messages: list[dict[str, Any]],
@@ -44,6 +46,16 @@ class OpenAIClient(LLMClient):
         temperature: float = 0.7,
         max_tokens: int = 2000,
     ) -> BaseModel | dict[str, Any]:
+        # Langfuse generation 입력 메타데이터 기록
+        langfuse_context.update_current_observation(
+            input=messages,
+            model=self.model,
+            model_parameters={
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+        )
+
         try:
             if response_format is not None:
                 completion = await self._client.beta.chat.completions.parse(
@@ -56,6 +68,23 @@ class OpenAIClient(LLMClient):
                 parsed = completion.choices[0].message.parsed
                 if parsed is None:
                     raise LLMError("Structured Output parsing returned None")
+
+                langfuse_context.update_current_observation(
+                    output=parsed.model_dump()
+                    if hasattr(parsed, "model_dump")
+                    else str(parsed),
+                    usage={
+                        "input": completion.usage.prompt_tokens
+                        if completion.usage
+                        else 0,
+                        "output": completion.usage.completion_tokens
+                        if completion.usage
+                        else 0,
+                        "total": completion.usage.total_tokens
+                        if completion.usage
+                        else 0,
+                    },
+                )
                 return parsed
 
             else:
@@ -65,7 +94,24 @@ class OpenAIClient(LLMClient):
                     temperature=temperature,
                     max_tokens=max_tokens,
                 )
-                return completion.model_dump()
+                result = completion.model_dump()
+
+                # Langfuse generation 출력 메타데이터 기록
+                langfuse_context.update_current_observation(
+                    output=result,
+                    usage={
+                        "input": completion.usage.prompt_tokens
+                        if completion.usage
+                        else 0,
+                        "output": completion.usage.completion_tokens
+                        if completion.usage
+                        else 0,
+                        "total": completion.usage.total_tokens
+                        if completion.usage
+                        else 0,
+                    },
+                )
+                return result
 
         except openai.AuthenticationError as e:
             logger.error("OpenAI 인증 실패: %s", e)
