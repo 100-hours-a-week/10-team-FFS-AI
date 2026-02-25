@@ -1,3 +1,12 @@
+"""
+[DEPRECATED] HTTP 폴링 방식 Closet 서비스
+==========================================
+이 파일은 Kafka 메시지 큐 전환 이전의 REST API + Redis 폴링 방식 코드입니다.
+Kafka 전환 후 대체 파일: app/closet/handler.py
+
+로컬 E2E 테스트 성공 후 삭제 예정.
+"""
+
 from __future__ import annotations
 
 import logging

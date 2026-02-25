@@ -1,3 +1,13 @@
+"""
+[DEPRECATED] HTTP 폴링 방식 Closet 라우터
+==========================================
+이 파일은 Kafka 전환 이전의 REST API 엔드포인트입니다.
+- POST /v1/closet/analyze → Kafka 요청 토픽으로 대체
+- GET /v1/closet/batches/{batch_id} → Kafka 결과 토픽으로 대체
+
+로컬 E2E 테스트 성공 후 삭제 예정.
+"""
+
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException

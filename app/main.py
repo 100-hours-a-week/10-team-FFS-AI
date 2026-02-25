@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -6,8 +7,11 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from app.closet.handler import handle_analysis_request
 from app.closet.router import router as closet_router
+from app.core.consumer import consume_loop
 from app.core.database import check_health, close_databases, init_databases
+from app.core.kafka import check_kafka_health, close_kafka, init_kafka
 from app.embedding.router import router as embedding_router
 from app.outfit.router import router as outfit_router
 from app.shop.router import router as shop_router
@@ -24,6 +28,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("start server")
     try:
         await init_databases()
+        await init_kafka()
+        consumer_task = asyncio.create_task(consume_loop(handle_analysis_request))
         logger.info("Application startup complete")
     except Exception as e:
         logger.error(f"Failed to start application: {e}")
@@ -33,6 +39,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     logger.info("shut down server")
     try:
+        consumer_task.cancel()
+        try:
+            await consumer_task
+        except asyncio.CancelledError:
+            pass
+        await close_kafka()
         await close_databases()
         logger.info("Application shutdown complete")
     except Exception as e:
@@ -62,6 +74,7 @@ async def root() -> dict[str, str]:
 @app.get("/health")
 async def health_check() -> JSONResponse:
     health_status = await check_health()
+    health_status["kafka"] = await check_kafka_health()
 
     all_connected = all(status == "connected" for status in health_status.values())
     overall_status = "healthy" if all_connected else "degraded"
