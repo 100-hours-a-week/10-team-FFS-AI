@@ -27,7 +27,7 @@ _consumer: AIOKafkaConsumer | None = None
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-async def init_kafka() -> None:
+async def init_kafka(is_worker: bool = False) -> None:
     """Kafka Producer와 Consumer를 초기화하고 브로커에 연결합니다."""
     global _producer, _consumer
     settings = get_settings()
@@ -42,22 +42,23 @@ async def init_kafka() -> None:
     await _producer.start()
     logger.info("Kafka Producer started")
 
-    # 2. Consumer (요청 토픽 구독용)
-    logger.info(
-        f"Connecting Kafka Consumer to {settings.kafka_bootstrap_servers} "
-        f"(group={settings.kafka_consumer_group}, "
-        f"topic={settings.kafka_request_topic})"
-    )
-    _consumer = AIOKafkaConsumer(
-        settings.kafka_request_topic,
-        bootstrap_servers=settings.kafka_bootstrap_servers,
-        group_id=settings.kafka_consumer_group,
-        auto_offset_reset="earliest",
-        enable_auto_commit=False,  # 처리 완료 후 수동 커밋
-        max_poll_records=1,  # 한 번에 1개씩 (메모리 보호)
-    )
-    await _consumer.start()
-    logger.info("Kafka Consumer started")
+    # 2. Consumer (요청 토픽 구독용 - 워커에서만 실행)
+    if is_worker:
+        logger.info(
+            f"Connecting Kafka Consumer to {settings.kafka_bootstrap_servers} "
+            f"(group={settings.kafka_consumer_group}, "
+            f"topic={settings.kafka_request_topic})"
+        )
+        _consumer = AIOKafkaConsumer(
+            settings.kafka_request_topic,
+            bootstrap_servers=settings.kafka_bootstrap_servers,
+            group_id=settings.kafka_consumer_group,
+            auto_offset_reset="earliest",
+            enable_auto_commit=False,  # 처리 완료 후 수동 커밋
+            max_poll_records=1,  # 한 번에 1개씩 (메모리 보호)
+        )
+        await _consumer.start()
+        logger.info("Kafka Consumer started")
 
 
 async def close_kafka() -> None:
@@ -114,7 +115,7 @@ def get_kafka_consumer() -> AIOKafkaConsumer:
 async def check_kafka_health() -> str:
     """Kafka 연결 상태를 확인합니다."""
     try:
-        if _producer is None or _consumer is None:
+        if _producer is None:
             return "not_initialized"
         # Producer의 내부 클라이언트로 간단한 메타데이터 요청
         await _producer.client.ready(0)

@@ -22,13 +22,7 @@ async def main() -> None:
     request_topic = "ai.clothes.analyze.request"
 
     # S3 presigned URL (1시간 유효)
-    target_image = (
-        "https://my-vton-test-bucket-2025.s3.amazonaws.com/"
-        "test_validation/test_fashion1.png"
-        "?AWSAccessKeyId=AKIAQPZU5KQL3QNZXR5U"
-        "&Signature=2axBnmXEh%2F5vaPzqqZp5F3yazxw%3D"
-        "&Expires=1772022704"
-    )
+    target_image = "https://my-vton-test-bucket-2025.s3.amazonaws.com/test_validation/test_fashion1.png?AWSAccessKeyId=AKIAQPZU5KQL3QNZXR5U&Signature=0z97SegnQSFQAqhBk44%2FkpYMAWY%3D&Expires=1772036256"
 
     # 백엔드가 보내는 것과 동일한 형태의 메시지
     test_message = {
