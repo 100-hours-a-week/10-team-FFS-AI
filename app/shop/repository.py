@@ -140,15 +140,19 @@ class ShopProductRepository:
     def _to_candidate(hit: ScoredPoint) -> ProductCandidate:
         payload = hit.payload or {}
 
+        def get_str(key: str, default: str = "") -> str:
+            val = payload.get(key)
+            return str(val) if val is not None else default
+
         return ProductCandidate(
-            product_id=str(payload.get("productId", hit.id)),
-            title=payload.get("title", ""),
-            brand=payload.get("brand", ""),
-            price=payload.get("price", 0),
-            image_url=payload.get("imageUrl", ""),
-            link=payload.get("link", ""),
-            source=payload.get("source", ""),
-            category=payload.get("category", ""),
-            style_tags=payload.get("styleTags", []),
+            product_id=get_str("productId", str(hit.id)),
+            title=get_str("title"),
+            brand=get_str("brand"),
+            price=payload.get("price") or 0,
+            image_url=get_str("imageUrl"),
+            link=get_str("link"),
+            source=get_str("source"),
+            category=get_str("category"),
+            style_tags=payload.get("styleTags") or [],
             similarity_score=hit.score,
         )
