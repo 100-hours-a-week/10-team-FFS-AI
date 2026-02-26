@@ -1,49 +1,33 @@
-"""
-[DEPRECATED] HTTP 폴링 방식 Closet 서비스
-==========================================
-이 파일은 Kafka 메시지 큐 전환 이전의 REST API + Redis 폴링 방식 코드입니다.
-Kafka 전환 후 대체 파일: app/closet/handler.py
+"""Closet 비즈니스 로직 서비스 — 이미지 분석 파이프라인
 
-로컬 E2E 테스트 성공 후 삭제 예정.
+이 모듈은 통신(Kafka/HTTP) 방식에 독립적인 순수 비즈니스 로직만 담당합니다.
+- S3에서 이미지 다운로드
+- 백엔드 내부 API로 Presigned URL 발급
+- S3에 이미지 업로드
+- Gemini VLM으로 이미지 분석
+- 분석 결과 정규화
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from dataclasses import dataclass
 
-from fastapi import BackgroundTasks, Depends
-from redis.asyncio import Redis
+import httpx
 
-from app.closet.analyzer_protocol import ImageAnalyzer
 from app.closet.gemini_client import GeminiImageAnalyzer
-from app.closet.mock_analyzer import MockImageAnalyzer
 from app.closet.s3_client import S3Client
-from app.closet.schemas import (
-    AnalyzeImageItem,
-    AnalyzeRequest,
-    AnalyzeResponse,
-    BatchMeta,
-    BatchStatus,
-    ExtraAttributes,
-    ExtraMetadata,
-    MajorAttributes,
-    TaskResult,
-    TaskStatus,
-)
+from app.closet.schemas import ExtraAttributes, ExtraMetadata, MajorAttributes
 from app.common.metrics import (
     CLOSET_PIPELINE_ERRORS,
     CLOSET_STAGE_DURATION,
-    REDIS_QUERIES,
     measure_time,
 )
 from app.config import get_settings
-from app.core.database import get_redis_client
 
 logger = logging.getLogger(__name__)
 
-
-DEFAULT_ANALYSIS = {
+DEFAULT_ANALYSIS: dict = {
     "major": {
         "category": "UNKNOWN",
         "color": [],
@@ -63,140 +47,125 @@ DEFAULT_ANALYSIS = {
 }
 
 
+@dataclass
+class PreprocessResult:
+    """전처리(다운로드 + S3 업로드) 결과를 담는 데이터 클래스."""
+
+    file_id: int
+    success: bool
+    error: str | None = None
+
+
+@dataclass
+class AnalysisResult:
+    """VLM 분석 결과를 담는 데이터 클래스."""
+
+    major: MajorAttributes
+    extra: ExtraAttributes
+    success: bool
+    error: str | None = None
+
+
 class ClosetService:
-    def __init__(
-        self,
-        redis_client: Annotated[Redis, Depends(get_redis_client)],
-        image_analyzer: ImageAnalyzer | None = None,
-    ) -> None:
-        self.redis = redis_client
-        self.s3_client = S3Client()
-        self.image_analyzer: ImageAnalyzer = image_analyzer or GeminiImageAnalyzer()
+    """통신 방식에 독립적인 옷 이미지 분석 비즈니스 로직."""
 
-    async def start_analysis(
-        self, request: AnalyzeRequest, background_tasks: BackgroundTasks
-    ) -> AnalyzeResponse:
-        batch_id = request.batch_id
+    def __init__(self) -> None:
+        self._s3_client = S3Client()
+        self._analyzer = GeminiImageAnalyzer()
 
-        initial_results = [
-            TaskResult(
-                task_id=img.task_id,
-                status=TaskStatus.PREPROCESSING,
-                file_id=None,
-            )
-            for img in request.images
-        ]
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 공개 API
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-        response = AnalyzeResponse(
-            batch_id=batch_id,
-            status=BatchStatus.IN_PROGRESS,
-            meta=BatchMeta(
-                total=len(request.images),
-                completed=0,
-                processing=len(request.images),
-                is_finished=False,
-            ),
-            results=initial_results,
-        )
+    async def preprocess(self, target_image_url: str, user_id: int) -> PreprocessResult:
+        """이미지를 다운로드하고 S3에 업로드합니다(전처리 단계).
 
-        await self._save_batch(response)
-        background_tasks.add_task(self.process_batch, batch_id, request.images)
-
-        logger.info(f"Batch started: {batch_id} ({len(request.images)} images)")
-        return response
-
-    async def get_batch_status(self, batch_id: str) -> AnalyzeResponse | None:
-        data = await self.redis.get(f"closet:batch:{batch_id}")
-        REDIS_QUERIES.labels(operation="get").inc()
-        if not data:
-            return None
-        return AnalyzeResponse.model_validate_json(data)
-
-    @measure_time(
-        stage="batch_processing",
-        metric=CLOSET_STAGE_DURATION,
-        error_counter=CLOSET_PIPELINE_ERRORS,
-    )
-    async def process_batch(
-        self, batch_id: str, images: list[AnalyzeImageItem]
-    ) -> None:
-        results: list[TaskResult] = []
-
-        try:
-            for item in images:
-                result = await self._process_single_image(batch_id, item)
-                results.append(result)
-                await self._update_progress(batch_id, len(images), results)
-
-            failed_count = sum(1 for r in results if r.status == TaskStatus.FAILED)
-            final_status = (
-                BatchStatus.COMPLETED
-                if failed_count == 0
-                else BatchStatus.PARTIAL_FAILURE
-            )
-            await self._finalize_batch(batch_id, final_status, results)
-
-            logger.info(
-                f"Batch {batch_id} finished: {len(results) - failed_count} success, {failed_count} failed"
-            )
-
-        except Exception as e:
-            logger.error(f"Batch {batch_id} critical failure: {e}")
-            await self._handle_critical_failure(batch_id, images, results, str(e))
-
-    async def _process_single_image(
-        self, batch_id: str, item: AnalyzeImageItem
-    ) -> TaskResult:
-        task_id = item.task_id
-        file_id = item.file_upload_info.file_id
-        fallbacks: list[str] = []
-
-        await self._update_task_status(batch_id, task_id, TaskStatus.PREPROCESSING)
-
-        image_bytes, error = await self._safe_download(item.target_image)
+        Returns:
+            PreprocessResult: file_id와 성공 여부를 담은 결과.
+        """
+        # 1. 이미지 다운로드
+        image_bytes = await self._safe_download(target_image_url)
         if image_bytes is None:
-            return TaskResult(
-                task_id=task_id,
-                status=TaskStatus.FAILED,
-                file_id=file_id,
-                error_message=error,
+            return PreprocessResult(
+                file_id=0, success=False, error="IMAGE_DOWNLOAD_FAILED"
             )
 
-        await self._update_task_status(batch_id, task_id, TaskStatus.ANALYZING)
-
-        analysis, error = await self._safe_analyze(image_bytes)
-        if error:
-            fallbacks.append(error)
-
-        error = await self._safe_upload(
-            item.file_upload_info.presigned_url, image_bytes
+        # 2. Presigned URL 발급
+        presigned_info = await self._request_presigned_url(
+            user_id=user_id, purpose="CLOTHES"
         )
-        if error:
-            fallbacks.append(error)
+        file_id = presigned_info["fileId"]
+        presigned_url = presigned_info["presignedUrl"]
 
-        return self._build_result(task_id, file_id, analysis, fallbacks)
+        # 3. S3에 이미지 업로드
+        upload_error = await self._safe_upload(presigned_url, image_bytes)
+        if upload_error:
+            return PreprocessResult(file_id=file_id, success=False, error=upload_error)
+
+        return PreprocessResult(file_id=file_id, success=True)
+
+    async def analyze(self, target_image_url: str) -> AnalysisResult:
+        """이미지를 다운로드하고 VLM으로 분석합니다(분석 단계).
+
+        Returns:
+            AnalysisResult: 분석된 major/extra 속성과 성공 여부를 담은 결과.
+        """
+        # 1. 이미지 다운로드
+        image_bytes = await self._safe_download(target_image_url)
+        if image_bytes is None:
+            normalized = DEFAULT_ANALYSIS.copy()
+            return AnalysisResult(
+                major=MajorAttributes(**normalized["major"]),
+                extra=ExtraAttributes(
+                    meta_data=ExtraMetadata(**normalized["extra"]["meta_data"]),
+                    caption=normalized["extra"].get("caption"),
+                ),
+                success=False,
+                error="IMAGE_DOWNLOAD_FAILED",
+            )
+
+        # 2. VLM 분석
+        raw_analysis = await self._safe_analyze(image_bytes)
+        normalized = self._normalize_analysis(raw_analysis)
+
+        return AnalysisResult(
+            major=MajorAttributes(**normalized["major"]),
+            extra=ExtraAttributes(
+                meta_data=ExtraMetadata(**normalized["extra"]["meta_data"]),
+                caption=normalized["extra"].get("caption"),
+            ),
+            success=True,
+        )
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 내부 안전 래퍼 (에러 시 fallback)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     @measure_time(
         stage="image_download",
         metric=CLOSET_STAGE_DURATION,
         error_counter=CLOSET_PIPELINE_ERRORS,
     )
-    async def _safe_download(self, url: str) -> tuple[bytes | None, str | None]:
+    async def _safe_download(self, url: str) -> bytes | None:
+        """이미지 다운로드. 실패 시 None 반환."""
         try:
-            image_bytes = await self.s3_client.get_image(url)
-            return image_bytes, None
+            return await self._s3_client.get_image(url)
         except Exception as e:
-            logger.error(f"Download failed: {e}")
-            return None, f"DOWNLOAD_FAILED: {type(e).__name__}"
+            logger.error(f"다운로드 실패: {e}")
+            return None
 
-    @measure_time("image_analyzer", CLOSET_STAGE_DURATION, CLOSET_PIPELINE_ERRORS)
-    async def _safe_analyze(self, image_bytes: bytes) -> tuple[dict, str | None]:
+    @measure_time(
+        stage="image_analyze",
+        metric=CLOSET_STAGE_DURATION,
+        error_counter=CLOSET_PIPELINE_ERRORS,
+    )
+    async def _safe_analyze(self, image_bytes: bytes) -> dict:
+        """VLM 분석. 실패 시 DEFAULT_ANALYSIS 반환."""
         try:
-            result = await self.image_analyzer.analyze_image(image_bytes)
-            return self._normalize_analysis(result), None
+            return await self._analyzer.analyze_image(image_bytes)
         except Exception as e:
-            logger.error(f"Analysis failed: {e}")
-            return DEFAULT_ANALYSIS.copy(), f"ANALYSIS_FAILED: {type(e).__name__}"
+            logger.error(f"분석 실패 (기본값 사용): {e}")
+            return DEFAULT_ANALYSIS.copy()
 
     @measure_time(
         stage="image_upload",
@@ -204,14 +173,53 @@ class ClosetService:
         error_counter=CLOSET_PIPELINE_ERRORS,
     )
     async def _safe_upload(self, presigned_url: str, image_bytes: bytes) -> str | None:
+        """S3 업로드. 실패 시 에러 문자열 반환."""
         try:
-            await self.s3_client.put_image(presigned_url, image_bytes)
+            await self._s3_client.put_image(presigned_url, image_bytes)
             return None
         except Exception as e:
-            logger.error(f"Upload failed: {e}")
+            logger.error(f"업로드 실패: {e}")
             return f"UPLOAD_FAILED: {type(e).__name__}"
 
-    def _normalize_analysis(self, data: dict) -> dict:
+    async def _request_presigned_url(self, user_id: int, purpose: str) -> dict:
+        """백엔드 내부 API를 호출하여 S3 presigned URL을 발급받습니다."""
+        settings = get_settings()
+        url = f"{settings.backend_internal_url}/api/internal/presigned-url"
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                url,
+                headers={
+                    "X-Internal-Api-Key": settings.backend_internal_api_key,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "userId": user_id,
+                    "purpose": purpose,
+                    "files": [{"name": "image.jpg", "type": "image/jpeg"}],
+                },
+            )
+            response.raise_for_status()
+
+        result = response.json()
+        # 응답: { "code": 201, "data": [{ "fileId": 44189, "objectKey": "...", "presignedUrl": "..." }] }
+        return result["data"][0]
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # 분석 결과 정규화
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    @staticmethod
+    def _to_list(value: object | None) -> list:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        return [value] if value else []
+
+    @classmethod
+    def _normalize_analysis(cls, data: dict) -> dict:
+        """VLM 분석 결과를 일관된 형태로 정규화합니다."""
         major = data.get("major", {})
         extra = data.get("extra", {})
         meta = extra.get("meta_data", {})
@@ -219,156 +227,18 @@ class ClosetService:
         return {
             "major": {
                 "category": major.get("category") or "UNKNOWN",
-                "color": self._to_list(major.get("color")),
-                "material": self._to_list(major.get("material")),
-                "style_tags": self._to_list(major.get("style_tags")),
+                "color": cls._to_list(major.get("color")),
+                "material": cls._to_list(major.get("material")),
+                "style_tags": cls._to_list(major.get("style_tags")),
             },
             "extra": {
                 "meta_data": {
                     "gender": meta.get("gender"),
-                    "season": self._to_list(meta.get("season")),
+                    "season": cls._to_list(meta.get("season")),
                     "formality": meta.get("formality"),
                     "fit": meta.get("fit"),
-                    "occasion": self._to_list(meta.get("occasion")),
+                    "occasion": cls._to_list(meta.get("occasion")),
                 },
                 "caption": extra.get("caption") or "의류 아이템",
             },
         }
-
-    @staticmethod
-    def _to_list(value: object | None) -> list[object]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return value
-        return [value] if value else []
-
-    def _build_result(
-        self,
-        task_id: str,
-        file_id: int,
-        analysis: dict,
-        fallbacks: list[str],
-    ) -> TaskResult:
-        major = analysis["major"]
-        extra = analysis["extra"]
-        meta = extra["meta_data"]
-
-        return TaskResult(
-            task_id=task_id,
-            status=TaskStatus.COMPLETED,
-            file_id=file_id,
-            major=MajorAttributes(**major),
-            extra=ExtraAttributes(
-                meta_data=ExtraMetadata(**meta),
-                caption=extra.get("caption"),
-            ),
-            error_message=f"PARTIAL: {', '.join(fallbacks)}" if fallbacks else None,
-        )
-
-    async def _save_batch(self, response: AnalyzeResponse) -> None:
-        key = f"closet:batch:{response.batch_id}"
-        await self.redis.set(key, response.model_dump_json(), ex=3600)
-        REDIS_QUERIES.labels(operation="set").inc()
-
-    async def _update_task_status(
-        self, batch_id: str, task_id: str, status: TaskStatus
-    ) -> None:
-        try:
-            current = await self.get_batch_status(batch_id)
-            if not current:
-                return
-
-            for r in current.results:
-                if r.task_id == task_id:
-                    r.status = status
-                    break
-
-            await self._save_batch(current)
-        except Exception as e:
-            logger.warning(f"Task status update failed: {e}")
-
-    async def _update_progress(
-        self, batch_id: str, total: int, results: list[TaskResult]
-    ) -> None:
-        try:
-            current = await self.get_batch_status(batch_id)
-            if not current:
-                return
-
-            processed = {r.task_id: r for r in results}
-            updated = [processed.get(r.task_id, r) for r in current.results]
-
-            completed = sum(
-                1
-                for r in updated
-                if r.status in (TaskStatus.COMPLETED, TaskStatus.FAILED)
-            )
-
-            response = AnalyzeResponse(
-                batch_id=batch_id,
-                status=BatchStatus.IN_PROGRESS,
-                meta=BatchMeta(
-                    total=total,
-                    completed=completed,
-                    processing=total - completed,
-                    is_finished=False,
-                ),
-                results=updated,
-            )
-            await self._save_batch(response)
-        except Exception as e:
-            logger.warning(f"Progress update failed: {e}")
-
-    async def _finalize_batch(
-        self, batch_id: str, status: BatchStatus, results: list[TaskResult]
-    ) -> None:
-        completed = sum(1 for r in results if r.status == TaskStatus.COMPLETED)
-        response = AnalyzeResponse(
-            batch_id=batch_id,
-            status=status,
-            meta=BatchMeta(
-                total=len(results), completed=completed, processing=0, is_finished=True
-            ),
-            results=results,
-        )
-        await self._save_batch(response)
-
-    async def _handle_critical_failure(
-        self,
-        batch_id: str,
-        images: list[AnalyzeImageItem],
-        partial_results: list[TaskResult],
-        error: str,
-    ) -> None:
-        try:
-            processed_ids = {r.task_id for r in partial_results}
-            final_results = list(partial_results)
-
-            for img in images:
-                if img.task_id not in processed_ids:
-                    final_results.append(
-                        TaskResult(
-                            task_id=img.task_id,
-                            status=TaskStatus.FAILED,
-                            file_id=img.file_upload_info.file_id,
-                            error_message=f"BATCH_FAILED: {error}",
-                        )
-                    )
-
-            await self._finalize_batch(
-                batch_id, BatchStatus.PARTIAL_FAILURE, final_results
-            )
-        except Exception as e:
-            logger.error(f"Critical failure handler failed: {e}")
-
-
-def get_closet_service(
-    redis_client: Annotated[Redis, Depends(get_redis_client)],
-) -> ClosetService:
-    settings = get_settings()
-    analyzer: ImageAnalyzer | None = None
-    if settings.use_mock_analyzer:
-        analyzer = MockImageAnalyzer(delay_seconds=4.0)
-        logger.info("Using MockImageAnalyzer for load testing")
-    return ClosetService(redis_client=redis_client, image_analyzer=analyzer)
