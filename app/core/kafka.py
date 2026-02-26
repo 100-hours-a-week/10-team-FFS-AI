@@ -47,10 +47,10 @@ async def init_kafka(is_worker: bool = False) -> None:
         logger.info(
             f"Connecting Kafka Consumer to {settings.kafka_bootstrap_servers} "
             f"(group={settings.kafka_consumer_group}, "
-            f"topic={settings.kafka_request_topic})"
+            f"topic={settings.kafka_closet_request_topic})"
         )
         _consumer = AIOKafkaConsumer(
-            settings.kafka_request_topic,
+            settings.kafka_closet_request_topic,
             bootstrap_servers=settings.kafka_bootstrap_servers,
             group_id=settings.kafka_consumer_group,
             auto_offset_reset="earliest",

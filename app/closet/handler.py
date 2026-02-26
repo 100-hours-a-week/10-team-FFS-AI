@@ -67,12 +67,12 @@ async def handle_analysis_request(message: ConsumerRecord) -> None:
             ),
         )
         await producer.send_and_wait(
-            settings.kafka_result_topic,
+            settings.kafka_closet_result_topic,
             serialize_event(preprocess_event),
         )
         logger.info(f"전처리 완료: task={req.task_id}")
 
-        # ── 분석 단계: VLM 이미지 분석 ──
+        # ── 분석 단계: 이미지 분석 ──
         analysis_result = await _service.analyze(
             target_image_url=req.target_image,
         )
@@ -88,7 +88,7 @@ async def handle_analysis_request(message: ConsumerRecord) -> None:
             ),
         )
         await producer.send_and_wait(
-            settings.kafka_result_topic,
+            settings.kafka_closet_result_topic,
             serialize_event(analyze_event),
         )
         logger.info(f"분석 완료: task={req.task_id}")

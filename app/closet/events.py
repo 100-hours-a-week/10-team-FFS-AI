@@ -68,7 +68,7 @@ class AnalyzedPayload(BaseSchema):
 
 
 class AnalyzingCompletedEvent(BaseSchema):
-    """VLM 분석 완료 시 결과 토픽에 발행 (major/extra JSON 포함)"""
+    """분석 완료 시 결과 토픽에 발행 (major/extra JSON 포함)"""
 
     event_type: str = Field(default=EventType.ANALYZING_COMPLETED, alias="eventType")
     requested_at: str = Field(..., alias="requestedAt")

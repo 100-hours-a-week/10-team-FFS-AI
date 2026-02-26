@@ -4,7 +4,7 @@
 - S3에서 이미지 다운로드
 - 백엔드 내부 API로 Presigned URL 발급
 - S3에 이미지 업로드
-- Gemini VLM으로 이미지 분석
+- Gemini로 이미지 분석
 - 분석 결과 정규화
 """
 
@@ -58,7 +58,7 @@ class PreprocessResult:
 
 @dataclass
 class AnalysisResult:
-    """VLM 분석 결과를 담는 데이터 클래스."""
+    """이미지 분석 결과를 담는 데이터 클래스."""
 
     major: MajorAttributes
     extra: ExtraAttributes
@@ -105,7 +105,7 @@ class ClosetService:
         return PreprocessResult(file_id=file_id, success=True)
 
     async def analyze(self, target_image_url: str) -> AnalysisResult:
-        """이미지를 다운로드하고 VLM으로 분석합니다(분석 단계).
+        """이미지를 다운로드하고 분석합니다(분석 단계).
 
         Returns:
             AnalysisResult: 분석된 major/extra 속성과 성공 여부를 담은 결과.
@@ -124,7 +124,7 @@ class ClosetService:
                 error="IMAGE_DOWNLOAD_FAILED",
             )
 
-        # 2. VLM 분석
+        # 2. 이미지 분석
         raw_analysis = await self._safe_analyze(image_bytes)
         normalized = self._normalize_analysis(raw_analysis)
 
@@ -160,7 +160,7 @@ class ClosetService:
         error_counter=CLOSET_PIPELINE_ERRORS,
     )
     async def _safe_analyze(self, image_bytes: bytes) -> dict:
-        """VLM 분석. 실패 시 DEFAULT_ANALYSIS 반환."""
+        """이미지 분석. 실패 시 DEFAULT_ANALYSIS 반환."""
         try:
             return await self._analyzer.analyze_image(image_bytes)
         except Exception as e:
@@ -219,7 +219,7 @@ class ClosetService:
 
     @classmethod
     def _normalize_analysis(cls, data: dict) -> dict:
-        """VLM 분석 결과를 일관된 형태로 정규화합니다."""
+        """분석 결과를 일관된 형태로 정규화합니다."""
         major = data.get("major", {})
         extra = data.get("extra", {})
         meta = extra.get("meta_data", {})
