@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.closet.handler import create_handler
 from app.closet.schemas import ExtraAttributes, ExtraMetadata, MajorAttributes
 from app.closet.service import AnalysisResult, PreprocessResult
 
@@ -81,11 +82,9 @@ async def test_handle_analysis_request_success(
     with (
         patch("app.closet.handler._service", mock_service),
         patch("app.closet.handler.get_kafka_producer", return_value=producer),
-        patch("app.closet.handler.get_kafka_consumer", return_value=consumer),
     ):
-        from app.closet.handler import handle_analysis_request
-
-        await handle_analysis_request(fake_message)
+        handler = create_handler(consumer)
+        await handler(fake_message)
 
     # service 호출 검증
     mock_service.preprocess.assert_called_once()
@@ -111,11 +110,9 @@ async def test_handle_analysis_request_preprocess_failure(
     with (
         patch("app.closet.handler._service", mock_service),
         patch("app.closet.handler.get_kafka_producer", return_value=producer),
-        patch("app.closet.handler.get_kafka_consumer", return_value=consumer),
     ):
-        from app.closet.handler import handle_analysis_request
-
-        await handle_analysis_request(fake_message)
+        handler = create_handler(consumer)
+        await handler(fake_message)
 
     # 전처리 실패 시 analyze는 호출되면 안 됨
     mock_service.preprocess.assert_called_once()

@@ -6,10 +6,9 @@ import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 
-from aiokafka import ConsumerRecord
+from aiokafka import AIOKafkaConsumer, ConsumerRecord
 
 from app.config import get_settings
-from app.core.kafka import get_kafka_consumer
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +16,14 @@ logger = logging.getLogger(__name__)
 MessageHandler = Callable[..., Coroutine[object, object, None]]
 
 
-async def consume_loop(handler: MessageHandler) -> None:
-    """Kafka 요청 토픽을 무한히 구독하며 메시지를 핸들러에 전달하는 공용 루프.
+async def consume_loop(consumer: AIOKafkaConsumer, handler: MessageHandler) -> None:
+    """Kafka 토픽을 무한히 구독하며 메시지를 핸들러에 전달하는 공용 루프.
 
     Args:
+        consumer: 시작된 AIOKafkaConsumer 인스턴스
         handler: 메시지 1건을 처리하는 비동기 함수 (예: closet의 handle_analysis_request)
     """
     settings = get_settings()
-    consumer = get_kafka_consumer()
     semaphore = asyncio.Semaphore(settings.kafka_max_concurrent_tasks)
 
     logger.info(
