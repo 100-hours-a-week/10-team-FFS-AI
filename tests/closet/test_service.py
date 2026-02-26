@@ -51,7 +51,8 @@ def mock_analyzer() -> MagicMock:
 def service(
     mock_s3_client: MagicMock, mock_analyzer: MagicMock
 ) -> Generator[ClosetService, Any, None]:
-    svc = ClosetService()
+    with patch("app.closet.service.GeminiImageAnalyzer"):
+        svc = ClosetService()
     svc._s3_client = mock_s3_client
     svc._analyzer = mock_analyzer
     yield svc
