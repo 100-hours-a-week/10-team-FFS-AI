@@ -1,34 +1,16 @@
+"""ClosetService 단위 테스트 — 비즈니스 로직(이미지 분석 파이프라인) 검증
+
+외부 의존(S3, Gemini, Backend API)을 모두 Mock으로 대체하여
+순수 비즈니스 로직만 테스트합니다.
+"""
+
 from collections.abc import Generator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import BackgroundTasks
 
-from app.closet.schemas import (
-    AnalyzeImageItem,
-    AnalyzeRequest,
-    AnalyzeResponse,
-    BatchMeta,
-    BatchStatus,
-    FileUploadInfo,
-    TaskResult,
-    TaskStatus,
-)
 from app.closet.service import ClosetService
-from app.common.llm_schemas import (
-    ImageAnalysisResult,
-    ImageExtraAttributes,
-    ImageExtraMetadata,
-    ImageMajorAttributes,
-)
-
-
-@pytest.fixture
-def mock_redis() -> AsyncMock:
-    redis = AsyncMock()
-    redis.get.return_value = None
-    return redis
 
 
 @pytest.fixture
@@ -40,226 +22,152 @@ def mock_s3_client() -> MagicMock:
 
 
 @pytest.fixture
-def mock_gemini_analyzer() -> MagicMock:
+def mock_analyzer() -> MagicMock:
     analyzer = MagicMock()
     analyzer.analyze_image = AsyncMock(
-        return_value=ImageAnalysisResult(
-            major=ImageMajorAttributes(
-                category="TOP",
-                color=["흰색"],
-                material=[],
-                style_tags=[],
-            ),
-            extra=ImageExtraAttributes(
-                meta_data=ImageExtraMetadata(),
-                caption="흰색 셔츠입니다.",
-            ),
-        )
+        return_value={
+            "major": {
+                "category": "TOP",
+                "color": ["흰색"],
+                "material": ["면"],
+                "style_tags": ["캐주얼"],
+            },
+            "extra": {
+                "meta_data": {
+                    "gender": "유니섹스",
+                    "season": ["봄", "가을"],
+                    "formality": "캐주얼",
+                    "fit": "레귤러핏",
+                    "occasion": ["데일리"],
+                },
+                "caption": "흰색 면 티셔츠입니다.",
+            },
+        }
     )
     return analyzer
 
 
 @pytest.fixture
 def service(
-    mock_redis: AsyncMock,
-    mock_s3_client: MagicMock,
-    mock_gemini_analyzer: MagicMock,
+    mock_s3_client: MagicMock, mock_analyzer: MagicMock
 ) -> Generator[ClosetService, Any, None]:
-    with patch("app.closet.service.S3Client", return_value=mock_s3_client):
-        svc = ClosetService(
-            redis_client=mock_redis,
-            image_analyzer=mock_gemini_analyzer,
-        )
-        yield svc
+    with patch("app.closet.service.GeminiImageAnalyzer"):
+        svc = ClosetService()
+    svc._s3_client = mock_s3_client
+    svc._analyzer = mock_analyzer
+    yield svc
+
+
+# ── preprocess 테스트 ──
 
 
 @pytest.mark.asyncio
-async def test_start_analysis(service: ClosetService, mock_redis: AsyncMock) -> None:
-    # Given
-    request = AnalyzeRequest(
-        user_id=1,
-        batch_id="batch-001",
-        images=[
-            AnalyzeImageItem(
-                sequence=1,
-                target_image="http://example.com/img.jpg",
-                task_id="task-001",
-                file_upload_info=FileUploadInfo(
-                    file_id=101,
-                    object_key="key/img.jpg",
-                    presigned_url="http://s3.com/put",
-                ),
-            )
-        ],
-    )
-    background_tasks = BackgroundTasks()
-
-    # When
-    response = await service.start_analysis(request, background_tasks)
-
-    # Then
-    assert response.batch_id == "batch-001"
-    assert response.status == BatchStatus.IN_PROGRESS
-    mock_redis.set.assert_called_once()
-    assert len(background_tasks.tasks) == 1
-
-
-@pytest.mark.asyncio
-async def test_process_batch_success(
-    service: ClosetService, mock_redis: AsyncMock
+async def test_preprocess_success(
+    service: ClosetService, mock_s3_client: MagicMock
 ) -> None:
-    # Given
-    batch_id = "batch-001"
-    images = [
-        AnalyzeImageItem(
-            sequence=1,
-            target_image="http://example.com/img.jpg",
-            task_id="task-001",
-            file_upload_info=FileUploadInfo(
-                file_id=101, object_key="key", presigned_url="url"
-            ),
+    """전처리 성공: 이미지 다운로드 + presigned URL 발급 + S3 업로드."""
+    with patch.object(
+        service,
+        "_request_presigned_url",
+        new_callable=AsyncMock,
+        return_value={"fileId": 12345, "presignedUrl": "https://s3.example.com/put"},
+    ):
+        result = await service.preprocess(
+            target_image_url="https://example.com/image.jpg",
+            user_id=1,
         )
-    ]
 
-    # Redis get이 초기 배치 상태를 반환하도록 설정
-    initial_state = AnalyzeResponse(
-        batch_id=batch_id,
-        status=BatchStatus.IN_PROGRESS,
-        meta=BatchMeta(total=1, completed=0, processing=1, is_finished=False),
-        results=[
-            TaskResult(
-                task_id="task-001", status=TaskStatus.PREPROCESSING, file_id=None
-            )
-        ],
-    )
-    mock_redis.get.return_value = initial_state.model_dump_json()
-
-    # When
-    await service.process_batch(batch_id, images)
-
-    # Then
-    # 상태 업데이트 호출 확인:
-    # 1. PREPROCESSING 상태 업데이트
-    # 2. ANALYZING 상태 업데이트
-    # 3. progress 업데이트
-    # 4. finalize 업데이트
-    assert mock_redis.set.call_count >= 2
-
-    # 마지막 set 호출(완료 상태) 검증
-    call_args = mock_redis.set.call_args_list[-1]
-    saved_json = call_args[0][1]
-    assert '"status":"COMPLETED"' in saved_json or '"status": "COMPLETED"' in saved_json
+    assert result.success is True
+    assert result.file_id == 12345
+    assert result.error is None
+    mock_s3_client.get_image.assert_called_once_with("https://example.com/image.jpg")
+    mock_s3_client.put_image.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_process_batch_download_failure(
-    service: ClosetService, mock_redis: AsyncMock, mock_s3_client: MagicMock
+async def test_preprocess_download_failure(
+    service: ClosetService, mock_s3_client: MagicMock
 ) -> None:
-    # Given
-    batch_id = "batch-001"
-    images = [
-        AnalyzeImageItem(
-            sequence=1,
-            target_image="http://example.com/img.jpg",
-            task_id="task-001",
-            file_upload_info=FileUploadInfo(
-                file_id=101, object_key="key", presigned_url="url"
-            ),
-        )
-    ]
-
+    """전처리 실패: 이미지 다운로드 실패 시 에러 반환."""
     mock_s3_client.get_image.side_effect = Exception("Download failed")
 
-    initial_state = AnalyzeResponse(
-        batch_id=batch_id,
-        status=BatchStatus.IN_PROGRESS,
-        meta=BatchMeta(total=1, completed=0, processing=1, is_finished=False),
-        results=[
-            TaskResult(
-                task_id="task-001", status=TaskStatus.PREPROCESSING, file_id=None
-            )
-        ],
+    result = await service.preprocess(
+        target_image_url="https://example.com/bad.jpg",
+        user_id=1,
     )
-    mock_redis.get.return_value = initial_state.model_dump_json()
 
-    # When
-    await service.process_batch(batch_id, images)
-
-    call_args = mock_redis.set.call_args_list[-1]
-    saved_json = call_args[0][1]
-    assert (
-        '"status":"PARTIAL_FAILURE"' in saved_json
-        or '"status": "PARTIAL_FAILURE"' in saved_json
-    )
+    assert result.success is False
+    assert result.error == "IMAGE_DOWNLOAD_FAILED"
 
 
 @pytest.mark.asyncio
-async def test_process_batch_analysis_failure_fallback(
-    service: ClosetService, mock_redis: AsyncMock, mock_gemini_analyzer: MagicMock
+async def test_preprocess_upload_failure(
+    service: ClosetService, mock_s3_client: MagicMock
 ) -> None:
-    # Given
-    batch_id = "batch-001"
-    images = [
-        AnalyzeImageItem(
-            sequence=1,
-            target_image="http://example.com/img.jpg",
-            task_id="task-001",
-            file_upload_info=FileUploadInfo(
-                file_id=101, object_key="key", presigned_url="url"
-            ),
+    """전처리 실패: S3 업로드 실패 시 에러 반환."""
+    mock_s3_client.put_image.side_effect = Exception("Upload failed")
+
+    with patch.object(
+        service,
+        "_request_presigned_url",
+        new_callable=AsyncMock,
+        return_value={"fileId": 99, "presignedUrl": "https://s3.example.com/put"},
+    ):
+        result = await service.preprocess(
+            target_image_url="https://example.com/image.jpg",
+            user_id=1,
         )
-    ]
 
-    mock_gemini_analyzer.analyze_image.side_effect = Exception("Gemini API error")
+    assert result.success is False
+    assert "UPLOAD_FAILED" in result.error
 
-    initial_state = AnalyzeResponse(
-        batch_id=batch_id,
-        status=BatchStatus.IN_PROGRESS,
-        meta=BatchMeta(total=1, completed=0, processing=1, is_finished=False),
-        results=[
-            TaskResult(
-                task_id="task-001", status=TaskStatus.PREPROCESSING, file_id=None
-            )
-        ],
+
+# ── analyze 테스트 ──
+
+
+@pytest.mark.asyncio
+async def test_analyze_success(
+    service: ClosetService, mock_analyzer: MagicMock
+) -> None:
+    """분석 성공: VLM이 정상적으로 결과를 반환."""
+    result = await service.analyze(
+        target_image_url="https://example.com/image.jpg",
     )
-    mock_redis.get.return_value = initial_state.model_dump_json()
 
-    # When
-    await service.process_batch(batch_id, images)
-
-    call_args = mock_redis.set.call_args_list[-1]
-    saved_json = call_args[0][1]
-
-    assert '"status":"COMPLETED"' in saved_json or '"status": "COMPLETED"' in saved_json
-
-    assert "PARTIAL" in saved_json or "ANALYSIS_FAILED" in saved_json
+    assert result.success is True
+    assert result.major.category == "TOP"
+    assert result.major.color == ["흰색"]
+    assert result.extra.caption == "흰색 면 티셔츠입니다."
+    mock_analyzer.analyze_image.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_get_batch_status_found(
-    service: ClosetService, mock_redis: AsyncMock
+async def test_analyze_download_failure(
+    service: ClosetService, mock_s3_client: MagicMock
 ) -> None:
-    # Given
-    mock_redis.get.return_value = '{"batch_id": "b1", "status": "COMPLETED", "meta": {"total": 1, "completed": 1, "processing": 0, "is_finished": true}, "results": []}'
+    """분석 실패: 이미지 다운로드 실패 시 기본값(UNKNOWN) 반환."""
+    mock_s3_client.get_image.side_effect = Exception("Download failed")
 
-    # When
-    response = await service.get_batch_status("b1")
+    result = await service.analyze(
+        target_image_url="https://example.com/bad.jpg",
+    )
 
-    # Then
-    assert response is not None
-    assert response.batch_id == "b1"
-    assert response.status == BatchStatus.COMPLETED
+    assert result.success is False
+    assert result.major.category == "ETC"
+    assert result.error == "IMAGE_DOWNLOAD_FAILED"
 
 
 @pytest.mark.asyncio
-async def test_get_batch_status_not_found(
-    service: ClosetService, mock_redis: AsyncMock
+async def test_analyze_vlm_failure_fallback(
+    service: ClosetService, mock_analyzer: MagicMock
 ) -> None:
-    # Given
-    mock_redis.get.return_value = None
+    """분석 실패: VLM 에러 시 기본값(DEFAULT_ANALYSIS) 사용."""
+    mock_analyzer.analyze_image.side_effect = Exception("Gemini API error")
 
-    # When
-    response = await service.get_batch_status("unknown")
+    result = await service.analyze(
+        target_image_url="https://example.com/image.jpg",
+    )
 
-    # Then
-    assert response is None
+    # VLM이 에러나도 기본값으로 결과가 반환되어야 함
+    assert result.success is True  # 다운로드는 성공, 분석만 fallback
+    assert result.major.category == "ETC"

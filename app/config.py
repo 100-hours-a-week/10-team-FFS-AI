@@ -54,6 +54,29 @@ class Settings(BaseSettings):
 
     use_mock_analyzer: bool = Field(default=False, alias="USE_MOCK_ANALYZER")
 
+    # ── Kafka ──
+    kafka_bootstrap_servers: str = Field(
+        default="localhost:9092", alias="KAFKA_BOOTSTRAP_SERVERS"
+    )
+    kafka_closet_request_topic: str = Field(
+        default="ai.clothes.analyze.request", alias="KAFKA_CLOSET_REQUEST_TOPIC"
+    )
+    kafka_closet_result_topic: str = Field(
+        default="ai.clothes.analyze.result", alias="KAFKA_CLOSET_RESULT_TOPIC"
+    )
+    kafka_consumer_group: str = Field(
+        default="ai_analyze_worker_group", alias="KAFKA_CONSUMER_GROUP"
+    )
+    kafka_max_concurrent_tasks: int = Field(
+        default=50, alias="KAFKA_MAX_CONCURRENT_TASKS"
+    )
+
+    # ── Backend Internal API (presigned URL 발급용) ──
+    backend_internal_url: str = Field(
+        default="http://15.164.36.40", alias="BACKEND_INTERNAL_URL"
+    )
+    backend_internal_api_key: str = Field(default="", alias="BACKEND_INTERNAL_API_KEY")
+
 
 @lru_cache
 def get_settings() -> Settings:

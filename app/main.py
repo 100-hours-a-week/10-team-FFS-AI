@@ -6,8 +6,8 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
-from app.closet.router import router as closet_router
 from app.core.database import check_health, close_databases, init_databases
+from app.core.kafka import check_kafka_health, close_kafka, init_kafka
 from app.embedding.router import router as embedding_router
 from app.outfit.router import router as outfit_router
 from app.shop.router import router as shop_router
@@ -24,15 +24,26 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("start server")
     try:
         await init_databases()
-        logger.info("Application startup complete")
+        logger.info("Database connections initialized")
     except Exception as e:
-        logger.error(f"Failed to start application: {e}")
+        logger.error(f"Failed to initialize databases: {e}")
         raise
+
+    # Kafka 연결 실패 시에도 HTTP API는 정상 동작해야 함
+    # (Kafka는 워커 전용, FastAPI 서버는 HTTP API 전담)
+    try:
+        await init_kafka()
+        logger.info("Kafka Producer initialized")
+    except Exception as e:
+        logger.warning(f"Kafka 연결 실패 (HTTP API는 정상 동작): {e}")
+
+    logger.info("Application startup complete")
 
     yield
 
     logger.info("shut down server")
     try:
+        await close_kafka()
         await close_databases()
         logger.info("Application shutdown complete")
     except Exception as e:
@@ -50,7 +61,6 @@ Instrumentator().instrument(app).expose(app)
 
 app.include_router(embedding_router, prefix="/ai")
 app.include_router(outfit_router, prefix="/ai")
-app.include_router(closet_router, prefix="/ai")
 app.include_router(shop_router, prefix="/ai")
 
 
@@ -62,6 +72,7 @@ async def root() -> dict[str, str]:
 @app.get("/health")
 async def health_check() -> JSONResponse:
     health_status = await check_health()
+    health_status["kafka"] = await check_kafka_health()
 
     all_connected = all(status == "connected" for status in health_status.values())
     overall_status = "healthy" if all_connected else "degraded"
