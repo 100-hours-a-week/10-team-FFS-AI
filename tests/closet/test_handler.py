@@ -80,7 +80,7 @@ async def test_handle_analysis_request_success(
     producer, consumer = mock_kafka
 
     with (
-        patch("app.closet.handler._service", mock_service),
+        patch("app.closet.handler._get_service", return_value=mock_service),
         patch("app.closet.handler.get_kafka_producer", return_value=producer),
     ):
         handler = create_handler(consumer)
@@ -108,7 +108,7 @@ async def test_handle_analysis_request_preprocess_failure(
     )
 
     with (
-        patch("app.closet.handler._service", mock_service),
+        patch("app.closet.handler._get_service", return_value=mock_service),
         patch("app.closet.handler.get_kafka_producer", return_value=producer),
     ):
         handler = create_handler(consumer)

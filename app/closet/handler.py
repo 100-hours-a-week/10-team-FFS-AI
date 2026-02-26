@@ -31,8 +31,15 @@ logger = logging.getLogger(__name__)
 # 핸들러 타입
 MessageHandler = Callable[..., Coroutine[object, object, None]]
 
-# 비즈니스 로직 전담 서비스 (싱글톤)
-_service = ClosetService()
+# 비즈니스 로직 전담 서비스 (지연 초기화 — import 시점에 API 키 불필요)
+_service: ClosetService | None = None
+
+
+def _get_service() -> ClosetService:
+    global _service
+    if _service is None:
+        _service = ClosetService()
+    return _service
 
 
 def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
@@ -57,7 +64,7 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
 
         try:
             # ── 전처리 단계: 이미지 다운로드 + S3 업로드 ──
-            preprocess_result = await _service.preprocess(
+            preprocess_result = await _get_service().preprocess(
                 target_image_url=req.target_image,
                 user_id=req.user_id,
             )
@@ -86,7 +93,7 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
             logger.info(f"전처리 완료: task={req.task_id}")
 
             # ── 분석 단계: 이미지 분석 ──
-            analysis_result = await _service.analyze(
+            analysis_result = await _get_service().analyze(
                 target_image_url=req.target_image,
             )
 
