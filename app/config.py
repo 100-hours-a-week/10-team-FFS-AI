@@ -1,7 +1,23 @@
+from collections.abc import Callable, Coroutine
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 핸들러 타입
+MessageHandler = Callable[..., Coroutine[object, object, None]]
+HandlerFactory = Callable[..., MessageHandler]
+
+
+class ConsumerConfig(BaseModel):
+    """토픽별 Kafka Consumer 설정."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    topic: str
+    group_id: str
+    handler_factory: HandlerFactory
+    replicas: int = 1
 
 
 class Settings(BaseSettings):

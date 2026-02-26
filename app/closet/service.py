@@ -70,8 +70,16 @@ class ClosetService:
     """Closet 분석 비즈니스 로직 — 통신 방식에 독립적."""
 
     def __init__(self) -> None:
+        settings = get_settings()
         self._s3_client = S3Client()
-        self._analyzer = GeminiImageAnalyzer()
+
+        if settings.use_mock_analyzer:
+            from app.closet.mock_analyzer import MockImageAnalyzer
+
+            self._analyzer = MockImageAnalyzer(delay_seconds=4.0)
+            logger.info("Using MockImageAnalyzer for load testing")
+        else:
+            self._analyzer = GeminiImageAnalyzer()
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 공개 메서드
@@ -155,7 +163,9 @@ class ClosetService:
     async def _safe_analyze(self, image_bytes: bytes) -> dict:
         """이미지 분석. 실패 시 DEFAULT_ANALYSIS 반환."""
         try:
-            return await self._analyzer.analyze_image(image_bytes)
+            result = await self._analyzer.analyze_image(image_bytes)
+            # ImageAnalysisResult(Pydantic) → dict 변환 (_normalize_analysis가 dict.get() 사용)
+            return result.model_dump()
         except Exception as e:
             logger.error(f"분석 실패 (기본값 사용): {e}")
             return DEFAULT_ANALYSIS.copy()
