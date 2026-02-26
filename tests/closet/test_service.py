@@ -11,6 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.closet.service import ClosetService
+from app.common.llm_schemas import (
+    ImageAnalysisResult,
+    ImageExtraAttributes,
+    ImageExtraMetadata,
+    ImageMajorAttributes,
+)
 
 
 @pytest.fixture
@@ -25,24 +31,24 @@ def mock_s3_client() -> MagicMock:
 def mock_analyzer() -> MagicMock:
     analyzer = MagicMock()
     analyzer.analyze_image = AsyncMock(
-        return_value={
-            "major": {
-                "category": "TOP",
-                "color": ["흰색"],
-                "material": ["면"],
-                "style_tags": ["캐주얼"],
-            },
-            "extra": {
-                "meta_data": {
-                    "gender": "유니섹스",
-                    "season": ["봄", "가을"],
-                    "formality": "캐주얼",
-                    "fit": "레귤러핏",
-                    "occasion": ["데일리"],
-                },
-                "caption": "흰색 면 티셔츠입니다.",
-            },
-        }
+        return_value=ImageAnalysisResult(
+            major=ImageMajorAttributes(
+                category="TOP",
+                color=["흰색"],
+                material=["면"],
+                style_tags=["캐주얼"],
+            ),
+            extra=ImageExtraAttributes(
+                meta_data=ImageExtraMetadata(
+                    gender="유니섹스",
+                    season=["봄", "가을"],
+                    formality="캐주얼",
+                    fit="레귤러핏",
+                    occasion=["데일리"],
+                ),
+                caption="흰색 면 티셔츠입니다.",
+            ),
+        )
     )
     return analyzer
 
