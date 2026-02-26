@@ -24,12 +24,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("start server")
     try:
         await init_databases()
-        await init_kafka()
-
-        logger.info("Application startup complete")
+        logger.info("Database connections initialized")
     except Exception as e:
-        logger.error(f"Failed to start application: {e}")
+        logger.error(f"Failed to initialize databases: {e}")
         raise
+
+    # Kafka 연결 실패 시에도 HTTP API는 정상 동작해야 함
+    # (Kafka는 워커 전용, FastAPI 서버는 HTTP API 전담)
+    try:
+        await init_kafka()
+        logger.info("Kafka Producer initialized")
+    except Exception as e:
+        logger.warning(f"Kafka 연결 실패 (HTTP API는 정상 동작): {e}")
+
+    logger.info("Application startup complete")
 
     yield
 
