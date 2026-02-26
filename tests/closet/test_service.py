@@ -152,7 +152,7 @@ async def test_analyze_download_failure(
     )
 
     assert result.success is False
-    assert result.major.category == "UNKNOWN"
+    assert result.major.category == "ETC"
     assert result.error == "IMAGE_DOWNLOAD_FAILED"
 
 
@@ -169,4 +169,4 @@ async def test_analyze_vlm_failure_fallback(
 
     # VLM이 에러나도 기본값으로 결과가 반환되어야 함
     assert result.success is True  # 다운로드는 성공, 분석만 fallback
-    assert result.major.category == "UNKNOWN"
+    assert result.major.category == "ETC"

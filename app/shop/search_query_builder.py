@@ -44,6 +44,6 @@ class ShopSearchQueryBuilder:
             parts.append(constraint)
 
         text = ". ".join(parts)
-        logger.debug(f"Built shop search query: {text} (category: {category})")
+        logger.debug(f"Built shop search query: {text} " f"(category: {category})")
 
         return ShopSearchQuery(text=text, category_filter=category)

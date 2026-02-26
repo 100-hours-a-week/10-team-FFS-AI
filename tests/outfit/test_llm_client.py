@@ -1,8 +1,8 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
+import openai
 import pytest
-from pytest_mock import MockerFixture
+from pydantic import BaseModel
 
 from app.outfit.exceptions import LLMError
 from app.outfit.llm_client import OpenAIClient
@@ -13,7 +13,9 @@ def mock_settings() -> MagicMock:
     settings = MagicMock()
     settings.openai_api_key = "test_key"
     settings.openai_chat_model = "gpt-4o-mini"
+    settings.openai_base_url = None
     settings.llm_timeout = 10
+    settings.llm_max_retries = 0  # 테스트에서 재시도 비활성화
     return settings
 
 
@@ -22,191 +24,189 @@ def client(mock_settings: MagicMock) -> OpenAIClient:
     return OpenAIClient(settings=mock_settings)
 
 
-class TestChatCompletionSuccess:
+def _make_create_response(content: str = "hello") -> MagicMock:
+    """chat.completions.create 응답 mock 생성."""
+    choice = MagicMock()
+    choice.message.content = content
+    completion = MagicMock()
+    completion.choices = [choice]
+    completion.model_dump.return_value = {
+        "choices": [{"message": {"content": content}}]
+    }
+    return completion
+
+
+def _make_parse_response(parsed: BaseModel | None) -> MagicMock:
+    """beta.chat.completions.parse 응답 mock 생성."""
+    choice = MagicMock()
+    choice.message.parsed = parsed
+    completion = MagicMock()
+    completion.choices = [choice]
+    return completion
+
+
+class TestChatCompletionWithoutStructuredOutput:
+    """response_format=None 일반 호출 테스트."""
+
     @pytest.mark.asyncio
     async def test_basic_completion(
-        self: "TestChatCompletionSuccess",
+        self: "TestChatCompletionWithoutStructuredOutput",
         client: OpenAIClient,
-        mocker: MockerFixture,
     ) -> None:
         messages = [{"role": "user", "content": "hello"}]
-        expected_response = {"choices": [{"message": {"content": "world"}}]}
+        mock_completion = _make_create_response("world")
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = expected_response
-        mock_response.raise_for_status = MagicMock()
-
-        mocker.patch(
-            "httpx.AsyncClient.post",
+        with patch.object(
+            client._client.chat.completions,
+            "create",
             new_callable=AsyncMock,
-            return_value=mock_response,
-        )
+            return_value=mock_completion,
+        ):
+            result = await client.chat_completion(messages)
 
-        result = await client.chat_completion(messages)
-
-        assert result == expected_response
+        assert result == {"choices": [{"message": {"content": "world"}}]}
 
     @pytest.mark.asyncio
     async def test_custom_parameters(
-        self: "TestChatCompletionSuccess",
+        self: "TestChatCompletionWithoutStructuredOutput",
         client: OpenAIClient,
-        mocker: MockerFixture,
     ) -> None:
         messages = [{"role": "user", "content": "test"}]
+        mock_completion = _make_create_response()
 
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"choices": []}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_post = mocker.patch(
-            "httpx.AsyncClient.post",
+        with patch.object(
+            client._client.chat.completions,
+            "create",
             new_callable=AsyncMock,
-            return_value=mock_response,
-        )
+            return_value=mock_completion,
+        ) as mock_create:
+            await client.chat_completion(messages, temperature=0.5, max_tokens=1000)
 
-        await client.chat_completion(messages, temperature=0.5, max_tokens=1000)
+        mock_create.assert_called_once()
+        call_kwargs = mock_create.call_args.kwargs
+        assert call_kwargs["temperature"] == 0.5
+        assert call_kwargs["max_tokens"] == 1000
 
-        payload = mock_post.call_args.kwargs["json"]
-        assert payload["temperature"] == 0.5
-        assert payload["max_tokens"] == 1000
 
-
-class TestRetryBehavior:
-    @pytest.mark.asyncio
-    async def test_retry_on_timeout(
-        self: "TestRetryBehavior",
-        client: OpenAIClient,
-        mocker: MockerFixture,
-    ) -> None:
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"choices": []}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_post = mocker.patch("httpx.AsyncClient.post", new_callable=AsyncMock)
-        mock_post.side_effect = [
-            httpx.TimeoutException("timeout"),
-            mock_response,
-        ]
-
-        result = await client.chat_completion([{"role": "user", "content": "hi"}])
-
-        assert result == {"choices": []}
-        assert mock_post.call_count == 2
+class TestChatCompletionWithStructuredOutput:
+    """response_format 전달 시 Structured Output 경로 테스트."""
 
     @pytest.mark.asyncio
-    async def test_retry_on_429(
-        self: "TestRetryBehavior",
+    async def test_returns_parsed_pydantic_instance(
+        self: "TestChatCompletionWithStructuredOutput",
         client: OpenAIClient,
-        mocker: MockerFixture,
     ) -> None:
-        error_response = MagicMock()
-        error_response.status_code = 429
-        error_response.text = "Rate limit exceeded"
-        error_response.headers = {"Retry-After": "1"}
+        from pydantic import BaseModel
 
-        success_response = MagicMock()
-        success_response.status_code = 200
-        success_response.json.return_value = {"choices": []}
-        success_response.raise_for_status = MagicMock()
+        class DummyModel(BaseModel):
+            value: str
 
-        mock_post = mocker.patch("httpx.AsyncClient.post", new_callable=AsyncMock)
-        mock_post.side_effect = [
-            httpx.HTTPStatusError("429", request=MagicMock(), response=error_response),
-            success_response,
-        ]
+        expected = DummyModel(value="test_value")
+        mock_completion = _make_parse_response(expected)
 
-        result = await client.chat_completion([{"role": "user", "content": "hi"}])
+        with patch.object(
+            client._client.beta.chat.completions,
+            "parse",
+            new_callable=AsyncMock,
+            return_value=mock_completion,
+        ):
+            result = await client.chat_completion(
+                [{"role": "user", "content": "hi"}],
+                response_format=DummyModel,
+            )
 
-        assert result == {"choices": []}
-        assert mock_post.call_count == 2
+        assert isinstance(result, DummyModel)
+        assert result.value == "test_value"
 
     @pytest.mark.asyncio
-    async def test_retry_on_500(
-        self: "TestRetryBehavior",
+    async def test_raises_when_parsed_is_none(
+        self: "TestChatCompletionWithStructuredOutput",
         client: OpenAIClient,
-        mocker: MockerFixture,
     ) -> None:
-        error_response = MagicMock()
-        error_response.status_code = 500
-        error_response.text = "Internal server error"
-        error_response.headers = {}
+        from pydantic import BaseModel
 
-        success_response = MagicMock()
-        success_response.status_code = 200
-        success_response.json.return_value = {"choices": []}
-        success_response.raise_for_status = MagicMock()
+        class DummyModel(BaseModel):
+            value: str
 
-        mock_post = mocker.patch("httpx.AsyncClient.post", new_callable=AsyncMock)
-        mock_post.side_effect = [
-            httpx.HTTPStatusError("500", request=MagicMock(), response=error_response),
-            success_response,
-        ]
+        mock_completion = _make_parse_response(None)
 
-        result = await client.chat_completion([{"role": "user", "content": "hi"}])
+        with patch.object(
+            client._client.beta.chat.completions,
+            "parse",
+            new_callable=AsyncMock,
+            return_value=mock_completion,
+        ):
+            with pytest.raises(LLMError, match="parsing returned None"):
+                await client.chat_completion(
+                    [{"role": "user", "content": "hi"}],
+                    response_format=DummyModel,
+                )
 
-        assert result == {"choices": []}
-        assert mock_post.call_count == 2
+
+class TestErrorHandling:
+    """에러 핸들링 테스트."""
 
     @pytest.mark.asyncio
-    async def test_retry_exhausted(
-        self: "TestRetryBehavior",
+    async def test_authentication_error(
+        self: "TestErrorHandling",
         client: OpenAIClient,
-        mocker: MockerFixture,
     ) -> None:
-        mock_post = mocker.patch("httpx.AsyncClient.post", new_callable=AsyncMock)
-        mock_post.side_effect = httpx.TimeoutException("timeout")
-
-        with pytest.raises(LLMError, match="Network error"):
-            await client.chat_completion([{"role": "user", "content": "hi"}])
-
-        assert mock_post.call_count == 3
-
-
-class TestNoRetryErrors:
-    @pytest.mark.asyncio
-    async def test_no_retry_on_401(
-        self: "TestNoRetryErrors",
-        client: OpenAIClient,
-        mocker: MockerFixture,
-    ) -> None:
-        error_response = MagicMock()
-        error_response.status_code = 401
-        error_response.text = "Invalid API Key"
-        error_response.headers = {}
-
-        mock_post = mocker.patch("httpx.AsyncClient.post", new_callable=AsyncMock)
-        mock_post.side_effect = httpx.HTTPStatusError(
-            "401", request=MagicMock(), response=error_response
-        )
-
-        with pytest.raises(LLMError, match="Invalid OpenAI API Key"):
-            await client.chat_completion([{"role": "user", "content": "hi"}])
-
-        assert mock_post.call_count == 1
+        with patch.object(
+            client._client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+            side_effect=openai.AuthenticationError(
+                "invalid key", response=MagicMock(), body={}
+            ),
+        ):
+            with pytest.raises(LLMError, match="Invalid OpenAI API Key"):
+                await client.chat_completion([{"role": "user", "content": "hi"}])
 
     @pytest.mark.asyncio
-    async def test_no_retry_on_400(
-        self: "TestNoRetryErrors",
+    async def test_bad_request_error(
+        self: "TestErrorHandling",
         client: OpenAIClient,
-        mocker: MockerFixture,
     ) -> None:
-        error_response = MagicMock()
-        error_response.status_code = 400
-        error_response.text = "Bad request"
-        error_response.headers = {}
+        with patch.object(
+            client._client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+            side_effect=openai.BadRequestError(
+                "bad request", response=MagicMock(), body={}
+            ),
+        ):
+            with pytest.raises(LLMError, match="Invalid request"):
+                await client.chat_completion([{"role": "user", "content": "hi"}])
 
-        mock_post = mocker.patch("httpx.AsyncClient.post", new_callable=AsyncMock)
-        mock_post.side_effect = httpx.HTTPStatusError(
-            "400", request=MagicMock(), response=error_response
-        )
+    @pytest.mark.asyncio
+    async def test_rate_limit_error(
+        self: "TestErrorHandling",
+        client: OpenAIClient,
+    ) -> None:
+        with patch.object(
+            client._client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+            side_effect=openai.RateLimitError(
+                "rate limit", response=MagicMock(), body={}
+            ),
+        ):
+            with pytest.raises(LLMError, match="failed after retries"):
+                await client.chat_completion([{"role": "user", "content": "hi"}])
 
-        with pytest.raises(LLMError, match="Invalid request"):
-            await client.chat_completion([{"role": "user", "content": "hi"}])
-
-        assert mock_post.call_count == 1
+    @pytest.mark.asyncio
+    async def test_connection_error(
+        self: "TestErrorHandling",
+        client: OpenAIClient,
+    ) -> None:
+        with patch.object(
+            client._client.chat.completions,
+            "create",
+            new_callable=AsyncMock,
+            side_effect=openai.APIConnectionError(request=MagicMock()),
+        ):
+            with pytest.raises(LLMError, match="Network error"):
+                await client.chat_completion([{"role": "user", "content": "hi"}])
 
 
 class TestApiKeyValidation:
@@ -216,7 +216,6 @@ class TestApiKeyValidation:
         mock_settings: MagicMock,
     ) -> None:
         mock_settings.openai_api_key = None
-        client = OpenAIClient(settings=mock_settings)
 
         with pytest.raises(LLMError, match="OPENAI_API_KEY is not configured"):
-            await client.chat_completion([{"role": "user", "content": "hi"}])
+            OpenAIClient(settings=mock_settings)

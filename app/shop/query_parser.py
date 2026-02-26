@@ -1,7 +1,6 @@
-import json
 import logging
-from typing import Any
 
+from app.common.llm_schemas import ShopQueryLLMResponse
 from app.common.metrics import measure_time
 from app.outfit.llm_client import LLMClient
 from app.shop.exceptions import ShopLLMError, ShopParseError
@@ -21,22 +20,7 @@ SHOP_SYSTEM_PROMPT = """당신은 사용자의 쇼핑 검색 요청을 분석하
 5. price_min: 최소 가격 (원, 정수). 언급 없으면 null
 6. brand: 브랜드명. 언급 없으면 null
 7. target_category: 찾는 아이템 카테고리 (반드시 다음 중 하나: TOP, BOTTOM, DRESS, SHOES, ACCESSORY, ETC). 전체 코디 요청이면 null
-8. constraints: 추가 제약사항 배열 (크롭탑, 오버핏 등 구체적 키워드)
-
-반드시 JSON만 응답하세요. 설명이나 마크다운 없이 순수 JSON만 출력하세요.
-
-예시 입력: "3만원 이하 Y2K 감성 크롭탑 코디"
-예시 출력:
-{
-  "occasion": "일상",
-  "style": "Y2K",
-  "season": null,
-  "price_max": 30000,
-  "price_min": null,
-  "brand": null,
-  "target_category": null,
-  "constraints": ["크롭탑", "Y2K 감성"]
-}"""
+8. constraints: 추가 제약사항 배열 (크롭탑, 오버핏 등 구체적 키워드)"""
 
 
 class ShopQueryParser:
@@ -64,19 +48,16 @@ class ShopQueryParser:
         logger.info(f'Parsing shop query | {log_context} query="{query}"')
 
         try:
-            response = await self.llm_client.chat_completion(
+            response: ShopQueryLLMResponse = await self.llm_client.chat_completion(
                 messages=messages,
+                response_format=ShopQueryLLMResponse,
                 temperature=0.0,
                 max_tokens=500,
             )
-            return self._parse_response(response)
+            return self._to_parsed_query(response)
 
         except ShopLLMError:
             raise
-
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to parse shop LLM response | {log_context} error={e}")
-            raise ShopParseError(f"Invalid LLM response format: {e}") from e
 
         except Exception as e:
             logger.exception(
@@ -84,27 +65,15 @@ class ShopQueryParser:
             )
             raise ShopParseError(f"Unexpected parsing error: {e}") from e
 
-    def _parse_response(self, response: dict[str, Any]) -> ShopParsedQuery:
-        content = response["choices"][0]["message"]["content"]
-        data = self._extract_json(content)
-
+    @staticmethod
+    def _to_parsed_query(response: ShopQueryLLMResponse) -> ShopParsedQuery:
         return ShopParsedQuery(
-            occasion=data.get("occasion", "일상"),
-            style=data.get("style", "깔끔한"),
-            season=data.get("season"),
-            price_max=data.get("price_max"),
-            price_min=data.get("price_min"),
-            brand=data.get("brand"),
-            target_category=data.get("target_category"),
-            constraints=data.get("constraints", []),
+            occasion=response.occasion,
+            style=response.style,
+            season=response.season,
+            price_max=response.price_max,
+            price_min=response.price_min,
+            brand=response.brand,
+            target_category=response.target_category,
+            constraints=response.constraints,
         )
-
-    def _extract_json(self, content: str) -> dict[str, Any]:
-        content = content.strip()
-
-        if content.startswith("```"):
-            lines = content.split("\n")
-            lines = [line for line in lines if not line.startswith("```")]
-            content = "\n".join(lines)
-
-        return json.loads(content)

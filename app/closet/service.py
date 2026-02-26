@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_ANALYSIS: dict = {
     "major": {
-        "category": "UNKNOWN",
+        "category": "ETC",
         "color": [],
         "material": [],
         "style_tags": [],
@@ -67,23 +67,23 @@ class AnalysisResult:
 
 
 class ClosetService:
-    """통신 방식에 독립적인 옷 이미지 분석 비즈니스 로직."""
+    """Closet 분석 비즈니스 로직 — 통신 방식에 독립적."""
 
     def __init__(self) -> None:
         self._s3_client = S3Client()
         self._analyzer = GeminiImageAnalyzer()
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 공개 API
+    # 공개 메서드
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     async def preprocess(self, target_image_url: str, user_id: int) -> PreprocessResult:
-        """이미지를 다운로드하고 S3에 업로드합니다(전처리 단계).
+        """이미지를 다운로드하고 백엔드 스토리지에 업로드합니다(전처리 단계).
 
         Returns:
-            PreprocessResult: file_id와 성공 여부를 담은 결과.
+            PreprocessResult: 업로드된 fileId와 성공 여부를 담은 결과.
         """
-        # 1. 이미지 다운로드
+        # 1. 원본 이미지 다운로드
         image_bytes = await self._safe_download(target_image_url)
         if image_bytes is None:
             return PreprocessResult(
@@ -91,14 +91,12 @@ class ClosetService:
             )
 
         # 2. Presigned URL 발급
-        presigned_info = await self._request_presigned_url(
-            user_id=user_id, purpose="CLOTHES"
-        )
-        file_id = presigned_info["fileId"]
-        presigned_url = presigned_info["presignedUrl"]
+        presigned = await self._request_presigned_url(user_id, purpose="CLOSET")
+        file_id: int = presigned["fileId"]
+        upload_url: str = presigned["presignedUrl"]
 
-        # 3. S3에 이미지 업로드
-        upload_error = await self._safe_upload(presigned_url, image_bytes)
+        # 3. S3 업로드
+        upload_error = await self._safe_upload(upload_url, image_bytes)
         if upload_error:
             return PreprocessResult(file_id=file_id, success=False, error=upload_error)
 
@@ -113,13 +111,9 @@ class ClosetService:
         # 1. 이미지 다운로드
         image_bytes = await self._safe_download(target_image_url)
         if image_bytes is None:
-            normalized = DEFAULT_ANALYSIS.copy()
             return AnalysisResult(
-                major=MajorAttributes(**normalized["major"]),
-                extra=ExtraAttributes(
-                    meta_data=ExtraMetadata(**normalized["extra"]["meta_data"]),
-                    caption=normalized["extra"].get("caption"),
-                ),
+                major=MajorAttributes(category="ETC"),
+                extra=ExtraAttributes(caption="의류 아이템"),
                 success=False,
                 error="IMAGE_DOWNLOAD_FAILED",
             )
@@ -128,17 +122,16 @@ class ClosetService:
         raw_analysis = await self._safe_analyze(image_bytes)
         normalized = self._normalize_analysis(raw_analysis)
 
-        return AnalysisResult(
-            major=MajorAttributes(**normalized["major"]),
-            extra=ExtraAttributes(
-                meta_data=ExtraMetadata(**normalized["extra"]["meta_data"]),
-                caption=normalized["extra"].get("caption"),
-            ),
-            success=True,
+        major = MajorAttributes(**normalized["major"])
+        extra = ExtraAttributes(
+            meta_data=ExtraMetadata(**normalized["extra"]["meta_data"]),
+            caption=normalized["extra"]["caption"],
         )
 
+        return AnalysisResult(major=major, extra=extra, success=True)
+
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # 내부 안전 래퍼 (에러 시 fallback)
+    # 내부 헬퍼 (각 단계별 안전한 실행)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     @measure_time(
@@ -226,7 +219,7 @@ class ClosetService:
 
         return {
             "major": {
-                "category": major.get("category") or "UNKNOWN",
+                "category": major.get("category") or "ETC",
                 "color": cls._to_list(major.get("color")),
                 "material": cls._to_list(major.get("material")),
                 "style_tags": cls._to_list(major.get("style_tags")),

@@ -1,8 +1,8 @@
-import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.common.llm_schemas import OutfitQueryLLMResponse, ReferenceItemLLM
 from app.outfit.exceptions import LLMError, ParseError
 from app.outfit.query_parser import QueryParser
 
@@ -22,25 +22,15 @@ class TestQueryParserSuccess:
     ) -> None:
         # Given
         mock_llm_client.chat_completion = AsyncMock(
-            return_value={
-                "choices": [
-                    {
-                        "message": {
-                            "content": json.dumps(
-                                {
-                                    "occasion": "면접",
-                                    "style": "포멀",
-                                    "season": "가을",
-                                    "formality": "포멀",
-                                    "reference_item": None,
-                                    "target_category": None,
-                                    "constraints": ["단정하게"],
-                                }
-                            )
-                        }
-                    }
-                ]
-            }
+            return_value=OutfitQueryLLMResponse(
+                occasion="면접",
+                style="포멀",
+                season="가을",
+                formality="포멀",
+                reference_item=None,
+                target_category=None,
+                constraints=["단정하게"],
+            )
         )
 
         # When
@@ -62,30 +52,20 @@ class TestQueryParserSuccess:
     ) -> None:
         # Given
         mock_llm_client.chat_completion = AsyncMock(
-            return_value={
-                "choices": [
-                    {
-                        "message": {
-                            "content": json.dumps(
-                                {
-                                    "occasion": "면접",
-                                    "style": "포멀",
-                                    "season": None,
-                                    "formality": "포멀",
-                                    "reference_item": {
-                                        "category": "TOP",
-                                        "color": "검정",
-                                        "style": "오버핏",
-                                        "description": None,
-                                    },
-                                    "target_category": "BOTTOM",
-                                    "constraints": [],
-                                }
-                            )
-                        }
-                    }
-                ]
-            }
+            return_value=OutfitQueryLLMResponse(
+                occasion="면접",
+                style="포멀",
+                season=None,
+                formality="포멀",
+                reference_item=ReferenceItemLLM(
+                    category="TOP",
+                    color="검정",
+                    style="오버핏",
+                    description=None,
+                ),
+                target_category="BOTTOM",
+                constraints=[],
+            )
         )
 
         # When
@@ -106,25 +86,11 @@ class TestQueryParserSuccess:
     ) -> None:
         # Given
         mock_llm_client.chat_completion = AsyncMock(
-            return_value={
-                "choices": [
-                    {
-                        "message": {
-                            "content": json.dumps(
-                                {
-                                    "occasion": "일상",
-                                    "style": "깔끔한",
-                                    "season": None,
-                                    "formality": None,
-                                    "reference_item": None,
-                                    "target_category": "BOTTOM",
-                                    "constraints": [],
-                                }
-                            )
-                        }
-                    }
-                ]
-            }
+            return_value=OutfitQueryLLMResponse(
+                occasion="일상",
+                style="깔끔한",
+                target_category="BOTTOM",
+            )
         )
 
         # When
@@ -137,39 +103,12 @@ class TestQueryParserSuccess:
         assert result.is_matching_request() is False
 
     @pytest.mark.asyncio
-    async def test_parse_with_markdown_codeblock(
-        self, parser: QueryParser, mock_llm_client: MagicMock
-    ) -> None:
-        # Given
-        json_content = json.dumps({"occasion": "데이트", "style": "캐주얼"})
-        mock_llm_client.chat_completion = AsyncMock(
-            return_value={
-                "choices": [{"message": {"content": f"```json\n{json_content}\n```"}}]
-            }
-        )
-
-        # When
-        result = await parser.parse("데이트 코디 추천해줘")
-
-        # Then
-        assert result.occasion == "데이트"
-        assert result.style == "캐주얼"
-
-    @pytest.mark.asyncio
     async def test_default_values(
         self, parser: QueryParser, mock_llm_client: MagicMock
     ) -> None:
-        # Given
+        # Given: 기본값만 있는 응답
         mock_llm_client.chat_completion = AsyncMock(
-            return_value={
-                "choices": [
-                    {
-                        "message": {
-                            "content": json.dumps({})  # 빈 응답
-                        }
-                    }
-                ]
-            }
+            return_value=OutfitQueryLLMResponse()
         )
 
         # When
@@ -180,6 +119,21 @@ class TestQueryParserSuccess:
         assert result.style == "깔끔한"
         assert result.constraints == []
 
+    @pytest.mark.asyncio
+    async def test_response_format_passed_to_llm(
+        self, parser: QueryParser, mock_llm_client: MagicMock
+    ) -> None:
+        """chat_completion 호출 시 response_format이 올바르게 전달되는지 검증."""
+        mock_llm_client.chat_completion = AsyncMock(
+            return_value=OutfitQueryLLMResponse()
+        )
+
+        await parser.parse("코디 추천해줘")
+
+        call_kwargs = mock_llm_client.chat_completion.call_args.kwargs
+        assert call_kwargs["response_format"] is OutfitQueryLLMResponse
+        assert call_kwargs["temperature"] == 0.0
+
 
 class TestQueryParserFailure:
     @pytest.fixture
@@ -189,21 +143,6 @@ class TestQueryParserFailure:
     @pytest.fixture
     def parser(self, mock_llm_client: MagicMock) -> QueryParser:
         return QueryParser(mock_llm_client)
-
-    @pytest.mark.asyncio
-    async def test_invalid_json_response(
-        self, parser: QueryParser, mock_llm_client: MagicMock
-    ) -> None:
-        # Given
-        mock_llm_client.chat_completion = AsyncMock(
-            return_value={
-                "choices": [{"message": {"content": "면접이니까 정장을 입으세요"}}]
-            }
-        )
-
-        # When / Then
-        with pytest.raises(ParseError, match="Invalid LLM response format"):
-            await parser.parse("면접 코디")
 
     @pytest.mark.asyncio
     async def test_llm_error_propagates(
@@ -219,12 +158,14 @@ class TestQueryParserFailure:
             await parser.parse("코디 추천해줘")
 
     @pytest.mark.asyncio
-    async def test_malformed_response_structure(
+    async def test_unexpected_error_raises_parse_error(
         self, parser: QueryParser, mock_llm_client: MagicMock
     ) -> None:
         # Given
-        mock_llm_client.chat_completion = AsyncMock(return_value={"choices": []})
+        mock_llm_client.chat_completion = AsyncMock(
+            side_effect=RuntimeError("예상치 못한 에러")
+        )
 
         # When / Then
-        with pytest.raises(ParseError):
+        with pytest.raises(ParseError, match="Unexpected parsing error"):
             await parser.parse("코디 추천해줘")
