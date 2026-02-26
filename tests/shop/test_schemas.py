@@ -71,9 +71,7 @@ class TestShopParsedQuery:
 
     def test_single_category_request(self) -> None:
         """target_category가 있으면 특정 카테고리 요청"""
-        parsed = ShopParsedQuery(
-            style="Y2K", target_category="TOP"
-        )
+        parsed = ShopParsedQuery(style="Y2K", target_category="TOP")
         assert parsed.is_full_outfit_request() is False
 
 
@@ -162,9 +160,7 @@ class TestShopSearchResponse:
 
 class TestProductSearchResult:
     def test_empty_result(self) -> None:
-        result = ProductSearchResult(
-            category="TOP", candidates=[]
-        )
+        result = ProductSearchResult(category="TOP", candidates=[])
         assert result.category == "TOP"
         assert result.candidates == []
 

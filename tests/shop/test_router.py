@@ -44,9 +44,7 @@ def test_shop_search_success(
     }
 
     # When
-    response = client.post(
-        "/ai/v2/shop/outfit", json=request_data
-    )
+    response = client.post("/ai/v2/shop/outfit", json=request_data)
 
     # Then
     assert response.status_code == 200
@@ -80,9 +78,7 @@ def test_shop_search_empty_result(
     }
 
     # When
-    response = client.post(
-        "/ai/v2/shop/outfit", json=request_data
-    )
+    response = client.post("/ai/v2/shop/outfit", json=request_data)
 
     # Then
     assert response.status_code == 200
@@ -97,9 +93,7 @@ def test_shop_search_parse_error(
     # Given
     from app.shop.exceptions import ShopParseError
 
-    mock_shop_service.search.side_effect = ShopParseError(
-        "쿼리 파싱 실패"
-    )
+    mock_shop_service.search.side_effect = ShopParseError("쿼리 파싱 실패")
 
     request_data = {
         "userId": 123,
@@ -107,9 +101,7 @@ def test_shop_search_parse_error(
     }
 
     # When
-    response = client.post(
-        "/ai/v2/shop/outfit", json=request_data
-    )
+    response = client.post("/ai/v2/shop/outfit", json=request_data)
 
     # Then
     assert response.status_code == 400
@@ -124,9 +116,7 @@ def test_shop_search_llm_error(
     # Given
     from app.shop.exceptions import ShopLLMError
 
-    mock_shop_service.search.side_effect = ShopLLMError(
-        "OpenAI API 오류"
-    )
+    mock_shop_service.search.side_effect = ShopLLMError("OpenAI API 오류")
 
     request_data = {
         "userId": 123,
@@ -134,9 +124,7 @@ def test_shop_search_llm_error(
     }
 
     # When
-    response = client.post(
-        "/ai/v2/shop/outfit", json=request_data
-    )
+    response = client.post("/ai/v2/shop/outfit", json=request_data)
 
     # Then
     assert response.status_code == 503
@@ -149,9 +137,7 @@ def test_shop_search_unexpected_error(
     mock_shop_service: AsyncMock,
 ) -> None:
     # Given
-    mock_shop_service.search.side_effect = RuntimeError(
-        "알 수 없는 오류"
-    )
+    mock_shop_service.search.side_effect = RuntimeError("알 수 없는 오류")
 
     request_data = {
         "userId": 123,
@@ -159,9 +145,7 @@ def test_shop_search_unexpected_error(
     }
 
     # When
-    response = client.post(
-        "/ai/v2/shop/outfit", json=request_data
-    )
+    response = client.post("/ai/v2/shop/outfit", json=request_data)
 
     # Then
     assert response.status_code == 500

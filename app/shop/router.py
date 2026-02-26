@@ -19,16 +19,11 @@ logger = logging.getLogger(__name__)
 )
 async def search_shop_outfit(
     request: ShopSearchRequest,
-    service: Annotated[
-        ShopService, Depends(get_shop_service)
-    ],
+    service: Annotated[ShopService, Depends(get_shop_service)],
 ) -> ShopSearchResponse:
-    
     trace_id = str(uuid.uuid4())
     query_preview = (
-        f"{request.query[:50]}..."
-        if len(request.query) > 50
-        else request.query
+        f"{request.query[:50]}..." if len(request.query) > 50 else request.query
     )
 
     logger.info(
@@ -40,9 +35,7 @@ async def search_shop_outfit(
     )
 
     try:
-        response = await service.search(
-            request, trace_id=trace_id
-        )
+        response = await service.search(request, trace_id=trace_id)
         logger.info(
             f"Shop search completed | "
             f"trace_id={trace_id} "
@@ -72,8 +65,7 @@ async def search_shop_outfit(
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="AI 서비스 오류가 발생했습니다. "
-            "잠시 후 다시 시도해주세요.",
+            detail="AI 서비스 오류가 발생했습니다. " "잠시 후 다시 시도해주세요.",
         ) from err
 
     except Exception as err:

@@ -32,7 +32,7 @@ async def test_upsert_clothing_success() -> None:
         clothes_id=1,
         image_url="http://example.com/image.jpg",
         major=MajorAttributes(
-            category="상의",
+            category="TOP",
             color=["빨강"],
             material=["니트"],
             style_tags=["캐주얼"],
@@ -92,7 +92,7 @@ async def test_upsert_formats_text_correctly() -> None:
         clothes_id=1,
         image_url="http://example.com/image.jpg",
         major=MajorAttributes(
-            category="코트",
+            category="TOP",
             color=["검정"],
             material=["울"],
             style_tags=["미니멀"],
