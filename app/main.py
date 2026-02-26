@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.closet.router import router as closet_router
+from app.config import get_settings
 from app.core.database import check_health, close_databases, init_databases
 from app.embedding.router import router as embedding_router
 from app.outfit.router import router as outfit_router
@@ -19,11 +20,49 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _init_langfuse() -> None:
+    """Langfuse 초기화 — @observe 데코레이터가 사용하는 langfuse_context 설정"""
+    settings = get_settings()
+    if not settings.langfuse_enabled:
+        logger.info("Langfuse disabled (LANGFUSE_ENABLED=false)")
+        return
+
+    if not settings.langfuse_secret_key or not settings.langfuse_public_key:
+        logger.warning("Langfuse enabled but keys not set, skipping initialization")
+        return
+
+    from langfuse.decorators import langfuse_context
+
+    langfuse_context.configure(
+        secret_key=settings.langfuse_secret_key,
+        public_key=settings.langfuse_public_key,
+        host=settings.langfuse_host,
+        enabled=True,
+    )
+    logger.info("Langfuse initialized (host=%s)", settings.langfuse_host)
+
+
+def _shutdown_langfuse() -> None:
+    """Langfuse 종료 시 미전송 데이터 flush"""
+    settings = get_settings()
+    if not settings.langfuse_enabled:
+        return
+
+    try:
+        from langfuse.decorators import langfuse_context
+
+        langfuse_context.flush()
+        logger.info("Langfuse flushed successfully")
+    except Exception as e:
+        logger.warning("Langfuse flush failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("start server")
     try:
         await init_databases()
+        _init_langfuse()
         logger.info("Application startup complete")
     except Exception as e:
         logger.error(f"Failed to start application: {e}")
@@ -33,6 +72,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     logger.info("shut down server")
     try:
+        _shutdown_langfuse()
         await close_databases()
         logger.info("Application shutdown complete")
     except Exception as e:

@@ -8,6 +8,7 @@ import base64
 import logging
 
 import httpx
+from langfuse.decorators import observe
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,7 @@ Generate a single image of a white mannequin wearing ALL of these items as a coo
 
         return image_parts
 
+    @observe(as_type="generation", name="vton_generate_image")
     async def generate_outfit_image(self, request: VTONRequest) -> VTONResponse:
         """
         여러 패션 아이템 이미지로 코디된 모델 이미지 생성

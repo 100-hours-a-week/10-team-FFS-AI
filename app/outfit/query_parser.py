@@ -1,5 +1,7 @@
 import logging
 
+from langfuse.decorators import observe
+
 from app.common.llm_schemas import OutfitQueryLLMResponse
 from app.common.metrics import measure_time
 from app.outfit.exceptions import LLMError, ParseError
@@ -29,6 +31,7 @@ class QueryParser:
     def __init__(self, llm_client: LLMClient) -> None:
         self.llm_client = llm_client
 
+    @observe(name="query_parser.parse")
     @measure_time("query_parser")
     async def parse(
         self, query: str, trace_id: str | None = None, user_id: int | None = None
