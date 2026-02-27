@@ -4,6 +4,14 @@ from functools import lru_cache
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
+# ── Kafka Topics (Code-level Constants) ──
+# 토픽 이름은 서비스 간의 규약(Contract)이므로 코드 내 상수로 관리합니다.
+class KafkaTopics:
+    CLOTHES_ANALYZE_REQUEST = "ai.clothes.analyze.request"
+    CLOTHES_ANALYZE_RESULT = "ai.clothes.analyze.result"
+
+
 # 핸들러 타입
 MessageHandler = Callable[..., Coroutine[object, object, None]]
 HandlerFactory = Callable[..., MessageHandler]
@@ -79,14 +87,9 @@ class Settings(BaseSettings):
     kafka_bootstrap_servers: str = Field(
         default="localhost:9092", alias="KAFKA_BOOTSTRAP_SERVERS"
     )
-    kafka_closet_request_topic: str = Field(
-        default="ai.clothes.analyze.request", alias="KAFKA_CLOSET_REQUEST_TOPIC"
-    )
-    kafka_closet_result_topic: str = Field(
-        default="ai.clothes.analyze.result", alias="KAFKA_CLOSET_RESULT_TOPIC"
-    )
-    kafka_analyze_consumer_group: str = Field(
-        default="ai_analyze_worker_group", alias="KAFKA_ANALYZE_CONSUMER_GROUP"
+    kafka_group_id_clothes_analyze: str = Field(
+        default="ai_clothes_analyze_worker_group",
+        alias="KAFKA_GROUP_ID_CLOTHES_ANALYZE",
     )
     kafka_max_concurrent_tasks: int = Field(
         default=50, alias="KAFKA_MAX_CONCURRENT_TASKS"
