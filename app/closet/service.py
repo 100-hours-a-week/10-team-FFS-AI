@@ -99,7 +99,7 @@ class ClosetService:
             )
 
         # 2. Presigned URL 발급
-        presigned = await self._request_presigned_url(user_id, purpose="CLOSET")
+        presigned = await self._request_presigned_url(user_id, purpose="CLOTHES")
         file_id: int = presigned["fileId"]
         upload_url: str = presigned["presignedUrl"]
 
