@@ -34,7 +34,7 @@ settings = get_settings()
 CONSUMER_CONFIGS: list[ConsumerConfig] = [
     ConsumerConfig(
         topic=settings.kafka_closet_request_topic,
-        group_id=settings.kafka_consumer_group,
+        group_id=settings.kafka_analyze_consumer_group,
         handler_factory=create_closet_handler,
         replicas=3,
     ),

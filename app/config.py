@@ -85,8 +85,8 @@ class Settings(BaseSettings):
     kafka_closet_result_topic: str = Field(
         default="ai.clothes.analyze.result", alias="KAFKA_CLOSET_RESULT_TOPIC"
     )
-    kafka_consumer_group: str = Field(
-        default="ai_analyze_worker_group", alias="KAFKA_CONSUMER_GROUP"
+    kafka_analyze_consumer_group: str = Field(
+        default="ai_analyze_worker_group", alias="KAFKA_ANALYZE_CONSUMER_GROUP"
     )
     kafka_max_concurrent_tasks: int = Field(
         default=50, alias="KAFKA_MAX_CONCURRENT_TASKS"
