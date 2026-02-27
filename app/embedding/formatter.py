@@ -10,12 +10,6 @@ class EmbeddingTextFormatter(Protocol):
 
 
 class HybridFormatter:
-    """
-    출력 예시:
-        "검정 울 코트. 포멀 스타일. 겨울용. 미니멀, 클래식. 면접, 출근에 적합.
-         오버핏 더블 버튼 코트로 세련된 분위기를 연출합니다."
-    """
-
     def format(
         self: "HybridFormatter", major: MajorAttributes, extra: ExtraAttributes
     ) -> str:
