@@ -16,5 +16,7 @@ google-genai
 aiofiles
 openai
 langgraph
+langfuse>=2.0,<3.0
+aiokafka>=0.13.0
 
 # for cd test 2

@@ -1,7 +1,23 @@
+from collections.abc import Callable, Coroutine
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 핸들러 타입
+MessageHandler = Callable[..., Coroutine[object, object, None]]
+HandlerFactory = Callable[..., MessageHandler]
+
+
+class ConsumerConfig(BaseModel):
+    """토픽별 Kafka Consumer 설정."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    topic: str
+    group_id: str
+    handler_factory: HandlerFactory
+    replicas: int = 1
 
 
 class Settings(BaseSettings):
@@ -53,6 +69,34 @@ class Settings(BaseSettings):
     naver_client_secret: str | None = Field(default=None, alias="NAVER_CLIENT_SECRET")
 
     use_mock_analyzer: bool = Field(default=False, alias="USE_MOCK_ANALYZER")
+
+    langfuse_enabled: bool = Field(default=True, alias="LANGFUSE_ENABLED")
+    langfuse_secret_key: str | None = Field(default=None, alias="LANGFUSE_SECRET_KEY")
+    langfuse_public_key: str | None = Field(default=None, alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_host: str = Field(default="http://localhost:3000", alias="LANGFUSE_HOST")
+
+    # ── Kafka ──
+    kafka_bootstrap_servers: str = Field(
+        default="localhost:9092", alias="KAFKA_BOOTSTRAP_SERVERS"
+    )
+    kafka_closet_request_topic: str = Field(
+        default="ai.clothes.analyze.request", alias="KAFKA_CLOSET_REQUEST_TOPIC"
+    )
+    kafka_closet_result_topic: str = Field(
+        default="ai.clothes.analyze.result", alias="KAFKA_CLOSET_RESULT_TOPIC"
+    )
+    kafka_consumer_group: str = Field(
+        default="ai_analyze_worker_group", alias="KAFKA_CONSUMER_GROUP"
+    )
+    kafka_max_concurrent_tasks: int = Field(
+        default=50, alias="KAFKA_MAX_CONCURRENT_TASKS"
+    )
+
+    # ── Backend Internal API (presigned URL 발급용) ──
+    backend_internal_url: str = Field(
+        default="http://15.164.36.40", alias="BACKEND_INTERNAL_URL"
+    )
+    backend_internal_api_key: str = Field(default="", alias="BACKEND_INTERNAL_API_KEY")
 
 
 @lru_cache

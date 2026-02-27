@@ -2,6 +2,8 @@ import logging
 import uuid
 from functools import lru_cache
 
+from langfuse.decorators import observe
+
 from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.graph import build_outfit_graph
 from app.outfit.llm_client import OpenAIClient
@@ -31,6 +33,7 @@ class OutfitService:
         self.vton_processor = vton_processor or VTONProcessor()
         self.graph = build_outfit_graph()
 
+    @observe(name="outfit_service.recommend")
     @measure_time(stage="total_pipeline", metric=OUTFIT_PIPELINE_TOTAL_DURATION)
     async def recommend(
         self, request: OutfitRequest, trace_id: str | None = None

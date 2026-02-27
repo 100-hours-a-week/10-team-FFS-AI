@@ -1,6 +1,8 @@
 import logging
 import uuid
 
+from langfuse.decorators import observe
+
 from app.common.llm_schemas import OutfitCompositionLLMResponse
 from app.common.metrics import measure_time
 from app.outfit.exceptions import LLMError, ParseError
@@ -30,6 +32,7 @@ class OutfitComposer:
     def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.llm_client = llm_client or OpenAIClient()
 
+    @observe(name="outfit_composer.compose")
     @measure_time("outfit_composer")
     async def compose(
         self,
