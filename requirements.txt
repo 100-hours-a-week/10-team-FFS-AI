@@ -15,5 +15,6 @@ prometheus-fastapi-instrumentator
 google-genai
 aiofiles
 openai
+langgraph
 
 # for cd test 2
