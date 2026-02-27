@@ -227,7 +227,7 @@ def build_commerce_payload(
         "category4": product["category4"],
         "searchKeyword": product["searchKeyword"],
         # AI 분석 결과
-        "Category": major.category,
+        "category": major.category,
         "color": major.color,
         "material": major.material,
         "styleTags": major.style_tags,
