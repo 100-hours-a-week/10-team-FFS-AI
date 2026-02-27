@@ -3,13 +3,13 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from langgraph.graph.state import CompiledStateGraph
 
 from app.outfit.graph.builder import build_outfit_graph
 from app.outfit.schemas import (
     ClothingCandidate,
     Outfit,
     OutfitItem,
-    OutfitRequest,
     OutfitResponse,
     ParsedQuery,
     SearchQuery,
@@ -140,7 +140,7 @@ def graph_config(
 
 
 @pytest.fixture
-def compiled_graph():  # type: ignore[no-untyped-def]
+def compiled_graph() -> CompiledStateGraph:
     return build_outfit_graph()
 
 
@@ -148,7 +148,7 @@ class TestOutfitGraph:
     @pytest.mark.asyncio
     async def test_full_pipeline_success(
         self,
-        compiled_graph,  # type: ignore[no-untyped-def]
+        compiled_graph: CompiledStateGraph,
         graph_config: dict,
         mock_query_parser: MagicMock,
         mock_search_builder: MagicMock,
@@ -180,7 +180,7 @@ class TestOutfitGraph:
     @pytest.mark.asyncio
     async def test_empty_search_results(
         self,
-        compiled_graph,  # type: ignore[no-untyped-def]
+        compiled_graph: CompiledStateGraph,
         graph_config: dict,
         mock_repository: MagicMock,
         mock_composer: MagicMock,
@@ -210,7 +210,7 @@ class TestOutfitGraph:
     @pytest.mark.asyncio
     async def test_vton_error_when_no_urls(
         self,
-        compiled_graph,  # type: ignore[no-untyped-def]
+        compiled_graph: CompiledStateGraph,
         graph_config: dict,
         mock_vton_processor: MagicMock,
     ) -> None:
@@ -232,7 +232,7 @@ class TestOutfitGraph:
     @pytest.mark.asyncio
     async def test_category_coverage_calculation(
         self,
-        compiled_graph,  # type: ignore[no-untyped-def]
+        compiled_graph: CompiledStateGraph,
         graph_config: dict,
     ) -> None:
         """category_coverage가 카테고리별 후보 수를 정확히 계산한다."""
@@ -250,7 +250,7 @@ class TestOutfitGraph:
     @pytest.mark.asyncio
     async def test_session_id_propagation(
         self,
-        compiled_graph,  # type: ignore[no-untyped-def]
+        compiled_graph: CompiledStateGraph,
         graph_config: dict,
     ) -> None:
         """session_id가 최종 응답에 정상 전달된다."""
@@ -269,7 +269,7 @@ class TestOutfitGraph:
     @pytest.mark.asyncio
     async def test_vton_processor_called_with_slots(
         self,
-        compiled_graph,  # type: ignore[no-untyped-def]
+        compiled_graph: CompiledStateGraph,
         graph_config: dict,
         mock_vton_processor: MagicMock,
     ) -> None:
@@ -292,7 +292,7 @@ class TestOutfitGraph:
     @pytest.mark.asyncio
     async def test_tpo_extract_error_sets_error_state(
         self,
-        compiled_graph,  # type: ignore[no-untyped-def]
+        compiled_graph: CompiledStateGraph,
         graph_config: dict,
         mock_query_parser: MagicMock,
     ) -> None:
@@ -316,7 +316,7 @@ class TestOutfitGraph:
     @pytest.mark.asyncio
     async def test_compose_handles_missing_parsed_query(
         self,
-        compiled_graph,  # type: ignore[no-untyped-def]
+        compiled_graph: CompiledStateGraph,
         graph_config: dict,
         mock_query_parser: MagicMock,
     ) -> None:
