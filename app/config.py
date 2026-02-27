@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     )
     kafka_group_id_clothes_analyze: str = Field(
         default="ai_clothes_analyze_worker_group",
-        alias="KAFKA_GROUP_ID_CLOTHES_ANALYZE",
+        alias="KAFKA_ANALYZE_CONSUMER_GROUP",
     )
     kafka_max_concurrent_tasks: int = Field(
         default=50, alias="KAFKA_MAX_CONCURRENT_TASKS"
