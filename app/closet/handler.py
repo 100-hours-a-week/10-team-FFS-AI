@@ -23,7 +23,7 @@ from app.closet.events import (
     serialize_event,
 )
 from app.closet.service import ClosetService
-from app.config import get_settings
+from app.config import KafkaTopics
 from app.core.kafka import get_kafka_producer
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,6 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
 
     async def handle_analysis_request(message: ConsumerRecord) -> None:
         """Kafka 메시지 1건을 수신하여 ClosetService에 처리를 위임하고 결과를 발행합니다."""
-        settings = get_settings()
         producer = get_kafka_producer()
 
         # 1. 메시지 역직렬화
@@ -87,7 +86,7 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
                 ),
             )
             await producer.send_and_wait(
-                settings.kafka_closet_result_topic,
+                KafkaTopics.CLOTHES_ANALYZE_RESULT,
                 serialize_event(preprocess_event),
             )
             logger.info(f"전처리 완료: task={req.task_id}")
@@ -108,7 +107,7 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
                 ),
             )
             await producer.send_and_wait(
-                settings.kafka_closet_result_topic,
+                KafkaTopics.CLOTHES_ANALYZE_RESULT,
                 serialize_event(analyze_event),
             )
             logger.info(f"분석 완료: task={req.task_id}")

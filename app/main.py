@@ -8,7 +8,11 @@ from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.closet.handler import create_handler as create_closet_handler
-from app.config import ConsumerConfig, get_settings
+from app.config import (
+    ConsumerConfig,
+    KafkaTopics,
+    get_settings,
+)
 from app.core.consumer import consume_loop
 from app.core.database import check_health, close_databases, init_databases
 from app.core.kafka import (
@@ -33,8 +37,8 @@ settings = get_settings()
 # 새 기능 추가 시 이 리스트에 ConsumerConfig를 추가하면 됩니다.
 CONSUMER_CONFIGS: list[ConsumerConfig] = [
     ConsumerConfig(
-        topic=settings.kafka_closet_request_topic,
-        group_id=settings.kafka_consumer_group,
+        topic=KafkaTopics.CLOTHES_ANALYZE_REQUEST,
+        group_id=settings.kafka_group_id_clothes_analyze,
         handler_factory=create_closet_handler,
         replicas=3,
     ),
