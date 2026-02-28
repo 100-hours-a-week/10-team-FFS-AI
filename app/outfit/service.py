@@ -2,8 +2,6 @@ import logging
 import uuid
 from functools import lru_cache
 
-from langfuse.decorators import observe
-
 from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.graph import build_outfit_graph
 from app.outfit.llm_client import OpenAIClient
@@ -13,6 +11,8 @@ from app.outfit.repository import ClothingRepository
 from app.outfit.schemas import OutfitRequest, OutfitResponse
 from app.outfit.search_query_builder import SearchQueryBuilder
 from app.outfit.vton_processor import VTONProcessor
+from app.shop.repository import ShopProductRepository
+from app.shop.search_query_builder import ShopSearchQueryBuilder
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +25,18 @@ class OutfitService:
         repository: ClothingRepository | None = None,
         composer: OutfitComposer | None = None,
         vton_processor: VTONProcessor | None = None,
+        shop_repository: ShopProductRepository | None = None,
+        shop_search_builder: ShopSearchQueryBuilder | None = None,
     ) -> None:
         self.query_parser = query_parser or QueryParser(llm_client=OpenAIClient())
         self.search_builder = search_builder or SearchQueryBuilder()
         self.repository = repository or ClothingRepository()
         self.composer = composer or OutfitComposer()
         self.vton_processor = vton_processor or VTONProcessor()
+        self.shop_repository = shop_repository or ShopProductRepository()
+        self.shop_search_builder = shop_search_builder or ShopSearchQueryBuilder()
         self.graph = build_outfit_graph()
 
-    @observe(name="outfit_service.recommend")
     @measure_time(stage="total_pipeline", metric=OUTFIT_PIPELINE_TOTAL_DURATION)
     async def recommend(
         self, request: OutfitRequest, trace_id: str | None = None
@@ -65,6 +68,8 @@ class OutfitService:
                 "clothing_repository": self.repository,
                 "outfit_composer": self.composer,
                 "vton_processor": self.vton_processor,
+                "shop_repository": self.shop_repository,
+                "shop_search_builder": self.shop_search_builder,
             }
         }
 
