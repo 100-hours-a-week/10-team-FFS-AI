@@ -9,9 +9,7 @@ from app.outfit.graph.state import OutfitGraphState
 logger = logging.getLogger(__name__)
 
 
-async def vton_process(
-    state: OutfitGraphState, config: RunnableConfig
-) -> dict:
+async def vton_process(state: OutfitGraphState, config: RunnableConfig) -> dict:
     """VTON 이미지를 생성하고 S3에 업로드한다."""
     configurable = config.get("configurable", {})
     vton_processor = configurable["vton_processor"]

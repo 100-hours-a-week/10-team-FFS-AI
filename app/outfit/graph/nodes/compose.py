@@ -11,9 +11,7 @@ from app.outfit.schemas import OutfitResponse
 logger = logging.getLogger(__name__)
 
 
-async def outfit_compose(
-    state: OutfitGraphState, config: RunnableConfig
-) -> dict:
+async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dict:
     """검색 결과에서 코디를 구성한다."""
     configurable = config.get("configurable", {})
     outfit_composer = configurable["outfit_composer"]

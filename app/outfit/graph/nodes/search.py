@@ -9,9 +9,7 @@ from app.outfit.graph.state import OutfitGraphState
 logger = logging.getLogger(__name__)
 
 
-async def vector_search(
-    state: OutfitGraphState, config: RunnableConfig
-) -> dict:
+async def vector_search(state: OutfitGraphState, config: RunnableConfig) -> dict:
     """검색 쿼리로 Qdrant에서 의류 후보를 검색한다."""
     configurable = config.get("configurable", {})
     clothing_repository = configurable["clothing_repository"]
