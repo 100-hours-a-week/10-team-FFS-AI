@@ -82,7 +82,8 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
                     passed=True,
                 ),
             )
-            await producer.send_and_wait(topic, serialize_event(abusing_event))
+            key = req.source_id.encode("utf-8")
+            await producer.send_and_wait(topic, serialize_event(abusing_event), key=key)
             logger.info(f"어뷰징 검사 통과: source={req.source_id}")
 
             # ── ② 세그멘테이션 + 전처리 ──
@@ -110,7 +111,7 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
                     segmentation=item_count,
                 ),
             )
-            await producer.send_and_wait(topic, serialize_event(seg_event))
+            await producer.send_and_wait(topic, serialize_event(seg_event), key=key)
             logger.info(
                 f"세그멘테이션 완료: source={req.source_id}, items={item_count}"
             )
@@ -126,7 +127,7 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
                         fileId=preprocess_result.file_ids[i],
                     ),
                 )
-                await producer.send_and_wait(topic, serialize_event(pre_event))
+                await producer.send_and_wait(topic, serialize_event(pre_event), key=key)
                 logger.info(
                     f"전처리 완료: task={preprocess_result.task_ids[i]}, "
                     f"file={preprocess_result.file_ids[i]}"
@@ -144,12 +145,13 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
                         batchId=req.batch_id,
                         sourceId=req.source_id,
                         taskId=preprocess_result.task_ids[i],
-                        fileId=preprocess_result.file_ids[i],
                         major=analysis_result.major,
                         extra=analysis_result.extra,
                     ),
                 )
-                await producer.send_and_wait(topic, serialize_event(analyze_event))
+                await producer.send_and_wait(
+                    topic, serialize_event(analyze_event), key=key
+                )
                 logger.info(
                     f"분석 완료: task={preprocess_result.task_ids[i]}, "
                     f"category={analysis_result.major.category}"

@@ -101,7 +101,6 @@ class AnalyzedPayload(BaseSchema):
     batch_id: str = Field(..., alias="batchId")
     source_id: str = Field(..., alias="sourceId")
     task_id: str = Field(..., alias="taskId")
-    file_id: int = Field(..., alias="fileId")
     major: MajorAttributes
     extra: ExtraAttributes
 
