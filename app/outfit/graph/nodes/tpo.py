@@ -13,9 +13,7 @@ WINTER_KEYWORDS = ["겨울", "winter", "추운", "한파"]
 DEFAULT_CATEGORIES = ["TOP", "BOTTOM", "SHOES"]
 
 
-async def tpo_extract(
-    state: OutfitGraphState, config: RunnableConfig
-) -> dict:
+async def tpo_extract(state: OutfitGraphState, config: RunnableConfig) -> dict:
     """사용자 쿼리를 ParsedQuery로 파싱하고 SearchQuery 목록을 생성한다."""
     configurable = config.get("configurable", {})
     query_parser = configurable["query_parser"]
