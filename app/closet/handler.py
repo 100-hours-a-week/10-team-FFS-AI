@@ -5,6 +5,12 @@
 - ClosetService에 비즈니스 로직 위임
 - 결과 이벤트를 Kafka 결과 토픽에 발행
 - 오프셋 커밋
+
+이벤트 발행 순서:
+1. ABUSING_COMPLETED (항상 passed=true)
+2. SEGMENTATION_COMPLETED (totalItems)
+3. PREPROCESSING_COMPLETED × N (아이템별)
+4. ANALYZING_COMPLETED × N (아이템별)
 """
 
 from __future__ import annotations
@@ -15,10 +21,14 @@ from collections.abc import Callable, Coroutine
 from aiokafka import AIOKafkaConsumer, ConsumerRecord
 
 from app.closet.events import (
+    AbusingCompletedEvent,
+    AbusingPayload,
     AnalyzedPayload,
     AnalyzingCompletedEvent,
     PreprocessingCompletedEvent,
     PreprocessPayload,
+    SegmentationCompletedEvent,
+    SegmentationPayload,
     deserialize_request_event,
     serialize_event,
 )
@@ -55,14 +65,27 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
     async def handle_analysis_request(message: ConsumerRecord) -> None:
         """Kafka 메시지 1건을 수신하여 ClosetService에 처리를 위임하고 결과를 발행합니다."""
         producer = get_kafka_producer()
+        topic = KafkaTopics.CLOTHES_ANALYZE_RESULT
 
         # 1. 메시지 역직렬화
         event = deserialize_request_event(message.value)
         req = event.data
-        logger.info(f"요청 수신: batch={req.batch_id}, task={req.task_id}")
+        logger.info(f"요청 수신: batch={req.batch_id}, source={req.source_id}")
 
         try:
-            # ── 전처리 단계: 이미지 다운로드 + S3 업로드 ──
+            # ── ① 어뷰징 검사 (항상 통과) ──
+            abusing_event = AbusingCompletedEvent(
+                requested_at=event.requested_at,
+                data=AbusingPayload(
+                    batchId=req.batch_id,
+                    sourceId=req.source_id,
+                    passed=True,
+                ),
+            )
+            await producer.send_and_wait(topic, serialize_event(abusing_event))
+            logger.info(f"어뷰징 검사 통과: source={req.source_id}")
+
+            # ── ② 세그멘테이션 + 전처리 ──
             preprocess_result = await _get_service().preprocess(
                 target_image_url=req.target_image,
                 user_id=req.user_id,
@@ -70,54 +93,78 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
 
             if not preprocess_result.success:
                 logger.error(
-                    f"전처리 실패, 건너뜀: task={req.task_id}, "
+                    f"전처리 실패, 건너뜀: source={req.source_id}, "
                     f"error={preprocess_result.error}"
                 )
                 await consumer.commit()
                 return
 
-            # PREPROCESSING_COMPLETED 이벤트 발행
-            preprocess_event = PreprocessingCompletedEvent(
+            item_count = len(preprocess_result.file_ids)
+
+            # SEGMENTATION_COMPLETED 발행
+            seg_event = SegmentationCompletedEvent(
                 requested_at=event.requested_at,
-                data=PreprocessPayload(
+                data=SegmentationPayload(
                     batchId=req.batch_id,
-                    taskId=req.task_id,
-                    fileId=preprocess_result.file_id,
+                    sourceId=req.source_id,
+                    segmentation=item_count,
                 ),
             )
-            await producer.send_and_wait(
-                KafkaTopics.CLOTHES_ANALYZE_RESULT,
-                serialize_event(preprocess_event),
-            )
-            logger.info(f"전처리 완료: task={req.task_id}")
-
-            # ── 분석 단계: 이미지 분석 ──
-            analysis_result = await _get_service().analyze(
-                target_image_url=req.target_image,
+            await producer.send_and_wait(topic, serialize_event(seg_event))
+            logger.info(
+                f"세그멘테이션 완료: source={req.source_id}, items={item_count}"
             )
 
-            # ANALYZING_COMPLETED 이벤트 발행
-            analyze_event = AnalyzingCompletedEvent(
-                requested_at=event.requested_at,
-                data=AnalyzedPayload(
-                    batchId=req.batch_id,
-                    taskId=req.task_id,
-                    major=analysis_result.major,
-                    extra=analysis_result.extra,
-                ),
-            )
-            await producer.send_and_wait(
-                KafkaTopics.CLOTHES_ANALYZE_RESULT,
-                serialize_event(analyze_event),
-            )
-            logger.info(f"분석 완료: task={req.task_id}")
+            # ── ③ 아이템별 PREPROCESSING_COMPLETED 발행 ──
+            for i in range(item_count):
+                pre_event = PreprocessingCompletedEvent(
+                    requested_at=event.requested_at,
+                    data=PreprocessPayload(
+                        batchId=req.batch_id,
+                        sourceId=req.source_id,
+                        taskId=preprocess_result.task_ids[i],
+                        fileId=preprocess_result.file_ids[i],
+                    ),
+                )
+                await producer.send_and_wait(topic, serialize_event(pre_event))
+                logger.info(
+                    f"전처리 완료: task={preprocess_result.task_ids[i]}, "
+                    f"file={preprocess_result.file_ids[i]}"
+                )
+
+            # ── ④ 아이템별 분석 + ANALYZING_COMPLETED 발행 ──
+            for i in range(item_count):
+                analysis_result = await _get_service().analyze(
+                    preprocess_result.item_images[i],
+                )
+
+                analyze_event = AnalyzingCompletedEvent(
+                    requested_at=event.requested_at,
+                    data=AnalyzedPayload(
+                        batchId=req.batch_id,
+                        sourceId=req.source_id,
+                        taskId=preprocess_result.task_ids[i],
+                        fileId=preprocess_result.file_ids[i],
+                        major=analysis_result.major,
+                        extra=analysis_result.extra,
+                    ),
+                )
+                await producer.send_and_wait(topic, serialize_event(analyze_event))
+                logger.info(
+                    f"분석 완료: task={preprocess_result.task_ids[i]}, "
+                    f"category={analysis_result.major.category}"
+                )
 
             # 오프셋 커밋
             await consumer.commit()
+            logger.info(
+                f"처리 완료: batch={req.batch_id}, source={req.source_id}, "
+                f"items={item_count}"
+            )
 
         except Exception as e:
             logger.error(
-                f"처리 실패: batch={req.batch_id}, task={req.task_id}, error={e}"
+                f"처리 실패: batch={req.batch_id}, source={req.source_id}, error={e}"
             )
             await consumer.commit()
 

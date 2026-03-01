@@ -1,17 +1,19 @@
 """Closet 비즈니스 로직 서비스 — 이미지 분석 파이프라인
 
 이 모듈은 통신(Kafka/HTTP) 방식에 독립적인 순수 비즈니스 로직만 담당합니다.
-- S3에서 이미지 다운로드
-- 백엔드 내부 API로 Presigned URL 발급
-- S3에 이미지 업로드
+- 세그멘테이션: 모델 착용 이미지 → N개 개별 아이템 추출
+- 백엔드 내부 API로 Presigned URL 발급 (N개)
+- S3에 이미지 업로드 (N개 병렬)
 - Gemini로 이미지 분석
 - 분석 결과 정규화
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 
 import httpx
 
@@ -49,10 +51,12 @@ DEFAULT_ANALYSIS: dict = {
 
 @dataclass
 class PreprocessResult:
-    """전처리(다운로드 + S3 업로드) 결과를 담는 데이터 클래스."""
+    """전처리(세그멘테이션 + S3 업로드) 결과를 담는 데이터 클래스."""
 
-    file_id: int
-    success: bool
+    file_ids: list[int] = field(default_factory=list)
+    task_ids: list[str] = field(default_factory=list)
+    item_images: list[bytes] = field(default_factory=list)
+    success: bool = False
     error: str | None = None
 
 
@@ -72,61 +76,79 @@ class ClosetService:
     def __init__(self) -> None:
         settings = get_settings()
         self._s3_client = S3Client()
+        self._use_mock = settings.use_mock_analyzer
 
-        if settings.use_mock_analyzer:
-            from app.closet.mock_analyzer import MockImageAnalyzer
+        if self._use_mock:
+            from app.closet.mock_analyzer import (
+                MockImageAnalyzer,
+                MockSegmentationService,
+            )
 
             self._analyzer = MockImageAnalyzer(delay_seconds=4.0)
-            logger.info("Using MockImageAnalyzer for load testing")
+            self._segmentation = MockSegmentationService(
+                item_count=3, delay_seconds=9.0
+            )
+            logger.info("Using Mock mode for load testing")
         else:
             self._analyzer = GeminiImageAnalyzer()
+            from app.closet.segmentation import SegmentationService
+
+            self._segmentation = SegmentationService(self._analyzer)
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 공개 메서드
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     async def preprocess(self, target_image_url: str, user_id: int) -> PreprocessResult:
-        """이미지를 다운로드하고 백엔드 스토리지에 업로드합니다(전처리 단계).
+        """세그멘테이션 → presigned URL 발급 → S3 업로드 (N개 아이템).
 
         Returns:
-            PreprocessResult: 업로드된 fileId와 성공 여부를 담은 결과.
+            PreprocessResult: N개 아이템의 file_ids, task_ids, item_images
         """
-        # 1. 원본 이미지 다운로드
-        image_bytes = await self._safe_download(target_image_url)
-        if image_bytes is None:
+        # 1. 세그멘테이션: 모델 이미지 → N개 개별 아이템 bytes
+        item_images = await self._segment(target_image_url)
+        if not item_images:
+            return PreprocessResult(success=False, error="SEGMENTATION_FAILED")
+
+        count = len(item_images)
+        task_ids = [str(uuid.uuid4()) for _ in range(count)]
+
+        # 2. Presigned URL N개 한 번에 발급
+        presigned_list = await self._request_presigned_urls(
+            user_id, purpose="CLOTHES", count=count
+        )
+        file_ids = [p["fileId"] for p in presigned_list]
+
+        # 3. S3 업로드 (병렬)
+        upload_tasks = [
+            self._safe_upload(presigned_list[i]["presignedUrl"], item_images[i])
+            for i in range(count)
+        ]
+        upload_results = await asyncio.gather(*upload_tasks)
+
+        # 업로드 실패 확인
+        errors = [e for e in upload_results if e is not None]
+        if len(errors) == count:
             return PreprocessResult(
-                file_id=0, success=False, error="IMAGE_DOWNLOAD_FAILED"
+                success=False, error=f"ALL_UPLOADS_FAILED: {errors[0]}"
             )
 
-        # 2. Presigned URL 발급
-        presigned = await self._request_presigned_url(user_id, purpose="CLOTHES")
-        file_id: int = presigned["fileId"]
-        upload_url: str = presigned["presignedUrl"]
+        return PreprocessResult(
+            file_ids=file_ids,
+            task_ids=task_ids,
+            item_images=item_images,
+            success=True,
+        )
 
-        # 3. S3 업로드
-        upload_error = await self._safe_upload(upload_url, image_bytes)
-        if upload_error:
-            return PreprocessResult(file_id=file_id, success=False, error=upload_error)
+    async def analyze(self, image_bytes: bytes) -> AnalysisResult:
+        """세그멘테이션된 개별 아이템 이미지를 분석합니다.
 
-        return PreprocessResult(file_id=file_id, success=True)
-
-    async def analyze(self, target_image_url: str) -> AnalysisResult:
-        """이미지를 다운로드하고 분석합니다(분석 단계).
+        Args:
+            image_bytes: 세그멘테이션된 아이템 이미지 bytes
 
         Returns:
             AnalysisResult: 분석된 major/extra 속성과 성공 여부를 담은 결과.
         """
-        # 1. 이미지 다운로드
-        image_bytes = await self._safe_download(target_image_url)
-        if image_bytes is None:
-            return AnalysisResult(
-                major=MajorAttributes(category="ETC"),
-                extra=ExtraAttributes(caption="의류 아이템"),
-                success=False,
-                error="IMAGE_DOWNLOAD_FAILED",
-            )
-
-        # 2. 이미지 분석
         raw_analysis = await self._safe_analyze(image_bytes)
         normalized = self._normalize_analysis(raw_analysis)
 
@@ -141,6 +163,14 @@ class ClosetService:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 내부 헬퍼 (각 단계별 안전한 실행)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async def _segment(self, image_url: str) -> list[bytes]:
+        """세그멘테이션 실행. Mock/실제 모두 self._segmentation.segment() 호출."""
+        try:
+            return await self._segmentation.segment(image_url)
+        except Exception as e:
+            logger.error(f"세그멘테이션 실패: {e}")
+            return []
 
     @measure_time(
         stage="image_download",
@@ -164,7 +194,6 @@ class ClosetService:
         """이미지 분석. 실패 시 DEFAULT_ANALYSIS 반환."""
         try:
             result = await self._analyzer.analyze_image(image_bytes)
-            # ImageAnalysisResult(Pydantic) → dict 변환 (_normalize_analysis가 dict.get() 사용)
             return result.model_dump()
         except Exception as e:
             logger.error(f"분석 실패 (기본값 사용): {e}")
@@ -184,10 +213,14 @@ class ClosetService:
             logger.error(f"업로드 실패: {e}")
             return f"UPLOAD_FAILED: {type(e).__name__}"
 
-    async def _request_presigned_url(self, user_id: int, purpose: str) -> dict:
-        """백엔드 내부 API를 호출하여 S3 presigned URL을 발급받습니다."""
+    async def _request_presigned_urls(
+        self, user_id: int, purpose: str, count: int
+    ) -> list[dict]:
+        """백엔드 내부 API를 호출하여 S3 presigned URL을 N개 발급받습니다."""
         settings = get_settings()
         url = f"{settings.backend_internal_url}/api/internal/presigned-url"
+
+        files = [{"name": f"item_{i}.png", "type": "image/png"} for i in range(count)]
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
@@ -199,14 +232,13 @@ class ClosetService:
                 json={
                     "userId": user_id,
                     "purpose": purpose,
-                    "files": [{"name": "image.jpg", "type": "image/jpeg"}],
+                    "files": files,
                 },
             )
             response.raise_for_status()
 
         result = response.json()
-        # 응답: { "code": 201, "data": [{ "fileId": 44189, "objectKey": "...", "presignedUrl": "..." }] }
-        return result["data"][0]
+        return result["data"]
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 분석 결과 정규화
