@@ -1,11 +1,11 @@
 import base64
-import json
 import logging
-from typing import Any
 
 import httpx
 from google import genai
+from google.genai import types
 
+from app.common.llm_schemas import ImageAnalysisResult
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -35,27 +35,18 @@ ANALYSIS_PROMPT = """
 9. occasion: 적절한 상황/장소 목록 (예: ["데이트", "출근", "파티"])
 
 추가로 이미지에 대한 자연스러운 설명을 caption 필드에 작성해줘.
-
-JSON 응답 형식:
-{
-  "major": {
-    "category": "...",
-    "color": ["..."],
-    "material": ["..."],
-    "style_tags": ["..."]
-  },
-  "extra": {
-    "meta_data": {
-        "gender": "...",
-        "season": ["..."],
-        "formality": "...",
-        "fit": "...",
-        "occasion": ["..."]
-    },
-    "caption": "..."
-  }
-}
 """
+
+SAFETY_SETTINGS = [
+    types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_NONE"),
+    types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_NONE"),
+    types.SafetySetting(
+        category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_NONE"
+    ),
+    types.SafetySetting(
+        category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_NONE"
+    ),
+]
 
 
 class GeminiImageAnalyzer:
@@ -68,34 +59,14 @@ class GeminiImageAnalyzer:
         self.client = genai.Client(api_key=self.settings.gemini_api_key)
         self.model = self.settings.gemini_model or "gemini-2.5-flash"
 
-    async def analyze_image(self, image_bytes: bytes) -> dict[str, Any]:
+    async def analyze_image(self, image_bytes: bytes) -> ImageAnalysisResult:
         try:
-            from google.genai import types
-
-            safety_settings = [
-                types.SafetySetting(
-                    category="HARM_CATEGORY_HARASSMENT",
-                    threshold="BLOCK_NONE",
-                ),
-                types.SafetySetting(
-                    category="HARM_CATEGORY_HATE_SPEECH",
-                    threshold="BLOCK_NONE",
-                ),
-                types.SafetySetting(
-                    category="HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                    threshold="BLOCK_NONE",
-                ),
-                types.SafetySetting(
-                    category="HARM_CATEGORY_DANGEROUS_CONTENT",
-                    threshold="BLOCK_NONE",
-                ),
-            ]
-
             image_part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
 
             config = types.GenerateContentConfig(
-                safety_settings=safety_settings,
+                safety_settings=SAFETY_SETTINGS,
                 response_mime_type="application/json",
+                response_schema=ImageAnalysisResult,
             )
 
             resp = await self.client.aio.models.generate_content(
@@ -104,56 +75,42 @@ class GeminiImageAnalyzer:
                 config=config,
             )
 
+            if resp.parsed is not None:
+                return resp.parsed
+
             text = getattr(resp, "text", None)
             if not text:
-                logger.error("Empty response text from Gemini")
-                return self._fallback_parse("")
+                logger.error("Empty response from Gemini, returning fallback")
+                return self._fallback()
 
-            return self._parse_response(text)
+            return ImageAnalysisResult.model_validate_json(text)
 
         except Exception:
             logger.exception("Gemini analysis failed")
             raise
 
     @staticmethod
-    def _parse_response(text: str) -> dict[str, Any]:
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse JSON response: %s", text[:500])
-            raise ValueError("Invalid JSON response from Gemini") from e
+    def _fallback() -> ImageAnalysisResult:
+        from app.common.llm_schemas import (
+            ImageExtraAttributes,
+            ImageExtraMetadata,
+            ImageMajorAttributes,
+        )
 
-    @staticmethod
-    def _fallback_parse(text: str) -> dict[str, Any]:
-        return {
-            "major": {
-                "category": "UNKNOWN",
-                "color": [],
-                "material": [],
-                "style_tags": [],
-            },
-            "extra": {
-                "meta_data": {},
-                "caption": text[:200] if text else "의류 아이템",
-            },
-        }
+        return ImageAnalysisResult(
+            major=ImageMajorAttributes(category="ETC"),
+            extra=ImageExtraAttributes(
+                meta_data=ImageExtraMetadata(),
+                caption="의류 아이템",
+            ),
+        )
 
-    async def generate_collage(self, image_url: str) -> bytes:
-        """
-        모델 착용 이미지에서 플랫레이 콜라주 이미지 생성 (VTON과 동일한 REST API 방식)
-
-        Args:
-            image_url: 원본 모델 이미지 URL
-
-        Returns:
-            생성된 이미지 bytes 리스트 (List[bytes])
-        """
-        # VTON과 동일한 모델 사용
+    async def generate_collage(self, image_url: str) -> list[bytes]:
+        """모델 착용 이미지에서 개별 아이템 이미지 생성 (래퍼)."""
         return await self.generate_images(image_url)
 
     async def generate_images(self, image_url: str) -> list[bytes]:
-        """
-        모델 착용 이미지에서 플랫레이/개별 아이템 이미지 생성
+        """모델 착용 이미지에서 플랫레이/개별 아이템 이미지 생성.
 
         Args:
             image_url: 원본 모델 이미지 URL
@@ -161,11 +118,9 @@ class GeminiImageAnalyzer:
         Returns:
             생성된 이미지 bytes 리스트
         """
-        # VTON과 동일한 모델 사용
         model_id = self.settings.vton_model
         api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
 
-        # 1. 이미지 다운로드
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(image_url)
             resp.raise_for_status()
@@ -173,7 +128,6 @@ class GeminiImageAnalyzer:
 
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
 
-        # 2. API 요청 구성
         payload = {
             "contents": [
                 {
@@ -194,7 +148,6 @@ class GeminiImageAnalyzer:
             },
         }
 
-        # 3. API 호출 (VTON과 동일한 방식)
         headers = {"x-goog-api-key": self.settings.gemini_api_key}
 
         async with httpx.AsyncClient(timeout=180.0) as client:

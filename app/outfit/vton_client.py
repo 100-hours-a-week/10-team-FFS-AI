@@ -8,6 +8,7 @@ import base64
 import logging
 
 import httpx
+from langfuse.decorators import observe
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -34,14 +35,14 @@ class VTONClient:
     OUTFIT_PROMPT = """
 [Outfit Coordination Request]
 I am providing multiple fashion item images.
-Generate a single image of a fashion model wearing ALL of these items as a coordinated outfit.
+Generate a single image of a white mannequin wearing ALL of these items as a coordinated outfit.
 
 [Rules]
-1. Generate a high-end fashion model (NOT an existing person)
-2. The model must wear ALL provided items seamlessly
+1. Use a clean, featureless white mannequin (no face, no skin texture)
+2. The mannequin must wear ALL provided items seamlessly
 3. Keep each item's original design, color, and texture unchanged
-4. Choose an appropriate fashion background
-5. Full body shot, photorealistic, 4K quality
+4. Use a clean white or light gray studio background
+5. Full body shot, photorealistic, 4K quality, studio lighting
 """
 
     def __init__(self) -> None:
@@ -90,6 +91,7 @@ Generate a single image of a fashion model wearing ALL of these items as a coord
 
         return image_parts
 
+    @observe(as_type="generation", name="vton_generate_image")
     async def generate_outfit_image(self, request: VTONRequest) -> VTONResponse:
         """
         여러 패션 아이템 이미지로 코디된 모델 이미지 생성
