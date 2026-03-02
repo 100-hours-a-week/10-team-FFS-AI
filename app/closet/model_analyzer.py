@@ -6,13 +6,21 @@ GCP L4에서 실행 중인 vLLM 서버(Gemma-3 12B)의 OpenAI 호환 API를 호�
 """
 
 import base64
+import io
 import json
 import logging
 import re
 from typing import Any
 
 import httpx
+from PIL import Image
 
+from app.common.llm_schemas import (
+    ImageAnalysisResult,
+    ImageExtraAttributes,
+    ImageExtraMetadata,
+    ImageMajorAttributes,
+)
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -112,34 +120,26 @@ class ModelServerAnalyzer:
         self._model = settings.ai_model_name
         logger.info(f"ModelServerAnalyzer 초기화: {self._base_url}")
 
-    async def analyze_image(self, image_bytes: bytes) -> dict[str, Any]:
+    async def analyze_image(self, image_bytes: bytes) -> ImageAnalysisResult:
         """이미지 바이트를 vLLM 서버로 전송하여 분석 결과를 반환합니다.
 
         Args:
             image_bytes: 분석할 이미지의 바이트 데이터
 
         Returns:
-            정규화된 분석 결과 dict (major/extra 구조)
+            ImageAnalysisResult: 정규화된 분석 결과 (Pydantic 모델)
         """
         # 1. 이미지 해상도 최적화 (Resizing)
         # 이미지 크기가 너무 크면 vLLM 메모리/연산 시간에 막대한 악영향을 미침 (12B 속도 최적화)
         try:
-            import io
-
-            from PIL import Image
-
-            # 원본 이미지 로드
             img = Image.open(io.BytesIO(image_bytes))
 
-            # 알파 채널 제거 (JPEG 포맷 안전 변환용)
             if img.mode in ("RGBA", "P"):
                 img = img.convert("RGB")
 
-            # 비율을 유지하면서 가로/세로 중 긴 쪽이 768px을 넘지 않도록 크기 조절
             max_size = (768, 768)
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
 
-            # RAM에 변환된 이미지를 다시 저장
             output_buffer = io.BytesIO()
             img.save(output_buffer, format="JPEG", quality=85)
             image_bytes = output_buffer.getvalue()
@@ -200,9 +200,10 @@ class ModelServerAnalyzer:
         # 4. 응답 텍스트 추출
         raw_text = response.json()["choices"][0]["message"]["content"]
 
-        # 5. JSON 파싱 + 정규화
+        # 5. JSON 파싱 + 정규화 → ImageAnalysisResult 반환
         parsed = self._parse_json(raw_text)
-        return self._normalize(parsed)
+        normalized = self._normalize(parsed)
+        return self._to_result(normalized)
 
     # ────────────────────────────────
     # 내부 유틸
@@ -267,6 +268,32 @@ class ModelServerAnalyzer:
         if isinstance(value, list):
             return value
         return [str(value)]
+
+    @staticmethod
+    def _to_result(data: dict[str, Any]) -> ImageAnalysisResult:
+        """정규화된 dict를 ImageAnalysisResult Pydantic 모델로 변환합니다."""
+        major = data["major"]
+        extra = data["extra"]
+        meta = extra.get("meta_data", {})
+
+        return ImageAnalysisResult(
+            major=ImageMajorAttributes(
+                category=major["category"],
+                color=major.get("color", []),
+                material=major.get("material", []),
+                style_tags=major.get("style_tags", []),
+            ),
+            extra=ImageExtraAttributes(
+                meta_data=ImageExtraMetadata(
+                    gender=meta.get("gender"),
+                    season=meta.get("season", []),
+                    formality=meta.get("formality"),
+                    fit=meta.get("fit"),
+                    occasion=meta.get("occasion", []),
+                ),
+                caption=extra.get("caption") or "의류 아이템",
+            ),
+        )
 
     @classmethod
     def _normalize(cls, data: dict) -> dict[str, Any]:

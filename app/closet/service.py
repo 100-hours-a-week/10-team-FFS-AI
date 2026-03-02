@@ -89,6 +89,16 @@ class ClosetService:
                 item_count=3, delay_seconds=9.0
             )
             logger.info("Using Mock mode for load testing")
+        elif settings.ai_server_url:
+            from app.closet.model_analyzer import ModelServerAnalyzer
+
+            self._analyzer = ModelServerAnalyzer(
+                base_url=settings.ai_server_url,
+            )
+            from app.closet.segmentation import SegmentationService
+
+            self._segmentation = SegmentationService(GeminiImageAnalyzer())
+            logger.info(f"Using vLLM model server: {settings.ai_server_url}")
         else:
             self._analyzer = GeminiImageAnalyzer()
             from app.closet.segmentation import SegmentationService
