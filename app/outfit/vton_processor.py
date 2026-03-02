@@ -2,6 +2,7 @@ import asyncio
 import io
 import logging
 
+from langfuse.decorators import observe
 from PIL import Image
 
 from app.closet.s3_client import S3Client
@@ -16,6 +17,7 @@ class VTONProcessor:
         self.vton_client = vton_client or VTONClient()
         self.s3_client = S3Client()
 
+    @observe(name="vton_processor.process")
     async def process(
         self,
         response: OutfitResponse,

@@ -2,6 +2,7 @@ from enum import StrEnum
 
 from pydantic import Field
 
+from app.common.llm_schemas import CategoryType
 from app.common.schemas import BaseSchema
 
 
@@ -28,7 +29,7 @@ class AnalyzeImageItem(BaseSchema):
     sequence: int = Field(..., description="순서")
     target_image: str = Field(..., description="분석 대상 이미지 URL (원본)")
     task_id: str = Field(..., description="태스크 ID (UUID)")
-    file_upload_info: FileUploadInfo = Field(..., description="업로드 정보")
+    file_upload_info: list[FileUploadInfo] = Field(..., description="업로드 정보 목록")
 
 
 class AnalyzeRequest(BaseSchema):
@@ -38,7 +39,7 @@ class AnalyzeRequest(BaseSchema):
 
 
 class MajorAttributes(BaseSchema):
-    category: str = Field(..., description="카테고리")
+    category: CategoryType = Field(..., description="카테고리")
     color: list[str] = Field(default_factory=list, description="색상 목록")
     material: list[str] = Field(default_factory=list, description="소재 목록")
     style_tags: list[str] = Field(default_factory=list, description="스타일 태그 목록")
@@ -59,12 +60,18 @@ class ExtraAttributes(BaseSchema):
     caption: str | None = Field(default=None, description="이미지 설명")
 
 
-class TaskResult(BaseSchema):
-    task_id: str = Field(..., description="태스크 ID")
-    status: TaskStatus = Field(..., description="태스크 상태")
+class AnalyzedItemResult(BaseSchema):
     file_id: int | None = Field(default=None, description="파일 ID")
     major: MajorAttributes | None = Field(default=None, description="주요 속성")
     extra: ExtraAttributes | None = Field(default=None, description="추가 속성")
+
+
+class TaskResult(BaseSchema):
+    task_id: str = Field(..., description="태스크 ID")
+    status: TaskStatus = Field(..., description="태스크 상태")
+    items: list[AnalyzedItemResult] = Field(
+        default_factory=list, description="분석된 아이템 목록"
+    )
     error_message: str | None = Field(default=None, description="에러 메시지")
 
 

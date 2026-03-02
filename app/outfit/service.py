@@ -2,7 +2,10 @@ import logging
 import uuid
 from functools import lru_cache
 
+from langfuse.decorators import observe
+
 from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
+from app.outfit.graph import build_outfit_graph
 from app.outfit.llm_client import OpenAIClient
 from app.outfit.outfit_composer import OutfitComposer
 from app.outfit.query_parser import QueryParser
@@ -28,7 +31,9 @@ class OutfitService:
         self.repository = repository or ClothingRepository()
         self.composer = composer or OutfitComposer()
         self.vton_processor = vton_processor or VTONProcessor()
+        self.graph = build_outfit_graph()
 
+    @observe(name="outfit_service.recommend")
     @measure_time(stage="total_pipeline", metric=OUTFIT_PIPELINE_TOTAL_DURATION)
     async def recommend(
         self, request: OutfitRequest, trace_id: str | None = None
@@ -44,77 +49,27 @@ class OutfitService:
             f'query="{request.query}"'
         )
 
-        parsed = await self.query_parser.parse(
-            request.query, trace_id=trace_id, user_id=request.user_id
-        )
-        logger.info(
-            f"Parsed query | "
-            f"trace_id={trace_id} "
-            f"user_id={request.user_id} "
-            f"occasion={parsed.occasion} "
-            f"style={parsed.style} "
-            f"season={parsed.season} "
-            f"formality={parsed.formality}"
-        )
+        initial_state = {
+            "query": request.query,
+            "user_id": request.user_id,
+            "session_id": request.session_id,
+            "trace_id": trace_id,
+            "weather": request.weather,
+            "upload_slots": request.urls,
+        }
 
-        search_queries = self.search_builder.build(parsed)
-        logger.info(
-            f"Generated search queries | "
-            f"trace_id={trace_id} "
-            f"user_id={request.user_id} "
-            f"query_count={len(search_queries)}"
-        )
+        config = {
+            "configurable": {
+                "query_parser": self.query_parser,
+                "search_builder": self.search_builder,
+                "clothing_repository": self.repository,
+                "outfit_composer": self.composer,
+                "vton_processor": self.vton_processor,
+            }
+        }
 
-        search_results = await self.repository.search_multiple(
-            user_id=request.user_id,
-            queries=search_queries,
-            trace_id=trace_id,
-        )
-
-        total_candidates = sum(len(r.candidates) for r in search_results)
-        logger.info(
-            f"Found candidates | "
-            f"trace_id={trace_id} "
-            f"user_id={request.user_id} "
-            f"total_candidates={total_candidates}"
-        )
-
-        response = await self.composer.compose(
-            parsed_query=parsed,
-            search_results=search_results,
-            trace_id=trace_id,
-            user_id=request.user_id,
-        )
-        response.session_id = request.session_id
-
-        outfits_detail = []
-        for idx, outfit in enumerate(response.outfits, 1):
-            items_str = ",".join(str(cid) for cid in outfit.clothes_ids)
-            desc_preview = outfit.description[:50] if outfit.description else "N/A"
-            outfits_detail.append(
-                f"[outfit_{idx}: id={outfit.outfit_id} "
-                f"items=[{items_str}] "
-                f'desc="{desc_preview}"]'
-            )
-
-        logger.info(
-            f"Generated outfit recommendations | "
-            f"trace_id={trace_id} "
-            f"user_id={request.user_id} "
-            f"session_id={request.session_id} "
-            f"outfit_count={len(response.outfits)} "
-            f"outfits={' '.join(outfits_detail)}"
-        )
-
-        # VTON 이미지 생성 (urls가 있는 경우에만)
-        if request.urls:
-            await self.vton_processor.process(response, request.urls)
-        else:
-            # urls가 없으면 VTON 미요청으로 표시
-            for outfit in response.outfits:
-                outfit.vton_error = "VTON 미요청 (urls 없음)"
-
-        return response
+        result = await self.graph.ainvoke(initial_state, config=config)
+        return result["response"]
 
 
 # FastAPI 의존성 주입용 (DI 컨테이너 도입 전까지 사용)
