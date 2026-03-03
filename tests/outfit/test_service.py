@@ -13,6 +13,7 @@ from app.outfit.schemas import (
 )
 from app.outfit.service import OutfitService
 from app.outfit.vton_client import VTONResponse
+from app.shop.schemas import ShopSearchQuery
 
 
 @pytest.fixture
@@ -42,6 +43,7 @@ def mock_search_builder() -> MagicMock:
 
 @pytest.fixture
 def mock_repository() -> MagicMock:
+    """Phase 2 최소 후보 수를 충족하는 mock repository."""
     repo = MagicMock()
     repo.search_multiple = AsyncMock(
         return_value=[
@@ -56,7 +58,16 @@ def mock_repository() -> MagicMock:
                         style_tags=["포멀"],
                         caption="흰색 셔츠",
                         similarity_score=0.95,
-                    )
+                    ),
+                    ClothingCandidate(
+                        clothes_id=102,
+                        image_url="https://img.com/102.jpg",
+                        category="TOP",
+                        color=["하늘색"],
+                        style_tags=["포멀"],
+                        caption="하늘색 셔츠",
+                        similarity_score=0.90,
+                    ),
                 ],
             ),
             SearchResult(
@@ -70,12 +81,53 @@ def mock_repository() -> MagicMock:
                         style_tags=["포멀"],
                         caption="검정 슬랙스",
                         similarity_score=0.92,
-                    )
+                    ),
+                    ClothingCandidate(
+                        clothes_id=202,
+                        image_url="https://img.com/202.jpg",
+                        category="BOTTOM",
+                        color=["네이비"],
+                        style_tags=["포멀"],
+                        caption="네이비 슬랙스",
+                        similarity_score=0.88,
+                    ),
+                ],
+            ),
+            SearchResult(
+                category="SHOES",
+                candidates=[
+                    ClothingCandidate(
+                        clothes_id=301,
+                        image_url="https://img.com/301.jpg",
+                        category="SHOES",
+                        color=["검정"],
+                        style_tags=["포멀"],
+                        caption="검정 구두",
+                        similarity_score=0.85,
+                    ),
                 ],
             ),
         ]
     )
     return repo
+
+
+@pytest.fixture
+def mock_shop_repository() -> MagicMock:
+    """쇼핑 보충용 mock repository."""
+    repo = MagicMock()
+    repo.search_multiple = AsyncMock(return_value=[])
+    return repo
+
+
+@pytest.fixture
+def mock_shop_search_builder() -> MagicMock:
+    """쇼핑 검색 쿼리 빌더 mock."""
+    builder = MagicMock()
+    builder.build = MagicMock(
+        return_value=[ShopSearchQuery(text="검색 쿼리", category_filter="SHOES")]
+    )
+    return builder
 
 
 @pytest.fixture
@@ -135,6 +187,8 @@ def service(
     mock_repository: MagicMock,
     mock_composer: MagicMock,
     mock_vton_processor: MagicMock,
+    mock_shop_repository: MagicMock,
+    mock_shop_search_builder: MagicMock,
 ) -> OutfitService:
     service = OutfitService(
         query_parser=mock_query_parser,
@@ -142,6 +196,8 @@ def service(
         repository=mock_repository,
         composer=mock_composer,
         vton_processor=mock_vton_processor,
+        shop_repository=mock_shop_repository,
+        shop_search_builder=mock_shop_search_builder,
     )
     return service
 

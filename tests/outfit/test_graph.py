@@ -1,4 +1,7 @@
-"""코디 추천 LangGraph 그래프 통합 테스트."""
+"""코디 추천 LangGraph 그래프 통합 테스트.
+
+Phase 2: 재검색 루프 + 쇼핑 보충 테스트 포함
+"""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -16,6 +19,7 @@ from app.outfit.schemas import (
     SearchResult,
     UploadSlot,
 )
+from app.shop.schemas import ShopSearchQuery
 
 
 @pytest.fixture
@@ -45,6 +49,10 @@ def mock_search_builder() -> MagicMock:
 
 @pytest.fixture
 def mock_repository() -> MagicMock:
+    """Phase 2 최소 후보 수를 충족하는 mock repository.
+
+    최소 기준: TOP 2개, BOTTOM 2개, SHOES 1개
+    """
     repo = MagicMock()
     repo.search_multiple = AsyncMock(
         return_value=[
@@ -59,7 +67,16 @@ def mock_repository() -> MagicMock:
                         style_tags=["포멀"],
                         caption="흰색 셔츠",
                         similarity_score=0.95,
-                    )
+                    ),
+                    ClothingCandidate(
+                        clothes_id=102,
+                        image_url="https://img.com/102.jpg",
+                        category="TOP",
+                        color=["하늘색"],
+                        style_tags=["포멀"],
+                        caption="하늘색 셔츠",
+                        similarity_score=0.90,
+                    ),
                 ],
             ),
             SearchResult(
@@ -73,12 +90,53 @@ def mock_repository() -> MagicMock:
                         style_tags=["포멀"],
                         caption="검정 슬랙스",
                         similarity_score=0.92,
-                    )
+                    ),
+                    ClothingCandidate(
+                        clothes_id=202,
+                        image_url="https://img.com/202.jpg",
+                        category="BOTTOM",
+                        color=["네이비"],
+                        style_tags=["포멀"],
+                        caption="네이비 슬랙스",
+                        similarity_score=0.88,
+                    ),
+                ],
+            ),
+            SearchResult(
+                category="SHOES",
+                candidates=[
+                    ClothingCandidate(
+                        clothes_id=301,
+                        image_url="https://img.com/301.jpg",
+                        category="SHOES",
+                        color=["검정"],
+                        style_tags=["포멀"],
+                        caption="검정 구두",
+                        similarity_score=0.85,
+                    ),
                 ],
             ),
         ]
     )
     return repo
+
+
+@pytest.fixture
+def mock_shop_repository() -> MagicMock:
+    """쇼핑 보충용 mock repository."""
+    repo = MagicMock()
+    repo.search_multiple = AsyncMock(return_value=[])
+    return repo
+
+
+@pytest.fixture
+def mock_shop_search_builder() -> MagicMock:
+    """쇼핑 검색 쿼리 빌더 mock."""
+    builder = MagicMock()
+    builder.build = MagicMock(
+        return_value=[ShopSearchQuery(text="검색 쿼리", category_filter="SHOES")]
+    )
+    return builder
 
 
 @pytest.fixture
@@ -127,6 +185,8 @@ def graph_config(
     mock_repository: MagicMock,
     mock_composer: MagicMock,
     mock_vton_processor: MagicMock,
+    mock_shop_repository: MagicMock,
+    mock_shop_search_builder: MagicMock,
 ) -> dict:
     return {
         "configurable": {
@@ -135,6 +195,8 @@ def graph_config(
             "clothing_repository": mock_repository,
             "outfit_composer": mock_composer,
             "vton_processor": mock_vton_processor,
+            "shop_repository": mock_shop_repository,
+            "shop_search_builder": mock_shop_search_builder,
         }
     }
 
@@ -185,7 +247,7 @@ class TestOutfitGraph:
         mock_repository: MagicMock,
         mock_composer: MagicMock,
     ) -> None:
-        """검색 결과가 비어있으면 빈 응답을 반환한다."""
+        """검색 결과가 비어있으면 쇼핑 보충 후 응답을 반환한다 (Phase 2 fast path)."""
         mock_repository.search_multiple = AsyncMock(return_value=[])
         mock_composer.compose = AsyncMock(
             return_value=OutfitResponse(
@@ -206,6 +268,7 @@ class TestOutfitGraph:
         response = result["response"]
         assert len(response.outfits) == 0
         assert result["category_coverage"] == {}
+        assert result.get("shop_supplemented") is True  # Phase 2: fast path로 쇼핑 보충
 
     @pytest.mark.asyncio
     async def test_vton_error_when_no_urls(
@@ -245,7 +308,7 @@ class TestOutfitGraph:
 
         result = await compiled_graph.ainvoke(initial_state, config=graph_config)
 
-        assert result["category_coverage"] == {"TOP": 1, "BOTTOM": 1}
+        assert result["category_coverage"] == {"TOP": 2, "BOTTOM": 2, "SHOES": 1}
 
     @pytest.mark.asyncio
     async def test_session_id_propagation(

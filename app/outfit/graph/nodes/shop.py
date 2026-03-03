@@ -1,11 +1,10 @@
-
 import logging
 
 from langgraph.types import RunnableConfig
 
 from app.outfit.graph.nodes.search import get_min_count
 from app.outfit.graph.state import OutfitGraphState
-from app.outfit.schemas import ClothingCandidate, SearchResult
+from app.outfit.schemas import ClothingCandidate, ParsedQuery, SearchResult
 from app.shop.schemas import (
     ProductCandidate,
     ProductSearchResult,
@@ -16,8 +15,7 @@ from app.shop.schemas import (
 logger = logging.getLogger(__name__)
 
 
-def to_shop_parsed_query(parsed_query) -> ShopParsedQuery:
-
+def to_shop_parsed_query(parsed_query: ParsedQuery) -> ShopParsedQuery:
     return ShopParsedQuery(
         occasion=parsed_query.occasion,
         style=parsed_query.style,
@@ -31,7 +29,6 @@ def to_shop_parsed_query(parsed_query) -> ShopParsedQuery:
 
 
 def convert_product_to_clothing(product: ProductCandidate) -> ClothingCandidate:
-
     return ClothingCandidate(
         clothes_id=abs(hash(product.product_id)) % (10**9),
         image_url=product.image_url,
@@ -50,22 +47,16 @@ def convert_product_to_clothing(product: ProductCandidate) -> ClothingCandidate:
 def convert_to_search_results(
     shop_results: list[ProductSearchResult],
 ) -> list[SearchResult]:
-
     return [
         SearchResult(
             category=result.category,
-            candidates=[
-                convert_product_to_clothing(p) for p in result.candidates
-            ],
+            candidates=[convert_product_to_clothing(p) for p in result.candidates],
         )
         for result in shop_results
     ]
 
 
-async def supplement_from_shop(
-    state: OutfitGraphState, config: RunnableConfig
-) -> dict:
-
+async def supplement_from_shop(state: OutfitGraphState, config: RunnableConfig) -> dict:
     configurable = config.get("configurable", {})
     shop_repository = configurable["shop_repository"]
     shop_search_builder = configurable["shop_search_builder"]
@@ -76,9 +67,9 @@ async def supplement_from_shop(
     category_coverage = state.get("category_coverage", {})
     trace_id = state.get("trace_id", "")
 
-
     missing_categories = [
-        cat for cat in required_categories
+        cat
+        for cat in required_categories
         if category_coverage.get(cat, 0) < get_min_count(cat)
     ]
 
@@ -87,9 +78,7 @@ async def supplement_from_shop(
         f"missing_categories={missing_categories}"
     )
 
-
     shop_parsed = to_shop_parsed_query(parsed_query)
-
 
     all_shop_queries: list[ShopSearchQuery] = []
     for cat in missing_categories:
@@ -106,7 +95,6 @@ async def supplement_from_shop(
         queries = shop_search_builder.build(shop_parsed_for_cat)
         all_shop_queries.extend(queries)
 
-
     shop_results: list[ProductSearchResult] = []
     if all_shop_queries:
         shop_results = await shop_repository.search_multiple(
@@ -114,7 +102,6 @@ async def supplement_from_shop(
             parsed=shop_parsed,
             trace_id=trace_id,
         )
-
 
     shop_search_results = convert_to_search_results(shop_results)
     merged = list(search_results) + shop_search_results
