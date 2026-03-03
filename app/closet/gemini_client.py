@@ -1,5 +1,7 @@
+import base64
 import logging
 
+import httpx
 from google import genai
 from google.genai import types
 
@@ -8,6 +10,17 @@ from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+SEGMENTATION_PROMPT = """
+Identify all fashion items in the image (dress, shoes, bag, sunglasses, etc.).
+You must call the image generation function MULTIPLE TIMES - once for each item found.
+For each individual item, generate a separate product photo with:
+Only that single item segmented and isolated
+Human body parts and background completely removed
+Light gray background (#E5E5E5)
+Professional studio product shot style
+Sharp edges and soft drop shadow
+IMPORTANT: Present ALL generated images in your final response. Do not hide them in your thinking process.
+"""
 
 ANALYSIS_PROMPT = """
 이 옷의 이미지를 분석해서 다음 정보를 JSON 형식으로 추출해줘:
@@ -91,3 +104,79 @@ class GeminiImageAnalyzer:
                 caption="의류 아이템",
             ),
         )
+
+    async def generate_collage(self, image_url: str) -> list[bytes]:
+        """모델 착용 이미지에서 개별 아이템 이미지 생성 (래퍼)."""
+        return await self.generate_images(image_url)
+
+    async def generate_images(self, image_url: str) -> list[bytes]:
+        """모델 착용 이미지에서 플랫레이/개별 아이템 이미지 생성.
+
+        Args:
+            image_url: 원본 모델 이미지 URL
+
+        Returns:
+            생성된 이미지 bytes 리스트
+        """
+        model_id = self.settings.vton_model
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(image_url)
+            resp.raise_for_status()
+            image_bytes = resp.content
+
+        b64_image = base64.b64encode(image_bytes).decode("utf-8")
+
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": SEGMENTATION_PROMPT},
+                        {
+                            "inline_data": {
+                                "mime_type": "image/jpeg",
+                                "data": b64_image,
+                            }
+                        },
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "responseModalities": ["IMAGE", "TEXT"],
+                "temperature": 0.8,
+            },
+        }
+
+        headers = {"x-goog-api-key": self.settings.gemini_api_key}
+
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            response = await client.post(api_url, json=payload, headers=headers)
+
+            if response.status_code == 200:
+                result = response.json()
+                generated_images = []
+
+                if "candidates" in result:
+                    for candidate in result["candidates"]:
+                        for part in candidate.get("content", {}).get("parts", []):
+                            if "inlineData" in part:
+                                collage_bytes = base64.b64decode(
+                                    part["inlineData"]["data"]
+                                )
+                                logger.info(
+                                    f"Collage/Item generated: {len(collage_bytes)} bytes"
+                                )
+                                generated_images.append(collage_bytes)
+
+                if generated_images:
+                    return generated_images
+
+                raise ValueError("No image in Gemini response")
+
+            else:
+                error_msg = response.text[:500]
+                logger.error(
+                    f"Collage generation failed ({response.status_code}): {error_msg}"
+                )
+                raise ValueError(f"Gemini API error: {response.status_code}")

@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 class EventType(StrEnum):
     ANALYSIS_REQUESTED = "AI_ANALYSIS_REQUESTED"
+    ABUSING_COMPLETED = "AI_ANALYSIS_ABUSING_COMPLETED"
+    SEGMENTATION_COMPLETED = "AI_ANALYSIS_SEGMENTATION_COMPLETED"
     PREPROCESSING_COMPLETED = "AI_ANALYSIS_PREPROCESSING_COMPLETED"
     ANALYZING_COMPLETED = "AI_ANALYSIS_ANALYZING_COMPLETED"
 
@@ -25,7 +27,7 @@ class EventType(StrEnum):
 
 class RequestPayload(BaseSchema):
     batch_id: str = Field(..., alias="batchId")
-    task_id: str = Field(..., alias="taskId")
+    source_id: str = Field(..., alias="sourceId")
     user_id: int = Field(..., alias="userId")
     target_image: str = Field(..., alias="targetImage")
 
@@ -38,11 +40,46 @@ class AnalysisRequestedEvent(BaseSchema):
     data: RequestPayload
 
 
+# ── 발행 이벤트 (0a): 어뷰징 검사 완료 ──
+
+
+class AbusingPayload(BaseSchema):
+    batch_id: str = Field(..., alias="batchId")
+    source_id: str = Field(..., alias="sourceId")
+    passed: bool
+
+
+class AbusingCompletedEvent(BaseSchema):
+    """어뷰징 검사 완료 이벤트 (항상 passed=true, 실제 로직은 추후 구현)"""
+
+    event_type: str = Field(default=EventType.ABUSING_COMPLETED, alias="eventType")
+    requested_at: str = Field(..., alias="requestedAt")
+    data: AbusingPayload
+
+
+# ── 발행 이벤트 (0b): 세그멘테이션 완료 ──
+
+
+class SegmentationPayload(BaseSchema):
+    batch_id: str = Field(..., alias="batchId")
+    source_id: str = Field(..., alias="sourceId")
+    segmentation: int = Field(..., alias="segmentation")
+
+
+class SegmentationCompletedEvent(BaseSchema):
+    """세그멘테이션 완료 이벤트 — 아이템 개수(totalItems)를 백엔드에 알림"""
+
+    event_type: str = Field(default=EventType.SEGMENTATION_COMPLETED, alias="eventType")
+    requested_at: str = Field(..., alias="requestedAt")
+    data: SegmentationPayload
+
+
 # ── 발행 이벤트 (1): 전처리 완료 ──
 
 
 class PreprocessPayload(BaseSchema):
     batch_id: str = Field(..., alias="batchId")
+    source_id: str = Field(..., alias="sourceId")
     task_id: str = Field(..., alias="taskId")
     file_id: int = Field(..., alias="fileId")
 
@@ -62,6 +99,7 @@ class PreprocessingCompletedEvent(BaseSchema):
 
 class AnalyzedPayload(BaseSchema):
     batch_id: str = Field(..., alias="batchId")
+    source_id: str = Field(..., alias="sourceId")
     task_id: str = Field(..., alias="taskId")
     major: MajorAttributes
     extra: ExtraAttributes

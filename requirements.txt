@@ -4,7 +4,8 @@ pydantic-settings
 qdrant-client
 redis>=5.0.0
 boto3
-torch
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.2+cpu
 transformers
 sentence-transformers
 python-dotenv

@@ -17,7 +17,12 @@ from app.closet.service import AnalysisResult, PreprocessResult
 def mock_service() -> MagicMock:
     service = MagicMock()
     service.preprocess = AsyncMock(
-        return_value=PreprocessResult(file_id=12345, success=True)
+        return_value=PreprocessResult(
+            file_ids=[12345, 12346],
+            task_ids=["task-uuid-1", "task-uuid-2"],
+            item_images=[b"item1_bytes", b"item2_bytes"],
+            success=True,
+        )
     )
     service.analyze = AsyncMock(
         return_value=AnalysisResult(
@@ -60,7 +65,7 @@ def fake_message() -> MagicMock:
             "requestedAt": "2026-02-26T06:28:02.000000+00:00",
             "data": {
                 "batchId": "batch-001",
-                "taskId": "task-001",
+                "sourceId": "source-001",
                 "userId": 1,
                 "targetImage": "https://example.com/test.jpg",
             },
@@ -76,7 +81,7 @@ def fake_message() -> MagicMock:
 async def test_handle_analysis_request_success(
     mock_service: MagicMock, mock_kafka: tuple, fake_message: MagicMock
 ) -> None:
-    """정상 처리: preprocess → 이벤트 발행 → analyze → 이벤트 발행 → 커밋."""
+    """정상 처리: 어뷰징→세그멘테이션→전처리×N→분석×N→커밋."""
     producer, consumer = mock_kafka
 
     with (
@@ -88,10 +93,11 @@ async def test_handle_analysis_request_success(
 
     # service 호출 검증
     mock_service.preprocess.assert_called_once()
-    mock_service.analyze.assert_called_once()
+    assert mock_service.analyze.call_count == 2  # 아이템 2개
 
-    # Kafka 결과 토픽에 이벤트 2건 발행 (PREPROCESSING + ANALYZING)
-    assert producer.send_and_wait.call_count == 2
+    # Kafka 결과 토픽에 이벤트 발행:
+    # 1 (ABUSING) + 1 (SEGMENTATION) + 2 (PREPROCESSING) + 2 (ANALYZING) = 6
+    assert producer.send_and_wait.call_count == 6
 
     # 오프셋 커밋 1회
     consumer.commit.assert_called_once()
@@ -101,10 +107,10 @@ async def test_handle_analysis_request_success(
 async def test_handle_analysis_request_preprocess_failure(
     mock_service: MagicMock, mock_kafka: tuple, fake_message: MagicMock
 ) -> None:
-    """전처리 실패: analyze를 호출하지 않고 커밋만 수행."""
+    """전처리 실패: 어뷰징 이벤트만 발행 후 analyze 호출 안 함."""
     producer, consumer = mock_kafka
     mock_service.preprocess.return_value = PreprocessResult(
-        file_id=0, success=False, error="IMAGE_DOWNLOAD_FAILED"
+        success=False, error="SEGMENTATION_FAILED"
     )
 
     with (
@@ -118,6 +124,6 @@ async def test_handle_analysis_request_preprocess_failure(
     mock_service.preprocess.assert_called_once()
     mock_service.analyze.assert_not_called()
 
-    # 이벤트 발행 0건, 커밋 1회 (실패한 메시지도 커밋해야 무한 재시도 방지)
-    producer.send_and_wait.assert_not_called()
+    # 어뷰징 이벤트 1건만 발행, 커밋 1회
+    assert producer.send_and_wait.call_count == 1
     consumer.commit.assert_called_once()
