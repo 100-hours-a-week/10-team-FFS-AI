@@ -9,14 +9,12 @@ logger = logging.getLogger(__name__)
 
 
 async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    """코디 조합을 생성한다."""
     configurable = config.get("configurable", {})
     outfit_composer = configurable["outfit_composer"]
 
     trace_id = state["trace_id"]
     user_id = state["user_id"]
 
-    # 에러 상태 확인: parsed_query가 없으면 빈 응답 반환
     parsed_query = state.get("parsed_query")
     if not parsed_query:
         error_msg = state.get("error", "알 수 없는 오류")

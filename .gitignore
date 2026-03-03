@@ -1,5 +1,6 @@
 # AI Agent 로컬 전용 디렉토리
 .agent/
+.claude/
 
 # Python
 __pycache__/

@@ -4,7 +4,7 @@ name: AI CI
 # 트리거 설정: PR이 생성/업데이트될 때 + 브랜치 푸시 시 자동 실행
 # ============================================================
 on:
-  # PR 이벤트 (코드 검증용) 
+  # PR 이벤트 (코드 검증용)
   pull_request:
     types: [opened, synchronize, reopened]
     branches:
