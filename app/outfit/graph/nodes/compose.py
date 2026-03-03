@@ -1,10 +1,7 @@
-"""outfit_compose 노드: LLM을 사용해 코디를 구성한다."""
-
 import logging
 
 from langgraph.types import RunnableConfig
 
-from app.outfit.exceptions import LLMError, ParseError
 from app.outfit.graph.state import OutfitGraphState
 from app.outfit.schemas import OutfitResponse
 
@@ -12,7 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    """검색 결과에서 코디를 구성한다."""
     configurable = config.get("configurable", {})
     outfit_composer = configurable["outfit_composer"]
 
@@ -20,42 +16,52 @@ async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dic
     user_id = state["user_id"]
 
     parsed_query = state.get("parsed_query")
-    if parsed_query is None:
+    if not parsed_query:
+        error_msg = state.get("error", "알 수 없는 오류")
         logger.warning(
-            f"Skipping outfit composition due to missing parsed_query | "
-            f"trace_id={trace_id}"
+            f"Skipping compose due to missing parsed_query | "
+            f"trace_id={trace_id} error={error_msg}"
         )
         return {
             "response": OutfitResponse(
-                query_summary="요청 처리 중 오류가 발생했습니다.",
+                query_summary=f"요청 처리 중 오류가 발생했습니다: {error_msg}",
                 outfits=[],
             ),
             "outfits": [],
         }
 
-    search_results = state["search_results"]
+    candidates = state.get("merged_candidates") or state.get("search_results", [])
+    shop_supplemented = state.get("shop_supplemented", False)
 
-    try:
-        response = await outfit_composer.compose(
-            parsed_query=parsed_query,
-            search_results=search_results,
-            trace_id=trace_id,
-            user_id=user_id,
+    if shop_supplemented:
+        logger.info(
+            f"Composing with shop-supplemented candidates | "
+            f"trace_id={trace_id} user_id={user_id}"
         )
-    except (LLMError, ParseError) as e:
-        logger.error(f"Outfit composition failed | trace_id={trace_id}: {e}")
-        return {
-            "error": str(e),
-            "response": OutfitResponse(
-                query_summary="코디 구성 중 오류가 발생했습니다.",
-                outfits=[],
-            ),
-            "outfits": [],
-        }
+
+    response = await outfit_composer.compose(
+        parsed_query=parsed_query,
+        search_results=candidates,
+        trace_id=trace_id,
+        user_id=user_id,
+    )
+
+    outfits_detail = []
+    for idx, outfit in enumerate(response.outfits, 1):
+        items_str = ",".join(str(cid) for cid in outfit.clothes_ids)
+        desc_preview = outfit.description[:50] if outfit.description else "N/A"
+        outfits_detail.append(
+            f"[outfit_{idx}: id={outfit.outfit_id} "
+            f"items=[{items_str}] "
+            f'desc="{desc_preview}"]'
+        )
 
     logger.info(
-        f"Outfit composition completed | trace_id={trace_id} "
-        f"user_id={user_id} outfit_count={len(response.outfits)}"
+        f"Generated outfit recommendations | trace_id={trace_id} "
+        f"user_id={user_id} "
+        f"outfit_count={len(response.outfits)} "
+        f"shop_supplemented={shop_supplemented} "
+        f"outfits={' '.join(outfits_detail)}"
     )
 
     return {

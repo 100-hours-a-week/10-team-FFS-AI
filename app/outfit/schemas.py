@@ -74,6 +74,12 @@ class ClothingCandidate(BaseSchema):
     caption: str | None = Field(default=None, description="캡션")
     similarity_score: float = Field(..., description="유사도 점수 (0~1)")
 
+    source: str = Field(default="closet", description="아이템 출처: 'closet' | 'shop'")
+
+    price: int | None = Field(default=None, description="가격 (원)")
+    brand: str | None = Field(default=None, description="브랜드")
+    purchase_url: str | None = Field(default=None, description="구매 링크")
+
 
 class SearchResult(BaseSchema):
     category: str = Field(..., description="검색 카테고리")

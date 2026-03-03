@@ -1,5 +1,3 @@
-"""tpo_extract 노드: 사용자 쿼리를 파싱하고 검색 쿼리를 생성한다."""
-
 import logging
 
 from langgraph.types import RunnableConfig
@@ -14,7 +12,6 @@ DEFAULT_CATEGORIES = ["TOP", "BOTTOM", "SHOES"]
 
 
 async def tpo_extract(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    """사용자 쿼리를 ParsedQuery로 파싱하고 SearchQuery 목록을 생성한다."""
     configurable = config.get("configurable", {})
     query_parser = configurable["query_parser"]
     search_builder = configurable["search_builder"]
@@ -43,7 +40,6 @@ async def tpo_extract(state: OutfitGraphState, config: RunnableConfig) -> dict:
         f"user_id={user_id} query_count={len(search_queries)}"
     )
 
-    # required_categories 결정
     if parsed_query.target_category:
         required_categories = [parsed_query.target_category]
     else:
