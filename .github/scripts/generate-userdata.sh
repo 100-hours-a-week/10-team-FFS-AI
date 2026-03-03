@@ -124,6 +124,7 @@ export LLM_MAX_RETRIES=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/llm-
 
 export USE_MOCK_ANALYZER=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/use-mock-analyzer")
 
+export LANGFUSE_ENABLED=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/langfuse-enabled")
 export LANGFUSE_SECRET_KEY=$(get_secure_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/langfuse-secret-key")
 export LANGFUSE_PUBLIC_KEY=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/langfuse-public-key")
 export LANGFUSE_HOST=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/langfuse-host")
