@@ -108,7 +108,7 @@ jobs:
           echo "current_tg_arn=${CURRENT_TG_ARN}" >> $GITHUB_OUTPUT
 
           ALL_ASGS=$(aws autoscaling describe-auto-scaling-groups \
-            --query 'AutoScalingGroups[?starts_with(AutoScalingGroupName, `klosetlab-staging-ai-`)].AutoScalingGroupName' \
+            --query 'AutoScalingGroups[?starts_with(AutoScalingGroupName, `klosetlab-staging-v2-ai-`)].AutoScalingGroupName' \
             --output json)
 
           CURRENT_ASG="none"
