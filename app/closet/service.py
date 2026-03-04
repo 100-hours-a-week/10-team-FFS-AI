@@ -100,7 +100,9 @@ class ClosetService:
             self._fallback_analyzer = GeminiImageAnalyzer()
             from app.closet.segmentation import SegmentationService
 
-            self._segmentation = SegmentationService(self._fallback_analyzer)
+            self._segmentation = SegmentationService(
+                gemini_client=self._fallback_analyzer,
+            )
             logger.info(
                 f"Using vLLM model server: {settings.ai_server_url} "
                 "(Gemini fallback enabled)"
@@ -113,7 +115,9 @@ class ClosetService:
             self._analyzer = GeminiImageAnalyzer()
             from app.closet.segmentation import SegmentationService
 
-            self._segmentation = SegmentationService(self._analyzer)
+            self._segmentation = SegmentationService(
+                gemini_client=self._analyzer,
+            )
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 공개 메서드

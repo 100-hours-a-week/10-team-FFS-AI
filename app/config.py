@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
     gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     vton_model: str = Field(default="gemini-3-pro-image-preview", alias="VTON_MODEL")
+    vton_fallback_model: str = Field(
+        default="gemini-2.5-flash-image", alias="VTON_FALLBACK_MODEL"
+    )
 
     naver_client_id: str | None = Field(default=None, alias="NAVER_CLIENT_ID")
     naver_client_secret: str | None = Field(default=None, alias="NAVER_CLIENT_SECRET")
