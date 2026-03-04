@@ -54,6 +54,23 @@ def setup_test_environment() -> Generator[None, None, None]:
 
 @pytest.fixture(autouse=True)
 def mock_db_clients(mocker: MockerFixture) -> AsyncMock:
+    mocker.patch("app.main.init_databases", new_callable=AsyncMock)
+    mocker.patch("app.main.close_databases", new_callable=AsyncMock)
+    mocker.patch("app.main.init_kafka", new_callable=AsyncMock)
+    mocker.patch("app.main.close_kafka", new_callable=AsyncMock)
+    mocker.patch("app.main.create_consumer", new_callable=AsyncMock)
+    mocker.patch("app.main.consume_loop", new_callable=AsyncMock)
+    mocker.patch(
+        "app.main.check_health",
+        new_callable=AsyncMock,
+        return_value={"qdrant": "connected", "redis": "connected"},
+    )
+    mocker.patch(
+        "app.main.check_kafka_health",
+        new_callable=AsyncMock,
+        return_value="connected",
+    )
+
     mock_qdrant: AsyncMock = AsyncMock()
     mock_qdrant.get_collections.return_value = MagicMock(collections=[])
     mocker.patch("app.core.database.AsyncQdrantClient", return_value=mock_qdrant)
