@@ -13,8 +13,8 @@ router = APIRouter(prefix="/v1/closet", tags=["outfit"])
 logger = logging.getLogger(__name__)
 
 
-@router.post("/outfit", response_model=OutfitResponse, status_code=status.HTTP_200_OK)
 @observe(name="outfit_recommend")
+@router.post("/outfit", response_model=OutfitResponse, status_code=status.HTTP_200_OK)
 async def recommend_outfit(
     request: OutfitRequest,
     service: Annotated[OutfitService, Depends(get_outfit_service)],
