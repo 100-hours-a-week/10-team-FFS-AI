@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     use_mock_analyzer: bool = Field(default=False, alias="USE_MOCK_ANALYZER")
 
     # ── GCP vLLM 서버 (이미지 분석 모델) ──
-    ai_server_url: str = Field(default="", alias="AI_SERVER_URL")
+    ai_server_url: str = Field(default="", alias="GCP_SERVER_URL")
     ai_model_name: str = Field(
         default="RedHatAI/gemma-3-12b-it-quantized.w8a8", alias="AI_MODEL_NAME"
     )

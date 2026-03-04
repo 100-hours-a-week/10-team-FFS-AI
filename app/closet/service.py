@@ -106,6 +106,10 @@ class ClosetService:
                 "(Gemini fallback enabled)"
             )
         else:
+            logger.warning(
+                "GCP_SERVER_URL environment variable is not set. "
+                "Falling back to Gemini API for image analysis."
+            )
             self._analyzer = GeminiImageAnalyzer()
             from app.closet.segmentation import SegmentationService
 
