@@ -49,29 +49,30 @@ MAX_QUALITY_RETRIES = 1
 
 
 def should_retry_or_fallback(state: OutfitGraphState) -> str:
-    """품질 평가 후 다음 경로를 결정한다.
-
-    Returns:
-        "pass": 품질 통과 → vton_process로 이동
-        "retry_compose": 재시도 가능 → 조합 서브그래프 재실행
-        "fallback": 재시도 불가 → build_fallback_response로 이동
-    """
     quality_passed = state.get("quality_passed", False)
+    critical_issues = state.get("critical_issues", [])
     quality_retry_count = state.get("quality_retry_count", 0)
     trace_id = state.get("trace_id", "unknown")
 
     if quality_passed:
         logger.info(f"Quality passed → vton_process | trace_id={trace_id}")
         return "pass"
-    elif quality_retry_count <= MAX_QUALITY_RETRIES:
+
+    if critical_issues and quality_retry_count <= MAX_QUALITY_RETRIES:
         logger.info(
-            f"Quality failed, retry {quality_retry_count}/{MAX_QUALITY_RETRIES} "
-            f"→ retry compose | trace_id={trace_id}"
+            f"Critical issues detected, retry {quality_retry_count}/{MAX_QUALITY_RETRIES} "
+            f"→ retry compose | trace_id={trace_id} issues={critical_issues}"
         )
         return "retry_compose"
-    else:
+
+    if quality_retry_count > MAX_QUALITY_RETRIES:
         logger.warning(
             f"Quality failed after {MAX_QUALITY_RETRIES} retries "
             f"→ fallback | trace_id={trace_id}"
         )
-        return "fallback"
+    else:
+        logger.warning(
+            f"Quality failed (no critical issues but low confidence) "
+            f"→ fallback | trace_id={trace_id}"
+        )
+    return "fallback"
