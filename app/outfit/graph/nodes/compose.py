@@ -3,9 +3,12 @@ import logging
 from langgraph.types import RunnableConfig
 
 from app.outfit.graph.state import OutfitGraphState
-from app.outfit.schemas import OutfitResponse
+from app.outfit.schemas import Outfit, OutfitResponse
 
 logger = logging.getLogger(__name__)
+
+MIN_OUTFIT_COUNT = 3
+MAX_COMPOSE_RETRIES = 2
 
 
 async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dict:
@@ -67,4 +70,81 @@ async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dic
     return {
         "response": response,
         "outfits": response.outfits,
+    }
+
+
+def _calculate_jaccard(outfit_a: Outfit, outfit_b: Outfit) -> float:
+    """두 코디의 clothes_ids Jaccard 유사도를 계산한다."""
+    set_a = set(outfit_a.clothes_ids)
+    set_b = set(outfit_b.clothes_ids)
+    if not set_a or not set_b:
+        return 0.0
+    return len(set_a & set_b) / len(set_a | set_b)
+
+
+async def validate_outfits(state: OutfitGraphState, config: RunnableConfig) -> dict:
+    """코디 수가 최소 기준(3세트)을 충족하는지 검증한다."""
+    trace_id = state.get("trace_id", "unknown")
+    outfits = state.get("outfits", [])
+    outfit_count = len(outfits)
+
+    if outfit_count >= MIN_OUTFIT_COUNT:
+        logger.info(
+            f"Outfit validation passed | trace_id={trace_id} "
+            f"outfit_count={outfit_count}"
+        )
+        return {"quality_passed": True}
+
+    logger.warning(
+        f"Outfit validation failed: insufficient count | trace_id={trace_id} "
+        f"outfit_count={outfit_count} min_required={MIN_OUTFIT_COUNT}"
+    )
+    return {"quality_passed": False}
+
+
+async def log_diversity(state: OutfitGraphState, config: RunnableConfig) -> dict:
+    """코디 간 다양성(Jaccard 유사도)을 계산하고 로깅한다. 재시도 트리거 없음."""
+    trace_id = state.get("trace_id", "unknown")
+    outfits = state.get("outfits", [])
+
+    if len(outfits) < 2:
+        logger.info(
+            f"Diversity logging skipped: insufficient outfits | "
+            f"trace_id={trace_id} outfit_count={len(outfits)}"
+        )
+        return {}
+
+    jaccard_scores: list[float] = []
+    for i in range(len(outfits)):
+        for j in range(i + 1, len(outfits)):
+            score = _calculate_jaccard(outfits[i], outfits[j])
+            jaccard_scores.append(score)
+
+    jaccard_max = max(jaccard_scores) if jaccard_scores else 0.0
+    jaccard_avg = sum(jaccard_scores) / len(jaccard_scores) if jaccard_scores else 0.0
+
+    logger.info(
+        f"Outfit diversity metrics | trace_id={trace_id} "
+        f"jaccard_max={jaccard_max:.3f} jaccard_avg={jaccard_avg:.3f} "
+        f"outfit_count={len(outfits)}"
+    )
+
+    return {"outfit_confidence": 1.0 - jaccard_avg}
+
+
+async def adjust_compose_params(
+    state: OutfitGraphState, config: RunnableConfig
+) -> dict:
+    """코디 재생성을 위해 파라미터를 조정한다. retry_count 증가."""
+    trace_id = state.get("trace_id", "unknown")
+    current_retry = state.get("compose_retry_count", 0)
+
+    logger.info(
+        f"Adjusting compose params for retry | trace_id={trace_id} "
+        f"retry_count={current_retry + 1}"
+    )
+
+    return {
+        "compose_retry_count": current_retry + 1,
+        "quality_passed": False,
     }
