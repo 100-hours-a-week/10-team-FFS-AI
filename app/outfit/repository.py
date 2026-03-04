@@ -135,6 +135,10 @@ class ClothingRepository:
             color=color_list,
             style_tags=payload.get("styleTags", []),
             caption=payload.get("caption"),
+            material=payload.get("material") or [],
+            season=payload.get("season") or [],
+            formality=payload.get("formality") or "",
+            occasion=payload.get("occasion") or [],
             similarity_score=0.0,  # scroll은 score 없음
         )
 
@@ -157,5 +161,9 @@ class ClothingRepository:
             color=color_list,
             style_tags=payload.get("styleTags", []),
             caption=payload.get("caption"),
+            material=payload.get("material") or [],
+            season=payload.get("season") or [],
+            formality=payload.get("formality") or "",
+            occasion=payload.get("occasion") or [],
             similarity_score=hit.score,
         )
