@@ -81,7 +81,9 @@ class Settings(BaseSettings):
     langfuse_enabled: bool = Field(default=True, alias="LANGFUSE_ENABLED")
     langfuse_secret_key: str | None = Field(default=None, alias="LANGFUSE_SECRET_KEY")
     langfuse_public_key: str | None = Field(default=None, alias="LANGFUSE_PUBLIC_KEY")
-    langfuse_host: str = Field(default="http://localhost:3000", alias="LANGFUSE_HOST")
+    langfuse_base_url: str = Field(
+        default="https://cloud.langfuse.com", alias="LANGFUSE_BASE_URL"
+    )
 
     # ── Kafka ──
     kafka_bootstrap_servers: str = Field(
