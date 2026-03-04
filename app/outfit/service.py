@@ -61,6 +61,7 @@ class OutfitService:
             "trace_id": trace_id,
             "weather": request.weather,
             "upload_slots": request.urls,
+            "quality_retry_count": 0,
         }
 
         langfuse_handler = LangfuseCallbackHandler()
