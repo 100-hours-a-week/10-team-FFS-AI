@@ -3,9 +3,15 @@
 코디 조합 결과를 규칙 기반으로 평가하고 Confidence Score를 산출한다.
 """
 
+import logging
 from collections import Counter
 
+from langgraph.types import RunnableConfig
+
+from app.outfit.graph.state import OutfitGraphState
 from app.outfit.schemas import ClothingCandidate, Outfit, SearchResult
+
+logger = logging.getLogger(__name__)
 
 # 무채색 목록 (색상 조화 규칙에서 제외)
 ACHROMATIC_COLORS = {
@@ -218,3 +224,76 @@ def calculate_outfit_confidence(
 
     confidence = max(0.0, 1.0 - total_penalty)
     return confidence, all_issues
+
+
+async def evaluate_quality(state: OutfitGraphState, config: RunnableConfig) -> dict:
+    """코디 품질을 규칙 기반으로 평가한다.
+
+    읽는 State 필드: outfits, parsed_query, merged_candidates, quality_retry_count
+    쓰는 State 필드: quality_passed, quality_issues, outfit_confidence, outfits, quality_retry_count
+    """
+    outfits = state.get("outfits", [])
+    merged_candidates = state.get("merged_candidates", [])
+    parsed_query = state.get("parsed_query")
+    quality_retry_count = state.get("quality_retry_count", 0)
+    trace_id = state.get("trace_id", "unknown")
+
+    if not outfits:
+        logger.warning(f"No outfits to evaluate | trace_id={trace_id}")
+        return {
+            "quality_passed": False,
+            "quality_issues": ["코디가 생성되지 않음"],
+            "outfit_confidence": 0.0,
+            "quality_retry_count": quality_retry_count + 1,
+        }
+
+    # candidates_map 구축
+    candidates_map = build_candidates_map(merged_candidates)
+
+    # 요청 계절 추출
+    request_season = parsed_query.season if parsed_query else None
+
+    # 각 코디 평가
+    valid_outfits: list[Outfit] = []
+    all_issues: list[str] = []
+    confidences: list[float] = []
+
+    for outfit in outfits:
+        confidence, issues = calculate_outfit_confidence(
+            outfit, candidates_map, request_season
+        )
+
+        if confidence == 0.0 and issues:
+            # 아이템 유효성 실패 → 코디 제거
+            logger.warning(
+                f"Removing outfit {outfit.outfit_id}: {issues} | trace_id={trace_id}"
+            )
+            all_issues.extend(issues)
+            continue
+
+        valid_outfits.append(outfit)
+        confidences.append(confidence)
+        all_issues.extend(issues)
+
+    # 전체 confidence = 유효한 코디들의 평균
+    avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+
+    # 통과 기준: 유효한 코디가 1개 이상이고, 평균 confidence >= 0.5
+    quality_passed = len(valid_outfits) >= 1 and avg_confidence >= 0.5
+
+    logger.info(
+        f"Quality evaluation | "
+        f"trace_id={trace_id} "
+        f"passed={quality_passed} "
+        f"avg_confidence={avg_confidence:.2f} "
+        f"valid_outfits={len(valid_outfits)}/{len(outfits)} "
+        f"issues={all_issues}"
+    )
+
+    return {
+        "quality_passed": quality_passed,
+        "quality_issues": all_issues,
+        "outfit_confidence": round(avg_confidence, 2),
+        "outfits": valid_outfits,
+        "quality_retry_count": quality_retry_count + 1,
+    }
