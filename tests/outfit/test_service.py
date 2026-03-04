@@ -135,6 +135,7 @@ def mock_composer() -> MagicMock:
     from app.outfit.schemas import OutfitItem
 
     composer = MagicMock()
+
     composer.compose = AsyncMock(
         return_value=OutfitResponse(
             query_summary="면접용 포멀 코디",
@@ -157,7 +158,51 @@ def mock_composer() -> MagicMock:
                             role="하의",
                         ),
                     ],
-                )
+                ),
+                Outfit(
+                    outfit_id="outfit-002",
+                    description="하늘색 셔츠 코디",
+                    clothes_ids=[102, 202],
+                    items=[
+                        OutfitItem(
+                            clothes_id=102,
+                            image_url="https://img.com/102.jpg",
+                            category="TOP",
+                            role="상의",
+                        ),
+                        OutfitItem(
+                            clothes_id=202,
+                            image_url="https://img.com/202.jpg",
+                            category="BOTTOM",
+                            role="하의",
+                        ),
+                    ],
+                ),
+                Outfit(
+                    outfit_id="outfit-003",
+                    description="구두 포함 포멀 룩",
+                    clothes_ids=[101, 202, 301],
+                    items=[
+                        OutfitItem(
+                            clothes_id=101,
+                            image_url="https://img.com/101.jpg",
+                            category="TOP",
+                            role="상의",
+                        ),
+                        OutfitItem(
+                            clothes_id=202,
+                            image_url="https://img.com/202.jpg",
+                            category="BOTTOM",
+                            role="하의",
+                        ),
+                        OutfitItem(
+                            clothes_id=301,
+                            image_url="https://img.com/301.jpg",
+                            category="SHOES",
+                            role="신발",
+                        ),
+                    ],
+                ),
             ],
         )
     )
@@ -224,7 +269,7 @@ class TestOutfitServiceRecommend:
         mock_composer.compose.assert_awaited_once()
 
         assert response.query_summary == "면접용 포멀 코디"
-        assert len(response.outfits) == 1
+        assert len(response.outfits) == 3
         assert response.outfits[0].clothes_ids == [101, 201]
 
     @pytest.mark.asyncio
