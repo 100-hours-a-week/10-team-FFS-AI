@@ -1,6 +1,9 @@
 """코디 추천 LangGraph 그래프 통합 테스트.
 
-Phase 2: 재검색 루프 + 쇼핑 보충 테스트 포함
+Phase 3: 서브그래프 기반 파이프라인 테스트
+- TPO 서브그래프: 실패 시 폴백 처리
+- 검색+보충 서브그래프: 재검색 + 쇼핑 보충
+- 조합 서브그래프: 3세트 미만 시 재시도
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -141,30 +144,32 @@ def mock_shop_search_builder() -> MagicMock:
 
 @pytest.fixture
 def mock_composer() -> MagicMock:
+    """Phase 3: 조합 서브그래프가 3세트 이상을 기대하므로 3세트 반환."""
     composer = MagicMock()
     composer.compose = AsyncMock(
         return_value=OutfitResponse(
             query_summary="면접용 포멀 코디",
             outfits=[
                 Outfit(
-                    outfit_id="outfit-001",
-                    description="깔끔한 비즈니스 룩",
-                    clothes_ids=[101, 201],
+                    outfit_id=f"outfit-{i:03d}",
+                    description=f"깔끔한 비즈니스 룩 {i}",
+                    clothes_ids=[101 + i, 201 + i],
                     items=[
                         OutfitItem(
-                            clothes_id=101,
-                            image_url="https://img.com/101.jpg",
+                            clothes_id=101 + i,
+                            image_url=f"https://img.com/{101+i}.jpg",
                             category="TOP",
                             role="상의",
                         ),
                         OutfitItem(
-                            clothes_id=201,
-                            image_url="https://img.com/201.jpg",
+                            clothes_id=201 + i,
+                            image_url=f"https://img.com/{201+i}.jpg",
                             category="BOTTOM",
                             role="하의",
                         ),
                     ],
                 )
+                for i in range(3)
             ],
         )
     )
@@ -228,15 +233,14 @@ class TestOutfitGraph:
 
         result = await compiled_graph.ainvoke(initial_state, config=graph_config)
 
-        mock_query_parser.parse.assert_awaited_once()
-        mock_search_builder.build.assert_called_once()
-        mock_repository.search_multiple.assert_awaited_once()
-        mock_composer.compose.assert_awaited_once()
+        mock_query_parser.parse.assert_awaited()
+        mock_search_builder.build.assert_called()
+        mock_repository.search_multiple.assert_awaited()
+        mock_composer.compose.assert_awaited()
 
         response = result["response"]
         assert response.query_summary == "면접용 포멀 코디"
-        assert len(response.outfits) == 1
-        assert response.outfits[0].clothes_ids == [101, 201]
+        assert len(response.outfits) == 3  # Phase 3: 3세트 반환
         assert response.session_id == "sess-001"
 
     @pytest.mark.asyncio
@@ -353,13 +357,13 @@ class TestOutfitGraph:
         assert result["vton_completed"] is True
 
     @pytest.mark.asyncio
-    async def test_tpo_extract_error_sets_error_state(
+    async def test_tpo_extract_error_triggers_fallback(
         self,
         compiled_graph: CompiledStateGraph,
         graph_config: dict,
         mock_query_parser: MagicMock,
     ) -> None:
-        """tpo_extract에서 LLMError 발생 시 error 상태가 설정된다."""
+        """Phase 3: TPO 파싱 실패 시 폴백으로 기본값을 사용하여 파이프라인 진행."""
         from app.outfit.exceptions import LLMError
 
         mock_query_parser.parse = AsyncMock(side_effect=LLMError("API timeout"))
@@ -373,17 +377,20 @@ class TestOutfitGraph:
 
         result = await compiled_graph.ainvoke(initial_state, config=graph_config)
 
-        assert result.get("error") == "API timeout"
-        assert result["response"].outfits == []
+        # Phase 3: TPO 실패 시 폴백으로 진행되어 정상 응답 반환
+        assert result.get("tpo_fallback_used") is True
+        assert result["parsed_query"].occasion == "일상"  # 폴백 기본값
+        assert result["parsed_query"].style == "깔끔한"  # 폴백 기본값
+        assert len(result["response"].outfits) == 3
 
     @pytest.mark.asyncio
-    async def test_compose_handles_missing_parsed_query(
+    async def test_parse_error_triggers_fallback(
         self,
         compiled_graph: CompiledStateGraph,
         graph_config: dict,
         mock_query_parser: MagicMock,
     ) -> None:
-        """parsed_query가 없으면 빈 응답을 반환한다."""
+        """Phase 3: ParseError 발생 시 폴백으로 기본값을 사용하여 파이프라인 진행."""
         from app.outfit.exceptions import ParseError
 
         mock_query_parser.parse = AsyncMock(side_effect=ParseError("Parse failed"))
@@ -397,5 +404,6 @@ class TestOutfitGraph:
 
         result = await compiled_graph.ainvoke(initial_state, config=graph_config)
 
-        assert len(result["response"].outfits) == 0
-        assert "오류" in result["response"].query_summary
+        # Phase 3: ParseError 시 폴백으로 진행되어 정상 응답 반환
+        assert result.get("tpo_fallback_used") is True
+        assert len(result["response"].outfits) == 3
