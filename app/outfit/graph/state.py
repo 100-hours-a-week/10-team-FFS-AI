@@ -12,7 +12,6 @@ from app.outfit.schemas import (
 
 
 class OutfitGraphState(TypedDict, total=False):
-
     query: str
     user_id: int
     session_id: str | None
@@ -20,13 +19,11 @@ class OutfitGraphState(TypedDict, total=False):
     weather: Weather | None
     upload_slots: list[UploadSlot]
 
-
     parsed_query: ParsedQuery
     search_queries: list[SearchQuery]
     required_categories: list[str]
     tpo_retry_count: int
     tpo_fallback_used: bool
-
 
     search_results: list[SearchResult]
     shop_results: list[SearchResult]
@@ -35,22 +32,17 @@ class OutfitGraphState(TypedDict, total=False):
     filter_level: str
     shop_supplemented: bool
 
-
     merged_candidates: list[SearchResult]
     outfits: list[Outfit]
     outfit_confidence: float
     compose_retry_count: int
 
-
     quality_passed: bool
     quality_issues: list[str]
 
-
     vton_completed: bool
 
-
     response: OutfitResponse
-
 
     error: str | None
     fallback_used: bool
