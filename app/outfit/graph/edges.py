@@ -49,16 +49,6 @@ MAX_QUALITY_RETRIES = 1
 
 
 def should_retry_or_fallback(state: OutfitGraphState) -> str:
-    """품질 평가 후 다음 경로를 결정한다.
-
-    Critical 이슈가 있으면 재시도, Warning만 있으면 통과.
-    재시도 횟수 초과 시 fallback.
-
-    Returns:
-        "pass": 품질 통과 → vton_process로 이동
-        "retry_compose": critical 이슈 있음 → 조합 서브그래프 재실행
-        "fallback": 재시도 불가 → build_fallback_response로 이동
-    """
     quality_passed = state.get("quality_passed", False)
     critical_issues = state.get("critical_issues", [])
     quality_retry_count = state.get("quality_retry_count", 0)
@@ -68,7 +58,6 @@ def should_retry_or_fallback(state: OutfitGraphState) -> str:
         logger.info(f"Quality passed → vton_process | trace_id={trace_id}")
         return "pass"
 
-    # Critical 이슈가 있고 재시도 가능하면 retry
     if critical_issues and quality_retry_count <= MAX_QUALITY_RETRIES:
         logger.info(
             f"Critical issues detected, retry {quality_retry_count}/{MAX_QUALITY_RETRIES} "
@@ -76,7 +65,6 @@ def should_retry_or_fallback(state: OutfitGraphState) -> str:
         )
         return "retry_compose"
 
-    # 재시도 횟수 초과 또는 다른 이유로 실패
     if quality_retry_count > MAX_QUALITY_RETRIES:
         logger.warning(
             f"Quality failed after {MAX_QUALITY_RETRIES} retries "

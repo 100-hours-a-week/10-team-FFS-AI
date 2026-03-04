@@ -1,11 +1,3 @@
-"""코디 추천 LangGraph 그래프 통합 테스트.
-
-Phase 3: 서브그래프 기반 파이프라인 테스트
-- TPO 서브그래프: 실패 시 폴백 처리
-- 검색+보충 서브그래프: 재검색 + 쇼핑 보충
-- 조합 서브그래프: 3세트 미만 시 재시도
-"""
-
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -52,10 +44,6 @@ def mock_search_builder() -> MagicMock:
 
 @pytest.fixture
 def mock_repository() -> MagicMock:
-    """Phase 2 최소 후보 수를 충족하는 mock repository.
-
-    최소 기준: TOP 2개, BOTTOM 2개, SHOES 1개
-    """
     repo = MagicMock()
     repo.search_multiple = AsyncMock(
         return_value=[
@@ -126,7 +114,6 @@ def mock_repository() -> MagicMock:
 
 @pytest.fixture
 def mock_shop_repository() -> MagicMock:
-    """쇼핑 보충용 mock repository."""
     repo = MagicMock()
     repo.search_multiple = AsyncMock(return_value=[])
     return repo
@@ -134,7 +121,6 @@ def mock_shop_repository() -> MagicMock:
 
 @pytest.fixture
 def mock_shop_search_builder() -> MagicMock:
-    """쇼핑 검색 쿼리 빌더 mock."""
     builder = MagicMock()
     builder.build = MagicMock(
         return_value=[ShopSearchQuery(text="검색 쿼리", category_filter="SHOES")]
@@ -144,13 +130,8 @@ def mock_shop_search_builder() -> MagicMock:
 
 @pytest.fixture
 def mock_composer() -> MagicMock:
-    """Phase 3: 조합 서브그래프가 3세트 이상을 기대하므로 3세트 반환.
-
-    Phase 4: 품질 평가를 통과하려면 clothes_ids가 실제 candidates에 존재해야 함.
-    mock_repository의 candidates: TOP(101, 102), BOTTOM(201, 202), SHOES(301)
-    """
     composer = MagicMock()
-    # 유효한 조합만 사용 (101, 102, 201, 202, 301)
+
     valid_combinations = [
         ([101, 201, 301], "흰색 셔츠 + 검정 슬랙스 + 검정 구두"),
         ([102, 202, 301], "하늘색 셔츠 + 네이비 슬랙스 + 검정 구두"),
@@ -238,7 +219,6 @@ class TestOutfitGraph:
         mock_repository: MagicMock,
         mock_composer: MagicMock,
     ) -> None:
-        """전체 파이프라인이 정상 동작하여 기대한 결과를 반환한다."""
         initial_state = {
             "query": "면접에 입을 옷 추천해줘",
             "user_id": 123,
@@ -256,7 +236,7 @@ class TestOutfitGraph:
 
         response = result["response"]
         assert response.query_summary == "면접용 포멀 코디"
-        assert len(response.outfits) == 3  # Phase 3: 3세트 반환
+        assert len(response.outfits) == 3
         assert response.session_id == "sess-001"
 
     @pytest.mark.asyncio
@@ -267,7 +247,6 @@ class TestOutfitGraph:
         mock_repository: MagicMock,
         mock_composer: MagicMock,
     ) -> None:
-        """검색 결과가 비어있으면 쇼핑 보충 후 응답을 반환한다 (Phase 2 fast path)."""
         mock_repository.search_multiple = AsyncMock(return_value=[])
         mock_composer.compose = AsyncMock(
             return_value=OutfitResponse(
@@ -288,7 +267,7 @@ class TestOutfitGraph:
         response = result["response"]
         assert len(response.outfits) == 0
         assert result["category_coverage"] == {}
-        assert result.get("shop_supplemented") is True  # Phase 2: fast path로 쇼핑 보충
+        assert result.get("shop_supplemented") is True
 
     @pytest.mark.asyncio
     async def test_vton_error_when_no_urls(
@@ -297,7 +276,6 @@ class TestOutfitGraph:
         graph_config: dict,
         mock_vton_processor: MagicMock,
     ) -> None:
-        """upload_slots가 없으면 vton_error가 설정된다."""
         initial_state = {
             "query": "추천해줘",
             "user_id": 123,
@@ -318,7 +296,6 @@ class TestOutfitGraph:
         compiled_graph: CompiledStateGraph,
         graph_config: dict,
     ) -> None:
-        """category_coverage가 카테고리별 후보 수를 정확히 계산한다."""
         initial_state = {
             "query": "추천해줘",
             "user_id": 123,
@@ -336,7 +313,6 @@ class TestOutfitGraph:
         compiled_graph: CompiledStateGraph,
         graph_config: dict,
     ) -> None:
-        """session_id가 최종 응답에 정상 전달된다."""
         initial_state = {
             "query": "추천해줘",
             "user_id": 123,
@@ -356,7 +332,6 @@ class TestOutfitGraph:
         graph_config: dict,
         mock_vton_processor: MagicMock,
     ) -> None:
-        """upload_slots가 있으면 vton_processor.process가 호출된다."""
         slot = UploadSlot(
             file_id=777, object_key="test.jpg", presigned_url="https://s3.com"
         )
@@ -379,7 +354,6 @@ class TestOutfitGraph:
         graph_config: dict,
         mock_query_parser: MagicMock,
     ) -> None:
-        """Phase 3: TPO 파싱 실패 시 폴백으로 기본값을 사용하여 파이프라인 진행."""
         from app.outfit.exceptions import LLMError
 
         mock_query_parser.parse = AsyncMock(side_effect=LLMError("API timeout"))
@@ -393,10 +367,9 @@ class TestOutfitGraph:
 
         result = await compiled_graph.ainvoke(initial_state, config=graph_config)
 
-        # Phase 3: TPO 실패 시 폴백으로 진행되어 정상 응답 반환
         assert result.get("tpo_fallback_used") is True
-        assert result["parsed_query"].occasion == "일상"  # 폴백 기본값
-        assert result["parsed_query"].style == "깔끔한"  # 폴백 기본값
+        assert result["parsed_query"].occasion == "일상"
+        assert result["parsed_query"].style == "깔끔한"
         assert len(result["response"].outfits) == 3
 
     @pytest.mark.asyncio
@@ -406,7 +379,6 @@ class TestOutfitGraph:
         graph_config: dict,
         mock_query_parser: MagicMock,
     ) -> None:
-        """Phase 3: ParseError 발생 시 폴백으로 기본값을 사용하여 파이프라인 진행."""
         from app.outfit.exceptions import ParseError
 
         mock_query_parser.parse = AsyncMock(side_effect=ParseError("Parse failed"))
@@ -420,6 +392,5 @@ class TestOutfitGraph:
 
         result = await compiled_graph.ainvoke(initial_state, config=graph_config)
 
-        # Phase 3: ParseError 시 폴백으로 진행되어 정상 응답 반환
         assert result.get("tpo_fallback_used") is True
         assert len(result["response"].outfits) == 3
