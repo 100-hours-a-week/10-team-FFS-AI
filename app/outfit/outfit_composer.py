@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from langfuse.decorators import observe
+from langfuse import observe
 
 from app.common.llm_schemas import OutfitCompositionLLMResponse
 from app.common.metrics import measure_time

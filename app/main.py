@@ -42,13 +42,6 @@ CONSUMER_CONFIGS: list[ConsumerConfig] = [
         handler_factory=create_closet_handler,
         replicas=3,
     ),
-    # 나중에 임베딩 추가 시:
-    # ConsumerConfig(
-    #     topic=settings.kafka_embedding_request_topic,
-    #     group_id="ai_embedding_worker_group",
-    #     handler_factory=create_embedding_handler,
-    #     replicas=1,
-    # ),
 ]
 
 # 실행 중인 컨슈머 태스크를 추적 (종료 시 정리용)
@@ -56,7 +49,6 @@ _consumer_tasks: list[asyncio.Task] = []
 
 
 def _init_langfuse() -> None:
-    """Langfuse 초기화 — @observe 데코레이터가 사용하는 langfuse_context 설정"""
     settings = get_settings()
     if not settings.langfuse_enabled:
         logger.info("Langfuse disabled (LANGFUSE_ENABLED=false)")
@@ -66,27 +58,26 @@ def _init_langfuse() -> None:
         logger.warning("Langfuse enabled but keys not set, skipping initialization")
         return
 
-    from langfuse.decorators import langfuse_context
+    from langfuse import Langfuse
 
-    langfuse_context.configure(
+    Langfuse(
         secret_key=settings.langfuse_secret_key,
         public_key=settings.langfuse_public_key,
         host=settings.langfuse_host,
-        enabled=True,
     )
     logger.info("Langfuse initialized (host=%s)", settings.langfuse_host)
 
 
 def _shutdown_langfuse() -> None:
-    """Langfuse 종료 시 미전송 데이터 flush"""
     settings = get_settings()
     if not settings.langfuse_enabled:
         return
 
     try:
-        from langfuse.decorators import langfuse_context
+        from langfuse import get_client
 
-        langfuse_context.flush()
+        langfuse = get_client()
+        langfuse.flush()
         logger.info("Langfuse flushed successfully")
     except Exception as e:
         logger.warning("Langfuse flush failed: %s", e)
