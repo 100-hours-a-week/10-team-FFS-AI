@@ -257,6 +257,7 @@ async def evaluate_quality(state: OutfitGraphState, config: RunnableConfig) -> d
                 trace_id=trace_id,
                 name=f"outfit_confidence_attempt_{quality_retry_count}",
                 value=avg_confidence,
+                data_type="NUMERIC",
                 comment=f"valid={len(valid_outfits)}/{len(outfits)}, issues={len(all_issues)}",
             )
             if all_critical_issues:
@@ -264,6 +265,7 @@ async def evaluate_quality(state: OutfitGraphState, config: RunnableConfig) -> d
                     trace_id=trace_id,
                     name=f"critical_issues_attempt_{quality_retry_count}",
                     value=len(all_critical_issues),
+                    data_type="NUMERIC",
                     comment=", ".join(all_critical_issues),
                 )
             langfuse.flush()
