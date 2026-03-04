@@ -1,15 +1,3 @@
-"""TPO 서브그래프: TPO 추출 + 검증 + 재시도 + 폴백.
-
-그래프 구조:
-    [tpo_extract] → [tpo_validate]
-                         │
-         ├─ 유효 → 반환
-         │
-         ├─ 불충분 & retry < 2 → [tpo_retry] → [tpo_extract] (루프)
-         │
-         └─ 불충분 & retry >= 2 → [tpo_fallback] → 반환
-"""
-
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -24,7 +12,6 @@ from app.outfit.graph.state import OutfitGraphState
 
 
 def should_retry_or_fallback(state: OutfitGraphState) -> str:
-    """TPO 검증 결과에 따라 다음 경로를 결정한다."""
     if state.get("quality_passed"):
         return "valid"
 
@@ -36,7 +23,6 @@ def should_retry_or_fallback(state: OutfitGraphState) -> str:
 
 
 def build_tpo_subgraph() -> CompiledStateGraph:
-    """TPO 서브그래프를 빌드한다."""
     graph = StateGraph(OutfitGraphState)
 
     graph.add_node("tpo_extract", tpo_extract)

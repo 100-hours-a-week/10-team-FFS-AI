@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from functools import lru_cache
@@ -17,6 +18,9 @@ from app.shop.repository import ShopProductRepository
 from app.shop.search_query_builder import ShopSearchQueryBuilder
 
 logger = logging.getLogger(__name__)
+
+
+PIPELINE_TIMEOUT_SECONDS = 90
 
 
 class OutfitService:
@@ -84,8 +88,22 @@ class OutfitService:
             },
         }
 
-        result = await self.graph.ainvoke(initial_state, config=config)
-        return result["response"]
+        try:
+            result = await asyncio.wait_for(
+                self.graph.ainvoke(initial_state, config=config),
+                timeout=PIPELINE_TIMEOUT_SECONDS,
+            )
+            return result["response"]
+        except TimeoutError:
+            logger.error(
+                f"Pipeline timeout after {PIPELINE_TIMEOUT_SECONDS}s | "
+                f"trace_id={trace_id} user_id={request.user_id}"
+            )
+            return OutfitResponse(
+                query_summary="코디 추천 (시간 초과)",
+                outfits=[],
+                session_id=request.session_id,
+            )
 
 
 # FastAPI 의존성 주입용 (DI 컨테이너 도입 전까지 사용)

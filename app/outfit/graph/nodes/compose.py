@@ -42,7 +42,6 @@ async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dic
             f"trace_id={trace_id} user_id={user_id}"
         )
 
-    # Phase 4: quality_issues가 있으면 피드백으로 전달
     quality_feedback = None
     quality_issues = state.get("quality_issues", [])
     if quality_issues:
@@ -98,7 +97,6 @@ def _calculate_jaccard(outfit_a: Outfit, outfit_b: Outfit) -> float:
 
 
 async def validate_outfits(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    """코디 수가 최소 기준(3세트)을 충족하는지 검증한다."""
     trace_id = state.get("trace_id", "unknown")
     outfits = state.get("outfits", [])
     outfit_count = len(outfits)
@@ -118,7 +116,6 @@ async def validate_outfits(state: OutfitGraphState, config: RunnableConfig) -> d
 
 
 async def log_diversity(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    """코디 간 다양성(Jaccard 유사도)을 계산하고 로깅한다. 재시도 트리거 없음."""
     trace_id = state.get("trace_id", "unknown")
     outfits = state.get("outfits", [])
 
@@ -150,7 +147,6 @@ async def log_diversity(state: OutfitGraphState, config: RunnableConfig) -> dict
 async def adjust_compose_params(
     state: OutfitGraphState, config: RunnableConfig
 ) -> dict:
-    """코디 재생성을 위해 파라미터를 조정한다. retry_count 증가."""
     trace_id = state.get("trace_id", "unknown")
     current_retry = state.get("compose_retry_count", 0)
 
