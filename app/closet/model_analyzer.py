@@ -196,14 +196,14 @@ class ModelServerAnalyzer:
         except httpx.HTTPStatusError as e:
             logger.error(f"vLLM HTTP {e.response.status_code}: {e.response.text[:300]}")
             raise RuntimeError(f"vLLM HTTP {e.response.status_code}") from e
+        else:
+            # 4. 응답 텍스트 추출
+            raw_text = response.json()["choices"][0]["message"]["content"]
 
-        # 4. 응답 텍스트 추출
-        raw_text = response.json()["choices"][0]["message"]["content"]
-
-        # 5. JSON 파싱 + 정규화 → ImageAnalysisResult 반환
-        parsed = self._parse_json(raw_text)
-        normalized = self._normalize(parsed)
-        return self._to_result(normalized)
+            # 5. JSON 파싱 + 정규화 → ImageAnalysisResult 반환
+            parsed = self._parse_json(raw_text)
+            normalized = self._normalize(parsed)
+            return self._to_result(normalized)
 
     # ────────────────────────────────
     # 내부 유틸
