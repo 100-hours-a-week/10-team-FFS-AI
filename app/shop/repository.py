@@ -154,5 +154,10 @@ class ShopProductRepository:
             source=get_str("source"),
             category=get_str("category"),
             style_tags=payload.get("styleTags") or [],
+            color=payload.get("color") or [],
+            material=payload.get("material") or [],
+            season=payload.get("season") or [],
+            formality=get_str("formality"),
+            occasion=payload.get("occasion") or [],
             similarity_score=hit.score,
         )

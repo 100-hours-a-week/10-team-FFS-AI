@@ -35,6 +35,11 @@ class ProductCandidate(BaseSchema):
     source: str = Field(default="", description="쇼핑몰 출처")
     category: str = Field(default="", description="카테고리")
     style_tags: list[str] = Field(default_factory=list, description="스타일 태그")
+    color: list[str] = Field(default_factory=list, description="색상")
+    material: list[str] = Field(default_factory=list, description="소재")
+    season: list[str] = Field(default_factory=list, description="계절")
+    formality: str = Field(default="", description="포멀/캐주얼 등급")
+    occasion: list[str] = Field(default_factory=list, description="착용 상황")
     similarity_score: float = Field(..., description="유사도 점수 (0~1)")
 
 
