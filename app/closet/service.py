@@ -100,7 +100,11 @@ class ClosetService:
             self._fallback_analyzer = GeminiImageAnalyzer()
             from app.closet.segmentation import SegmentationService
 
-            self._segmentation = SegmentationService(self._fallback_analyzer)
+            openai_seg = self._create_openai_fallback(settings)
+            self._segmentation = SegmentationService(
+                gemini_client=self._fallback_analyzer,
+                openai_client=openai_seg,
+            )
             logger.info(
                 f"Using vLLM model server: {settings.ai_server_url} "
                 "(Gemini fallback enabled)"
@@ -113,7 +117,26 @@ class ClosetService:
             self._analyzer = GeminiImageAnalyzer()
             from app.closet.segmentation import SegmentationService
 
-            self._segmentation = SegmentationService(self._analyzer)
+            openai_seg = self._create_openai_fallback(settings)
+            self._segmentation = SegmentationService(
+                gemini_client=self._analyzer,
+                openai_client=openai_seg,
+            )
+
+    @staticmethod
+    def _create_openai_fallback(settings: object) -> object | None:
+        """OPENAI_API_KEY가 설정된 경우 OpenAI 세그멘테이션 폴백 클라이언트를 생성합니다."""
+        if not getattr(settings, "openai_api_key", None):
+            return None
+        try:
+            from app.closet.openai_client import OpenAISegmentationClient
+
+            client = OpenAISegmentationClient()
+            logger.info("OpenAI segmentation fallback enabled")
+            return client
+        except Exception as e:
+            logger.warning(f"OpenAI 폴백 클라이언트 초기화 실패: {e}")
+            return None
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 공개 메서드

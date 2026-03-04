@@ -117,7 +117,11 @@ async def check_kafka_health() -> str:
     try:
         if _producer is None:
             return "not_initialized"
-        await _producer.client.ready(0)
+        brokers = _producer.client.cluster.brokers()
+        if not brokers:
+            return "no_brokers"
+        node_id = next(iter(brokers)).nodeId
+        await _producer.client.ready(node_id)
         return "connected"
     except Exception as e:
         logger.error(f"Kafka health check failed: {e}")
