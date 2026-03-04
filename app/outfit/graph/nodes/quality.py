@@ -57,7 +57,8 @@ def check_item_validity(
 def check_category_duplication(
     outfit: Outfit,
     candidates_map: dict[int, ClothingCandidate],
-) -> tuple[float, list[str]]:
+) -> tuple[float, list[str], bool]:
+    """카테고리 중복 검사. Critical 등급 (코디로서 성립 안 함)."""
     categories: list[str] = []
     for cid in outfit.clothes_ids:
         candidate = candidates_map.get(cid)
@@ -69,14 +70,15 @@ def check_category_duplication(
 
     if duplicates:
         dup_str = ", ".join(f"{cat}={cnt}개" for cat, cnt in duplicates.items())
-        return 0.3, [f"카테고리 중복 ({dup_str})"]
-    return 0.0, []
+        return 0.3, [f"카테고리 중복 ({dup_str})"], True  # Critical
+    return 0.0, [], False
 
 
 def check_color_harmony(
     outfit: Outfit,
     candidates_map: dict[int, ClothingCandidate],
-) -> tuple[float, list[str]]:
+) -> tuple[float, list[str], bool]:
+    """색상 조화 검사. Warning 등급 (산만하지만 착용 가능)."""
     chromatic_colors: set[str] = set()
     for cid in outfit.clothes_ids:
         candidate = candidates_map.get(cid)
@@ -86,16 +88,19 @@ def check_color_harmony(
                     chromatic_colors.add(c)
 
     if len(chromatic_colors) > 4:
-        return 0.2, [
-            f"유채색 {len(chromatic_colors)}색 초과 ({', '.join(chromatic_colors)})"
-        ]
-    return 0.0, []
+        return (
+            0.2,
+            [f"유채색 {len(chromatic_colors)}색 초과 ({', '.join(chromatic_colors)})"],
+            False,
+        )  # Warning
+    return 0.0, [], False
 
 
 def check_formality_consistency(
     outfit: Outfit,
     candidates_map: dict[int, ClothingCandidate],
-) -> tuple[float, list[str]]:
+) -> tuple[float, list[str], bool]:
+    """격식 일관성 검사. Warning 등급 (스타일 불일치지만 착용 가능)."""
     has_formal = False
     has_casual = False
 
@@ -110,17 +115,18 @@ def check_formality_consistency(
             has_casual = True
 
     if has_formal and has_casual:
-        return 0.3, ["포멀+캐주얼 아이템 혼합"]
-    return 0.0, []
+        return 0.3, ["포멀+캐주얼 아이템 혼합"], False  # Warning
+    return 0.0, [], False
 
 
 def check_season_compatibility(
     outfit: Outfit,
     candidates_map: dict[int, ClothingCandidate],
     request_season: str | None,
-) -> tuple[float, list[str]]:
+) -> tuple[float, list[str], bool]:
+    """계절 적합성 검사. Warning 등급 (TPO 권장이지 절대 기준 아님)."""
     if not request_season:
-        return 0.0, []
+        return 0.0, [], False
 
     mismatches: list[str] = []
     for cid in outfit.clothes_ids:
@@ -135,42 +141,63 @@ def check_season_compatibility(
             mismatches.append(f"{candidate.category}({', '.join(candidate.season)})")
 
     if mismatches:
-        return 0.2, [
-            f"계절 불일치 (요청: {request_season}, 불일치: {', '.join(mismatches)})"
-        ]
-    return 0.0, []
+        return (
+            0.2,
+            [f"계절 불일치 (요청: {request_season}, 불일치: {', '.join(mismatches)})"],
+            False,
+        )  # Warning
+    return 0.0, [], False
 
 
 def calculate_outfit_confidence(
     outfit: Outfit,
     candidates_map: dict[int, ClothingCandidate],
     request_season: str | None,
-) -> tuple[float, list[str]]:
+) -> tuple[float, list[str], list[str]]:
+    """코디 신뢰도를 계산하고 이슈를 분류한다.
+
+    Returns:
+        tuple: (confidence, all_issues, critical_issues)
+            - confidence: 0.0~1.0 신뢰도 점수
+            - all_issues: 모든 이슈 (warning + critical)
+            - critical_issues: 재시도가 필요한 critical 이슈만
+    """
     is_valid, validity_issues = check_item_validity(outfit, candidates_map)
     if not is_valid:
-        return 0.0, validity_issues
+        return 0.0, validity_issues, validity_issues  # item_validity는 critical
 
     total_penalty = 0.0
     all_issues: list[str] = []
+    critical_issues: list[str] = []
 
-    penalty, issues = check_category_duplication(outfit, candidates_map)
+    penalty, issues, is_critical = check_category_duplication(outfit, candidates_map)
     total_penalty += penalty
     all_issues.extend(issues)
+    if is_critical:
+        critical_issues.extend(issues)
 
-    penalty, issues = check_color_harmony(outfit, candidates_map)
+    penalty, issues, is_critical = check_color_harmony(outfit, candidates_map)
     total_penalty += penalty
     all_issues.extend(issues)
+    if is_critical:
+        critical_issues.extend(issues)
 
-    penalty, issues = check_formality_consistency(outfit, candidates_map)
+    penalty, issues, is_critical = check_formality_consistency(outfit, candidates_map)
     total_penalty += penalty
     all_issues.extend(issues)
+    if is_critical:
+        critical_issues.extend(issues)
 
-    penalty, issues = check_season_compatibility(outfit, candidates_map, request_season)
+    penalty, issues, is_critical = check_season_compatibility(
+        outfit, candidates_map, request_season
+    )
     total_penalty += penalty
     all_issues.extend(issues)
+    if is_critical:
+        critical_issues.extend(issues)
 
     confidence = max(0.0, 1.0 - total_penalty)
-    return confidence, all_issues
+    return confidence, all_issues, critical_issues
 
 
 async def evaluate_quality(state: OutfitGraphState, config: RunnableConfig) -> dict:
@@ -185,6 +212,7 @@ async def evaluate_quality(state: OutfitGraphState, config: RunnableConfig) -> d
         return {
             "quality_passed": False,
             "quality_issues": ["코디가 생성되지 않음"],
+            "critical_issues": ["코디가 생성되지 않음"],
             "outfit_confidence": 0.0,
             "quality_retry_count": quality_retry_count + 1,
         }
@@ -195,27 +223,36 @@ async def evaluate_quality(state: OutfitGraphState, config: RunnableConfig) -> d
 
     valid_outfits: list[Outfit] = []
     all_issues: list[str] = []
+    all_critical_issues: list[str] = []
     confidences: list[float] = []
 
     for outfit in outfits:
-        confidence, issues = calculate_outfit_confidence(
+        confidence, issues, critical_issues = calculate_outfit_confidence(
             outfit, candidates_map, request_season
         )
 
+        # item_validity 실패 (존재하지 않는 ID) → 코디 제거
         if confidence == 0.0 and issues:
             logger.warning(
                 f"Removing outfit {outfit.outfit_id}: {issues} | trace_id={trace_id}"
             )
             all_issues.extend(issues)
+            all_critical_issues.extend(critical_issues)
             continue
 
+        # 코디는 유지, 이슈만 수집
         valid_outfits.append(outfit)
         confidences.append(confidence)
         all_issues.extend(issues)
+        all_critical_issues.extend(critical_issues)
 
     avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
 
-    quality_passed = len(valid_outfits) >= 1 and avg_confidence >= 0.5
+    # quality_passed 판정: 최소 1개 코디 + 평균 confidence >= 0.5 + critical 이슈 없음
+    has_critical = len(all_critical_issues) > 0
+    quality_passed = (
+        len(valid_outfits) >= 1 and avg_confidence >= 0.5 and not has_critical
+    )
 
     logger.info(
         f"Quality evaluation | "
@@ -223,12 +260,14 @@ async def evaluate_quality(state: OutfitGraphState, config: RunnableConfig) -> d
         f"passed={quality_passed} "
         f"avg_confidence={avg_confidence:.2f} "
         f"valid_outfits={len(valid_outfits)}/{len(outfits)} "
-        f"issues={all_issues}"
+        f"critical_issues={all_critical_issues} "
+        f"warning_issues={[i for i in all_issues if i not in all_critical_issues]}"
     )
 
     return {
         "quality_passed": quality_passed,
         "quality_issues": all_issues,
+        "critical_issues": all_critical_issues,
         "outfit_confidence": round(avg_confidence, 2),
         "outfits": valid_outfits,
         "quality_retry_count": quality_retry_count + 1,

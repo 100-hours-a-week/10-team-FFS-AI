@@ -43,16 +43,16 @@ async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dic
         )
 
     quality_feedback = None
-    quality_issues = state.get("quality_issues", [])
-    if quality_issues:
+    critical_issues = state.get("critical_issues", [])
+    if critical_issues:
         quality_feedback = (
             "이전 추천에서 다음 문제가 발견되었습니다: "
-            + ", ".join(quality_issues)
+            + ", ".join(critical_issues)
             + "\n이 문제를 피해서 코디를 다시 구성해주세요."
         )
         logger.info(
-            f"Retrying compose with quality feedback | "
-            f"trace_id={trace_id} issues={quality_issues}"
+            f"Retrying compose with critical feedback | "
+            f"trace_id={trace_id} critical_issues={critical_issues}"
         )
 
     response = await outfit_composer.compose(

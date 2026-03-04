@@ -144,32 +144,48 @@ def mock_shop_search_builder() -> MagicMock:
 
 @pytest.fixture
 def mock_composer() -> MagicMock:
-    """Phase 3: 조합 서브그래프가 3세트 이상을 기대하므로 3세트 반환."""
+    """Phase 3: 조합 서브그래프가 3세트 이상을 기대하므로 3세트 반환.
+
+    Phase 4: 품질 평가를 통과하려면 clothes_ids가 실제 candidates에 존재해야 함.
+    mock_repository의 candidates: TOP(101, 102), BOTTOM(201, 202), SHOES(301)
+    """
     composer = MagicMock()
+    # 유효한 조합만 사용 (101, 102, 201, 202, 301)
+    valid_combinations = [
+        ([101, 201, 301], "흰색 셔츠 + 검정 슬랙스 + 검정 구두"),
+        ([102, 202, 301], "하늘색 셔츠 + 네이비 슬랙스 + 검정 구두"),
+        ([101, 202, 301], "흰색 셔츠 + 네이비 슬랙스 + 검정 구두"),
+    ]
     composer.compose = AsyncMock(
         return_value=OutfitResponse(
             query_summary="면접용 포멀 코디",
             outfits=[
                 Outfit(
                     outfit_id=f"outfit-{i:03d}",
-                    description=f"깔끔한 비즈니스 룩 {i}",
-                    clothes_ids=[101 + i, 201 + i],
+                    description=desc,
+                    clothes_ids=ids,
                     items=[
                         OutfitItem(
-                            clothes_id=101 + i,
-                            image_url=f"https://img.com/{101+i}.jpg",
+                            clothes_id=ids[0],
+                            image_url=f"https://img.com/{ids[0]}.jpg",
                             category="TOP",
                             role="상의",
                         ),
                         OutfitItem(
-                            clothes_id=201 + i,
-                            image_url=f"https://img.com/{201+i}.jpg",
+                            clothes_id=ids[1],
+                            image_url=f"https://img.com/{ids[1]}.jpg",
                             category="BOTTOM",
                             role="하의",
                         ),
+                        OutfitItem(
+                            clothes_id=ids[2],
+                            image_url=f"https://img.com/{ids[2]}.jpg",
+                            category="SHOES",
+                            role="신발",
+                        ),
                     ],
                 )
-                for i in range(3)
+                for i, (ids, desc) in enumerate(valid_combinations)
             ],
         )
     )
