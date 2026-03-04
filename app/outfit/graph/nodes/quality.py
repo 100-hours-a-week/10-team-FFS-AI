@@ -252,7 +252,7 @@ async def evaluate_quality(state: OutfitGraphState, config: RunnableConfig) -> d
 
     try:
         langfuse = get_client()
-        if langfuse and langfuse.enabled:
+        if langfuse:
             langfuse.score(
                 trace_id=trace_id,
                 name=f"outfit_confidence_attempt_{quality_retry_count}",
@@ -266,9 +266,10 @@ async def evaluate_quality(state: OutfitGraphState, config: RunnableConfig) -> d
                     value=len(all_critical_issues),
                     comment=", ".join(all_critical_issues),
                 )
+            langfuse.flush()
     except Exception as e:
-        logger.debug(
-            f"Langfuse score recording skipped | trace_id={trace_id} error={e}"
+        logger.warning(
+            f"Langfuse score recording failed | trace_id={trace_id} error={e}"
         )
 
     return {
