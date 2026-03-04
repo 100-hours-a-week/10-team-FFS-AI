@@ -150,7 +150,7 @@ class GeminiImageAnalyzer:
 
         headers = {"x-goog-api-key": self.settings.gemini_api_key}
 
-        async with httpx.AsyncClient(timeout=180.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.post(api_url, json=payload, headers=headers)
 
             if response.status_code == 200:
