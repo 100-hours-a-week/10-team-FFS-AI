@@ -2,6 +2,8 @@ import logging
 import uuid
 from functools import lru_cache
 
+from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
+
 from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.graph import build_outfit_graph
 from app.outfit.llm_client import OpenAIClient
@@ -61,6 +63,8 @@ class OutfitService:
             "upload_slots": request.urls,
         }
 
+        langfuse_handler = LangfuseCallbackHandler()
+
         config = {
             "configurable": {
                 "query_parser": self.query_parser,
@@ -70,7 +74,13 @@ class OutfitService:
                 "vton_processor": self.vton_processor,
                 "shop_repository": self.shop_repository,
                 "shop_search_builder": self.shop_search_builder,
-            }
+            },
+            "callbacks": [langfuse_handler],
+            "metadata": {
+                "langfuse_user_id": str(request.user_id),
+                "langfuse_session_id": request.session_id,
+                "langfuse_tags": ["langgraph", "outfit"],
+            },
         }
 
         result = await self.graph.ainvoke(initial_state, config=config)

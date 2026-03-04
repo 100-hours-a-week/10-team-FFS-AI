@@ -2,7 +2,7 @@ import asyncio
 import io
 import logging
 
-from langfuse.decorators import observe
+from langfuse import observe
 from PIL import Image
 
 from app.closet.s3_client import S3Client

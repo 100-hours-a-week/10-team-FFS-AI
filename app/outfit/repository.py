@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from langfuse.decorators import observe
+from langfuse import observe
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qdrant_models
 from qdrant_client.http.models import Record, ScoredPoint
