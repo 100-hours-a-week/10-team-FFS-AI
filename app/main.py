@@ -63,9 +63,9 @@ def _init_langfuse() -> None:
     Langfuse(
         secret_key=settings.langfuse_secret_key,
         public_key=settings.langfuse_public_key,
-        host=settings.langfuse_host,
+        host=settings.langfuse_base_url,
     )
-    logger.info("Langfuse initialized (host=%s)", settings.langfuse_host)
+    logger.info("Langfuse initialized (host=%s)", settings.langfuse_base_url)
 
 
 def _shutdown_langfuse() -> None:

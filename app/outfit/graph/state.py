@@ -39,6 +39,7 @@ class OutfitGraphState(TypedDict, total=False):
 
     quality_passed: bool
     quality_issues: list[str]
+    quality_retry_count: int
 
     vton_completed: bool
 
