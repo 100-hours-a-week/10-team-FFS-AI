@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
 from dataclasses import dataclass, field
 
 import httpx
+from ulid import ULID
 
 from app.closet.gemini_client import GeminiImageAnalyzer
 from app.closet.s3_client import S3Client
@@ -135,7 +135,7 @@ class ClosetService:
             return PreprocessResult(success=False, error="SEGMENTATION_FAILED")
 
         count = len(item_images)
-        task_ids = [str(uuid.uuid4()) for _ in range(count)]
+        task_ids = [str(ULID()) for _ in range(count)]
 
         # 2. Presigned URL N개 한 번에 발급
         presigned_list = await self._request_presigned_urls(
