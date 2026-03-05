@@ -52,8 +52,8 @@ def _vllm_response(content: str) -> dict:
 def mock_settings() -> Generator[MagicMock, Any, None]:
     with patch("app.closet.model_analyzer.get_settings") as mock:
         settings = MagicMock()
-        settings.ai_server_url = "http://localhost:8001"
-        settings.ai_model_name = "test-model"
+        settings.vllm_server_url = "http://localhost:8001"
+        settings.vllm_model_name = "test-model"
         mock.return_value = settings
         yield settings
 
