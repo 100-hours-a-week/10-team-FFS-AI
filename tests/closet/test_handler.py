@@ -19,7 +19,7 @@ def mock_service() -> MagicMock:
     service.preprocess = AsyncMock(
         return_value=PreprocessResult(
             file_ids=[12345, 12346],
-            task_ids=["task-uuid-1", "task-uuid-2"],
+            task_ids=["task-ulid-1", "task-ulid-2"],
             item_images=[b"item1_bytes", b"item2_bytes"],
             success=True,
         )
