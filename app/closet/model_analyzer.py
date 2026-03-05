@@ -115,9 +115,9 @@ class ModelServerAnalyzer:
 
     def __init__(self, base_url: str | None = None, timeout: float = 120.0) -> None:
         settings = get_settings()
-        self._base_url = base_url or settings.ai_server_url
+        self._base_url = base_url or settings.vllm_server_url
         self._timeout = timeout
-        self._model = settings.ai_model_name
+        self._model = settings.vllm_model_name
         logger.info(f"ModelServerAnalyzer 초기화: {self._base_url}")
 
     async def analyze_image(self, image_bytes: bytes) -> ImageAnalysisResult:
@@ -182,7 +182,7 @@ class ModelServerAnalyzer:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(
-                    f"{self._base_url}/v1/chat/completions",
+                    f"{self._base_url.rstrip('/')}/v1/chat/completions",
                     json=payload,
                 )
                 response.raise_for_status()
