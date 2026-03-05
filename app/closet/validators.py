@@ -35,7 +35,12 @@ class ImageValidator:
     """통합 이미지 검증기 (Ray Serve Client)"""
 
     def __init__(self: ImageValidator, lazy_load: bool = True) -> None:
-        self.server_url = settings.ray_server_url
+        raw_url = settings.ray_server_url
+        if raw_url and not raw_url.startswith(("http://", "https://")):
+            self.server_url = f"http://{raw_url}"
+        else:
+            self.server_url = raw_url
+
         if not self.server_url:
             logger.warning("RAY_SERVER_URL is not set. Validation will fail.")
 
