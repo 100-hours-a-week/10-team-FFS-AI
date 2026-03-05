@@ -114,10 +114,13 @@ export CAPTION_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/captio
 export GEMINI_API_KEY=$(get_secure_param "/klosetlab/${ENVIRONMENT}/fastapi/model/gemini-api-key")
 export GEMINI_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/gemini-model")
 
-export VTON_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vton-model")
-
 export OPENAI_API_KEY=$(get_secure_param "/klosetlab/${ENVIRONMENT}/fastapi/model/openai-api-key")
 export OPENAI_CHAT_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/openai-chat-model")
+
+export VTON_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vton-model")
+export VTON_FALLBACK_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vton-fallback-model")
+
+export GCP_SERVER_URL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/gcp-server-url")
 
 export LLM_TIMEOUT=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/llm-timeout")
 export LLM_MAX_RETRIES=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/llm-max-retries")
