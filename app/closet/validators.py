@@ -71,7 +71,7 @@ class ImageValidator:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 # A. NSFW Check (/nsfw)
-                nsfw_api = f"{self.server_url}/nsfw"
+                nsfw_api = f"{self.server_url.rstrip('/')}/nsfw"
                 nsfw_resp = await client.post(nsfw_api, content=image_bytes)
                 nsfw_resp.raise_for_status()
                 nsfw_out = nsfw_resp.json()
@@ -88,7 +88,7 @@ class ImageValidator:
                     return result
 
                 # B. Fashion Check (/fashion)
-                fashion_api = f"{self.server_url}/fashion"
+                fashion_api = f"{self.server_url.rstrip('/')}/fashion"
                 all_prompts = FASHION_PROMPTS + NON_FASHION_PROMPTS
                 files = {"file": ("image.jpg", image_bytes, "image/jpeg")}
                 data = {"texts": json.dumps(all_prompts)}
