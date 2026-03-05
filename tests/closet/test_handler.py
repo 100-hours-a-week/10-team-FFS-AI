@@ -44,6 +44,14 @@ def mock_service() -> MagicMock:
             success=True,
         )
     )
+    service.validate_image = AsyncMock(
+        return_value={
+            "url": "https://example.com/test.jpg",
+            "nsfw": {"is_nsfw": False, "score": 0.0},
+            "fashion": {"is_fashion": True, "score": 1.0},
+            "error": None,
+        }
+    )
     return service
 
 

@@ -20,6 +20,7 @@ from ulid import ULID
 from app.closet.gemini_client import GeminiImageAnalyzer
 from app.closet.s3_client import S3Client
 from app.closet.schemas import ExtraAttributes, ExtraMetadata, MajorAttributes
+from app.closet.validators import ImageValidator, MockImageValidator
 from app.common.metrics import (
     CLOSET_PIPELINE_ERRORS,
     CLOSET_STAGE_DURATION,
@@ -90,12 +91,13 @@ class ClosetService:
             self._segmentation = MockSegmentationService(
                 item_count=3, delay_seconds=9.0
             )
+            self.validator = MockImageValidator()
             logger.info("Using Mock mode for load testing")
-        elif settings.ai_server_url:
+        elif settings.vllm_server_url:
             from app.closet.model_analyzer import ModelServerAnalyzer
 
             self._analyzer = ModelServerAnalyzer(
-                base_url=settings.ai_server_url,
+                base_url=settings.vllm_server_url,
             )
             self._fallback_analyzer = GeminiImageAnalyzer()
             from app.closet.segmentation import SegmentationService
@@ -103,8 +105,9 @@ class ClosetService:
             self._segmentation = SegmentationService(
                 gemini_client=self._fallback_analyzer,
             )
+            self.validator = ImageValidator()
             logger.info(
-                f"Using vLLM model server: {settings.ai_server_url} "
+                f"Using vLLM model server: {settings.vllm_server_url} "
                 "(Gemini fallback enabled)"
             )
         else:
@@ -118,10 +121,15 @@ class ClosetService:
             self._segmentation = SegmentationService(
                 gemini_client=self._analyzer,
             )
+            self.validator = ImageValidator()
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 공개 메서드
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async def validate_image(self, image_url: str) -> dict:
+        """단일 이미지 어뷰징 및 유효성 검증을 수행합니다."""
+        return await self.validator.validate_image(image_url)
 
     async def preprocess(self, target_image_url: str, user_id: int) -> PreprocessResult:
         """세그멘테이션 → presigned URL 발급 → S3 업로드 (N개 아이템).
