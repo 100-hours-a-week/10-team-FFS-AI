@@ -182,7 +182,7 @@ class ModelServerAnalyzer:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(
-                    f"{self._base_url}/v1/chat/completions",
+                    f"{self._base_url.rstrip('/')}/v1/chat/completions",
                     json=payload,
                 )
                 response.raise_for_status()
