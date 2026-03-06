@@ -120,7 +120,10 @@ export OPENAI_CHAT_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/op
 export VTON_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vton-model")
 export VTON_FALLBACK_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vton-fallback-model")
 
-export GCP_SERVER_URL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/gcp-server-url")
+export VLLM_SERVER_URL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vllm-server-url")
+export VLLM_MODEL_NAME=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vllm-model-name")
+
+export RAY_SERVER_URL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/ray-server-url")
 
 export LLM_TIMEOUT=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/llm-timeout")
 export LLM_MAX_RETRIES=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/llm-max-retries")
