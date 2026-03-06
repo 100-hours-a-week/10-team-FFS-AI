@@ -222,7 +222,7 @@ jobs:
             --target-group-arns ${CURRENT_TG_ARN} \
             --vpc-zone-identifier "${{ secrets.DEV_SUBNET_IDS }}" \
             --health-check-type ELB \
-            --health-check-grace-period 180 \
+            --health-check-grace-period 300 \
             --tags "Key=Name,Value=klosetlab-staging-v2-ai,PropagateAtLaunch=true" \
                    "Key=Environment,Value=staging,PropagateAtLaunch=true" \
                    "Key=Service,Value=ai,PropagateAtLaunch=true" \
