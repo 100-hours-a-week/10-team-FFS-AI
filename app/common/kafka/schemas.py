@@ -1,68 +1,73 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any, Literal
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any, Literal
+
+from pydantic import Field
+
+from app.common.schemas import BaseSchema
 
 
-
-
-
-class OutfitMetadata(BaseModel):
-
+class OutfitMetadata(BaseSchema):
     confidence: float
     shop_supplemented: bool = False
     fallback_used: bool = False
     processing_time_ms: int
 
 
-
-class OutfitRequestMessage(BaseModel):
-
+class OutfitRequestMessage(BaseSchema):
     request_id: str = Field(..., description="요청 추적용 고유 ID (UUID)")
     user_id: int
     query: str
-    session_id: Optional[str] = None
-    upload_slots: Optional[List[str]] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    session_id: str | None = None
+    upload_slots: list[str] | None = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-class ShopRequestMessage(BaseModel):
 
+class ShopRequestMessage(BaseSchema):
     request_id: str
     user_id: int
     query: str
-    session_id: Optional[str] = None
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    session_id: str | None = None
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-class OutfitResponseMessage(BaseModel):
 
+class OutfitResponseMessage(BaseSchema):
     request_id: str
     status: Literal["success"] = "success"
-    outfits: List[Dict[str, Any]]
+    outfits: list[dict[str, Any]]
     metadata: OutfitMetadata
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class ErrorDetail(BaseModel):
+class ErrorDetail(BaseSchema):
     code: str
     message: str
-    retry_after_seconds: Optional[int] = 60
+    retry_after_seconds: int | None = 60
 
 
-class DLQErrorDetail(BaseModel):
+class DLQErrorDetail(BaseSchema):
     type: str
     message: str
-    stack_trace: Optional[str] = None
+    stack_trace: str | None = None
 
-class ErrorResponse(BaseModel):
 
+class ErrorResponse(BaseSchema):
     request_id: str
     status: Literal["failed"] = "failed"
     error: ErrorDetail
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
-class DLQMessage(BaseModel):
 
+class DLQMessage(BaseSchema):
     original_topic: str
-    original_message: Dict[str, Any]
+    original_message: dict[str, Any]
     error: DLQErrorDetail
     retry_count: int
-    failed_at: datetime = Field(default_factory=datetime.utcnow)
+    failed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ProgressMessage(BaseSchema):
+    request_id: str
+    status: str
+    step: str
+    step_label: str
+    timestamp: float
