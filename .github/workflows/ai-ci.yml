@@ -1,441 +1,446 @@
-name: AI CI
-
-# ============================================================
-# 트리거 설정: PR이 생성/업데이트될 때 + 브랜치 푸시 시 자동 실행
-# ============================================================
-on:
-  # PR 이벤트 (코드 검증용)
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches:
-      - dev
-      - main
-    # AI 관련 파일이 변경될 때만 실행
-    paths:
-      - 'app/**'
-      - 'tests/**'
-      - 'requirements.txt'
-      - 'requirements-dev.txt'
-      - '.github/workflows/ai-ci.yml'
-
-  # Push 이벤트 (CD 트리거용)
-  push:
-    branches:
-      - dev
-      - main
-    paths:
-      - 'app/**'
-      - 'tests/**'
-      - 'requirements.txt'
-      - 'requirements-dev.txt'
-      - '.github/workflows/ai-ci.yml'
-
-permissions:
-  contents: read
-  checks: write
-  pull-requests: write
-
-# ============================================================
-# 동시성 제어: 같은 PR 또는 브랜치에서 새 실행 시 이전 실행 취소
-# ============================================================
-concurrency:
-  group: ai-ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-# ============================================================
-# 환경 변수 설정
-# ============================================================
-env:
-  PYTHON_VERSION: '3.11'
-
-# ============================================================
-# CI 작업 정의
-# ============================================================
-jobs:
-  ai-ci:
-    name: Lint, Test and Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    # ========================================================
-    # 테스트용 서비스 컨테이너
-    # ========================================================
-    services:
-      redis:
-        image: redis:7
-        ports:
-          - 6380:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=5s
-          --health-timeout=3s
-          --health-retries=5
-
-    # ========================================================
-    # 환경 변수 설정 (테스트용)
-    # ========================================================
-    env:
-      APP_ENV: ci
-      DEBUG: False
-      QDRANT_HOST: localhost
-      QDRANT_PORT: 6333
-      QDRANT_COLLECTION_NAME: klosetlab_embeddings
-      REDIS_HOST: localhost
-      REDIS_PORT: 6380
-      REDIS_DB: 0
-      UPSTAGE_API_KEY: ${{ secrets.UPSTAGE_API_KEY }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-    # ========================================================
-    # CI 단계 (Steps)
-    # ========================================================
-    steps:
-      # ------------------------------------------------------
-      # 1. 소스 코드 체크아웃
-      # ------------------------------------------------------
-      - name: 📥 Checkout source code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # ------------------------------------------------------
-      # 2. Python 설정 및 캐싱
-      # ------------------------------------------------------
-      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-
-      # ------------------------------------------------------
-      # 3. 의존성 설치
-      # ------------------------------------------------------
-      - name: 📦 Install dependencies
-        id: install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-
-          # 설치된 주요 패키지 버전 출력
-          echo "### 📦 Installed Packages" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          pip list | grep -E "fastapi|uvicorn|gunicorn|qdrant|redis|boto3|httpx" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-
-      # ------------------------------------------------------
-      # 4. 정적 분석 - Ruff Lint
-      # ------------------------------------------------------
-      - name: 🔍 Run Ruff Lint
-        id: ruff_lint
-        run: |
-          echo "Running Ruff lint..."
-          ruff check app/ tests/ --output-format=github
-        continue-on-error: true
-
-      # ------------------------------------------------------
-      # 5. 코드 포맷 검사 - Ruff Format
-      # ------------------------------------------------------
-      - name: 🎨 Check code formatting
-        id: ruff_format
-        run: |
-          echo "Checking code format..."
-          ruff format --check app/ tests/
-        continue-on-error: true
-
-      # ------------------------------------------------------
-      # 6. 타입 체크 - MyPy (선택사항)
-      # ------------------------------------------------------
-      - name: 📝 Run type checking
-        id: mypy
-        run: |
-          echo "Running MyPy type check..."
-          mypy app/ --ignore-missing-imports || true
-          echo "### 📝 Type Check" >> $GITHUB_STEP_SUMMARY
-          echo "MyPy 타입 체크 완료 (경고만 표시)" >> $GITHUB_STEP_SUMMARY
-        continue-on-error: true
-
-      # ------------------------------------------------------
-      # 7. 테스트 실행 및 커버리지 측정
-      # ------------------------------------------------------
-      - name: 🧪 Run tests with coverage
-        id: test
-        run: |
-          echo "Running tests with coverage..."
-          pytest tests/ \
-            -v \
-            --tb=short \
-            --maxfail=5 \
-            --cov=app \
-            --cov-report=xml \
-            --cov-report=term \
-            --cov-report=html \
-            --junitxml=test-results.xml
-        continue-on-error: false
-
-      # ------------------------------------------------------
-      # 8. 테스트 커버리지 추출
-      # ------------------------------------------------------
-      - name: 📊 Extract test coverage
-        id: coverage
-        run: |
-          # coverage.xml에서 커버리지 추출
-          if [ -f coverage.xml ]; then
-            COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(int(float(root.attrib['line-rate']) * 100))")
-          else
-            COVERAGE="0"
-          fi
-
-          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
-          echo "### 📊 Test Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
-
-          # 커버리지가 너무 낮으면 경고
-          if [ "$COVERAGE" -lt 70 ]; then
-            echo "::warning::Test coverage is below 70% (${COVERAGE}%)"
-          fi
-        continue-on-error: true
-
-      # ------------------------------------------------------
-      # 9. 테스트 결과 발행
-      # ------------------------------------------------------
-      - name: 📋 Publish test results
-        if: always()
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        with:
-          files: test-results.xml
-          check_name: AI Test Results
-          comment_mode: off
-
-      # ------------------------------------------------------
-      # 10. 테스트 리포트 업로드 (실패 시)
-      # ------------------------------------------------------
-      - name: 📤 Upload test reports
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-test-reports-${{ github.event.pull_request.head.sha || github.sha }}
-          path: |
-            htmlcov/
-            coverage.xml
-            test-results.xml
-          retention-days: 7
-
-      # ------------------------------------------------------
-      # 11. 애플리케이션 임포트 테스트
-      # ------------------------------------------------------
-      - name: 🔍 Test application import
-        id: import_test
-        run: |
-          echo "Testing application import..."
-          python -c "from app.main import app; print('✅ Application import successful')"
-        continue-on-error: false
-
-      # ------------------------------------------------------
-      # 12. Requirements 파일 생성 (배포용)
-      # ------------------------------------------------------
-      - name: 📝 Generate deployment requirements
-        if: success()
-        run: |
-          echo "Generating deployment requirements..."
-          mkdir -p build-artifacts
-
-          # 배포용 requirements.txt 복사
-          cp requirements.txt build-artifacts/
-
-          # 환경 정보 저장
-          python --version > build-artifacts/python-version.txt
-          pip list > build-artifacts/pip-list.txt
-
-      # ------------------------------------------------------
-      # 13. 빌드 아티팩트 업로드 (main)
-      # ------------------------------------------------------
-      - name: 📦 Upload build artifacts (main)
-        if: (github.base_ref == 'main' || github.ref_name == 'main') && success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-app-main-${{ github.event.pull_request.head.sha || github.sha }}
-          path: |
-            app/
-            requirements.txt
-            build-artifacts/
-          retention-days: 90
-
-      # ------------------------------------------------------
-      # 14. 빌드 아티팩트 업로드 (dev)
-      # ------------------------------------------------------
-      - name: 📦 Upload build artifacts (dev)
-        if: (github.base_ref == 'dev' || github.ref_name == 'dev') && success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-app-dev-${{ github.event.pull_request.head.sha || github.sha }}
-          path: |
-            app/
-            requirements.txt
-            build-artifacts/
-          retention-days: 7
-
-      # ------------------------------------------------------
-      # 15. 빌드 정보 저장 (CD에서 사용)
-      # ------------------------------------------------------
-      - name: 💾 Save build metadata
-        if: success()
-        run: |
-          mkdir -p build-info
-          cat > build-info/metadata.json <<EOF
-          {
-            "buildTime": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
-            "commitSha": "${{ github.event.pull_request.head.sha || github.sha }}",
-            "commitShort": "$(echo ${{ github.event.pull_request.head.sha || github.sha }} | cut -c1-7)",
-            "branch": "${{ github.head_ref || github.ref_name }}",
-            "baseBranch": "${{ github.base_ref || github.ref_name }}",
-            "prNumber": "${{ github.event.pull_request.number || 'N/A' }}",
-            "prTitle": "${{ github.event.pull_request.title || 'Direct Push' }}",
-            "author": "${{ github.event.pull_request.user.login || github.actor }}",
-            "coverage": "${{ steps.coverage.outputs.coverage }}",
-            "pythonVersion": "$(python --version | cut -d' ' -f2)"
-          }
-          EOF
-          cat build-info/metadata.json
-
-      - name: 📤 Upload build metadata
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-build-metadata-${{ github.event.pull_request.head.sha || github.sha }}
-          path: build-info/metadata.json
-          retention-days: 30
-
-      # ------------------------------------------------------
-      # 16. PR에 결과 코멘트 작성
-      # ------------------------------------------------------
-      - name: 💬 Comment PR with results
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const coverage = '${{ steps.coverage.outputs.coverage }}' || 'N/A';
-            const ruffLint = '${{ steps.ruff_lint.outcome }}';
-            const ruffFormat = '${{ steps.ruff_format.outcome }}';
-            const test = '${{ steps.test.outcome }}';
-            const importTest = '${{ steps.import_test.outcome }}';
-
-            const getIcon = (status) => status === 'success' ? '✅' : status === 'failure' ? '❌' : '⚠️';
-
-            const getCoverageColor = (cov) => {
-              const num = parseInt(cov);
-              if (num >= 80) return '🟢';
-              if (num >= 70) return '🟡';
-              return '🔴';
-            };
-
-            const body = `## 🤖 AI Service CI Results
-
-            | Check | Status | Details |
-            |-------|--------|---------|
-            | 🔍 Code Lint | ${getIcon(ruffLint)} ${ruffLint} | Ruff 린트 검사 |
-            | 🎨 Code Format | ${getIcon(ruffFormat)} ${ruffFormat} | Ruff 포맷 검사 |
-            | 🧪 Tests | ${getIcon(test)} ${test} | 단위 테스트 |
-            | 📦 Import Test | ${getIcon(importTest)} ${importTest} | 앱 임포트 검증 |
-            | 📊 Coverage | ${getCoverageColor(coverage)} ${coverage}% | 테스트 커버리지 |
-
-            <details>
-            <summary>📋 상세 정보</summary>
-
-            - **브랜치:** \`${{ github.head_ref }}\` → \`${{ github.base_ref }}\`
-            - **커밋:** \`${context.payload.pull_request.head.sha.substring(0, 7)}\`
-            - **작성자:** @${{ github.event.pull_request.user.login }}
-
-            ### 📊 테스트 커버리지 기준
-            - 🟢 80% 이상: 우수
-            - 🟡 70-79%: 양호
-            - 🔴 70% 미만: 개선 필요
-
-            [📊 전체 리포트 보기](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            </details>
-
-            ${coverage < 70 ? '\n⚠️ **주의:** 테스트 커버리지가 기준(70%)에 미달합니다.' : ''}
-            ${test === 'failure' ? '\n❌ **테스트 실패:** 실패한 테스트를 확인해주세요.' : ''}
-            `;
-
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-
-            const botComment = comments.data.find(comment =>
-              comment.user.type === 'Bot' &&
-              comment.body.includes('AI Service CI Results')
-            );
-
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: body
-              });
-            }
-
-      # ------------------------------------------------------
-      # 17. Discord 알림 - 성공 (PR only)
-      # ------------------------------------------------------
-      - name: 📢 Send Discord notification on success
-        if: success() && github.event_name == 'pull_request'
-        uses: tsickert/discord-webhook@v5.3.0
-        with:
-          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          username: "AI CI Bot"
-          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-          embed-title: "✅ AI Service CI 성공"
-          embed-description: |
-            **PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}
-            **브랜치:** `${{ github.head_ref }}` → `${{ github.base_ref }}`
-            **작성자:** @${{ github.event.pull_request.user.login }}
-            **커버리지:** ${{ steps.coverage.outputs.coverage }}%
-
-            모든 검사를 통과했습니다! 🎉
-
-            [🔗 PR 보기](${{ github.event.pull_request.html_url }})
-          embed-color: 3066993
-          embed-footer-text: ${{ github.repository }}
-          embed-timestamp: ${{ github.event.pull_request.updated_at }}
-
-      # ------------------------------------------------------
-      # 18. Discord 알림 - 실패 (PR only)
-      # ------------------------------------------------------
-      - name: 📢 Send Discord notification on failure
-        if: failure() && github.event_name == 'pull_request'
-        uses: tsickert/discord-webhook@v5.3.0
-        with:
-          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          username: "AI CI Bot"
-          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-          embed-title: "❌ AI Service CI 실패"
-          embed-description: |
-            **PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}
-            **브랜치:** `${{ github.head_ref }}` → `${{ github.base_ref }}`
-            **작성자:** @${{ github.event.pull_request.user.login }}
-
-            **실패 단계:**
-            • Lint: ${{ steps.ruff_lint.outcome }}
-            • Format: ${{ steps.ruff_format.outcome }}
-            • Tests: ${{ steps.test.outcome }}
-            • Import: ${{ steps.import_test.outcome }}
-
-            [🔗 PR 보기](${{ github.event.pull_request.html_url }})
-            [📋 CI 로그 보기](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          embed-color: 15158332
-          embed-footer-text: ${{ github.repository }}
-          embed-timestamp: ${{ github.event.pull_request.updated_at }}
+#name: AI CI
+#
+## ============================================================
+## 트리거 설정: PR이 생성/업데이트될 때 + 브랜치 푸시 시 자동 실행
+## ============================================================
+#on:
+#  # PR 이벤트 (코드 검증용)
+#  pull_request:
+#    types: [opened, synchronize, reopened]
+#    branches:
+#      - dev
+#      - main
+#    # AI 관련 파일이 변경될 때만 실행
+#    paths:
+#      - 'app/**'
+#      - 'tests/**'
+#      - 'requirements.txt'
+#      - 'requirements-dev.txt'
+#      - '.github/workflows/ai-ci.yml'
+#
+#  # Push 이벤트 (CD 트리거용)
+#  push:
+#    branches:
+#      - dev
+#      - main
+#    paths:
+#      - 'app/**'
+#      - 'tests/**'
+#      - 'requirements.txt'
+#      - 'requirements-dev.txt'
+#      - '.github/workflows/ai-ci.yml'
+#
+#permissions:
+#  contents: read
+#  checks: write
+#  pull-requests: write
+#
+## ============================================================
+## 동시성 제어: 같은 PR 또는 브랜치에서 새 실행 시 이전 실행 취소
+## ============================================================
+#concurrency:
+#  group: ai-ci-${{ github.event.pull_request.number || github.ref }}
+#  cancel-in-progress: true
+#
+## ============================================================
+## 환경 변수 설정
+## ============================================================
+#env:
+#  PYTHON_VERSION: '3.11'
+#
+## ============================================================
+## CI 작업 정의
+## ============================================================
+#jobs:
+#  ai-ci:
+#    name: Lint, Test and Build
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 20
+#
+#    # ========================================================
+#    # 테스트용 서비스 컨테이너
+#    # ========================================================
+#    services:
+#      redis:
+#        image: redis:7
+#        ports:
+#          - 6380:6379
+#        options: >-
+#          --health-cmd="redis-cli ping"
+#          --health-interval=5s
+#          --health-timeout=3s
+#          --health-retries=5
+#      qdrant:
+#        image: qdrant/qdrant:v1.16.2
+#        ports:
+#          - 6333:6333
+#
+#    # ========================================================
+#    # 환경 변수 설정 (테스트용)
+#    # ========================================================
+#    env:
+#      APP_ENV: ci
+#      DEBUG: False
+#      # REDIS_HOST: localhost
+#      # REDIS_PORT: 6380
+#      # REDIS_DB: 0
+#      # QDRANT_HOST: localhost
+#      # QDRANT_PORT: 6333
+#      # QDRANT_COLLECTION_NAME: clothes
+#      # QDRANT_SHOP_COLLECTION_NAME: commerce
+#      UPSTAGE_API_KEY: ${{ secrets.UPSTAGE_API_KEY }}
+#      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+#      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+#
+#    # ========================================================
+#    # CI 단계 (Steps)
+#    # ========================================================
+#    steps:
+#      # ------------------------------------------------------
+#      # 1. 소스 코드 체크아웃
+#      # ------------------------------------------------------
+#      - name: 📥 Checkout source code
+#        uses: actions/checkout@v4
+#        with:
+#          fe3tch-depth: 0
+#
+#      # ------------------------------------------------------
+#      # 2. Python 설정 및 캐싱
+#      # ------------------------------------------------------
+#      - name: 🐍 Set up Python ${{ env.PYTHON_VERSION }}
+#        uses: actions/setup-python@v5
+#        with:
+#          python-version: ${{ env.PYTHON_VERSION }}
+#          cache: 'pip'
+#          cache-dependency-path: |
+#            requirements.txt
+#            requirements-dev.txt
+#
+#      # ------------------------------------------------------
+#      # 3. 의존성 설치
+#      # ------------------------------------------------------
+#      - name: 📦 Install dependencies
+#        id: install
+#        run: |
+#          python -m pip install --upgrade pip
+#          pip install -r requirements.txt
+#          pip install -r requirements-dev.txt
+#
+#          # 설치된 주요 패키지 버전 출력
+#          echo "### 📦 Installed Packages" >> $GITHUB_STEP_SUMMARY
+#          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+#          pip list | grep -E "fastapi|uvicorn|gunicorn|qdrant|redis|boto3|httpx" >> $GITHUB_STEP_SUMMARY
+#          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+#
+#      # ------------------------------------------------------
+#      # 4. 정적 분석 - Ruff Lint
+#      # ------------------------------------------------------
+#      - name: 🔍 Run Ruff Lint
+#        id: ruff_lint
+#        run: |
+#          echo "Running Ruff lint..."
+#          ruff check app/ tests/ --output-format=github
+#        continue-on-error: true
+#
+#      # ------------------------------------------------------
+#      # 5. 코드 포맷 검사 - Ruff Format
+#      # ------------------------------------------------------
+#      - name: 🎨 Check code formatting
+#        id: ruff_format
+#        run: |
+#          echo "Checking code format..."
+#          ruff format --check app/ tests/
+#        continue-on-error: true
+#
+#      # ------------------------------------------------------
+#      # 6. 타입 체크 - MyPy (선택사항)
+#      # ------------------------------------------------------
+#      - name: 📝 Run type checking
+#        id: mypy
+#        run: |
+#          echo "Running MyPy type check..."
+#          mypy app/ --ignore-missing-imports || true
+#          echo "### 📝 Type Check" >> $GITHUB_STEP_SUMMARY
+#          echo "MyPy 타입 체크 완료 (경고만 표시)" >> $GITHUB_STEP_SUMMARY
+#        continue-on-error: true
+#
+#      # ------------------------------------------------------
+#      # 7. 테스트 실행 및 커버리지 측정
+#      # ------------------------------------------------------
+#      - name: 🧪 Run tests with coverage
+#        id: test
+#        run: |
+#          echo "Running tests with coverage..."
+#          pytest tests/ \
+#            -v \
+#            --tb=short \
+#            --maxfail=5 \
+#            --cov=app \
+#            --cov-report=xml \
+#            --cov-report=term \
+#            --cov-report=html \
+#            --junitxml=test-results.xml
+#        continue-on-error: false
+#
+#      # ------------------------------------------------------
+#      # 8. 테스트 커버리지 추출
+#      # ------------------------------------------------------
+#      - name: 📊 Extract test coverage
+#        id: coverage
+#        run: |
+#          # coverage.xml에서 커버리지 추출
+#          if [ -f coverage.xml ]; then
+#            COVERAGE=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(int(float(root.attrib['line-rate']) * 100))")
+#          else
+#            COVERAGE="0"
+#          fi
+#
+#          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+#          echo "### 📊 Test Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+#
+#          # 커버리지가 너무 낮으면 경고
+#          if [ "$COVERAGE" -lt 70 ]; then
+#            echo "::warning::Test coverage is below 70% (${COVERAGE}%)"
+#          fi
+#        continue-on-error: true
+#
+#      # ------------------------------------------------------
+#      # 9. 테스트 결과 발행
+#      # ------------------------------------------------------
+#      - name: 📋 Publish test results
+#        if: always()
+#        uses: EnricoMi/publish-unit-test-result-action@v2
+#        with:
+#          files: test-results.xml
+#          check_name: AI Test Results
+#          comment_mode: off
+#
+#      # ------------------------------------------------------
+#      # 10. 테스트 리포트 업로드 (실패 시)
+#      # ------------------------------------------------------
+#      - name: 📤 Upload test reports
+#        if: failure()
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: ai-test-reports-${{ github.event.pull_request.head.sha || github.sha }}
+#          path: |
+#            htmlcov/
+#            coverage.xml
+#            test-results.xml
+#          retention-days: 7
+#
+#      # ------------------------------------------------------
+#      # 11. 애플리케이션 임포트 테스트
+#      # ------------------------------------------------------
+#      - name: 🔍 Test application import
+#        id: import_test
+#        run: |
+#          echo "Testing application import..."
+#          python -c "from app.main import app; print('✅ Application import successful')"
+#        continue-on-error: false
+#
+#      # ------------------------------------------------------
+#      # 12. Requirements 파일 생성 (배포용)
+#      # ------------------------------------------------------
+#      - name: 📝 Generate deployment requirements
+#        if: success()
+#        run: |
+#          echo "Generating deployment requirements..."
+#          mkdir -p build-artifacts
+#
+#          # 배포용 requirements.txt 복사
+#          cp requirements.txt build-artifacts/
+#
+#          # 환경 정보 저장
+#          python --version > build-artifacts/python-version.txt
+#          pip list > build-artifacts/pip-list.txt
+#
+#      # ------------------------------------------------------
+#      # 13. 빌드 아티팩트 업로드 (main)
+#      # ------------------------------------------------------
+#      - name: 📦 Upload build artifacts (main)
+#        if: (github.base_ref == 'main' || github.ref_name == 'main') && success()
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: ai-app-main-${{ github.event.pull_request.head.sha || github.sha }}
+#          path: |
+#            app/
+#            requirements.txt
+#            build-artifacts/
+#          retention-days: 90
+#
+#      # ------------------------------------------------------
+#      # 14. 빌드 아티팩트 업로드 (dev)
+#      # ------------------------------------------------------
+#      - name: 📦 Upload build artifacts (dev)
+#        if: (github.base_ref == 'dev' || github.ref_name == 'dev') && success()
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: ai-app-dev-${{ github.event.pull_request.head.sha || github.sha }}
+#          path: |
+#            app/
+#            requirements.txt
+#            build-artifacts/
+#          retention-days: 7
+#
+#      # ------------------------------------------------------
+#      # 15. 빌드 정보 저장 (CD에서 사용)
+#      # ------------------------------------------------------
+#      - name: 💾 Save build metadata
+#        if: success()
+#        run: |
+#          mkdir -p build-info
+#          cat > build-info/metadata.json <<EOF
+#          {
+#            "buildTime": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+#            "commitSha": "${{ github.event.pull_request.head.sha || github.sha }}",
+#            "commitShort": "$(echo ${{ github.event.pull_request.head.sha || github.sha }} | cut -c1-7)",
+#            "branch": "${{ github.head_ref || github.ref_name }}",
+#            "baseBranch": "${{ github.base_ref || github.ref_name }}",
+#            "prNumber": "${{ github.event.pull_request.number || 'N/A' }}",
+#            "prTitle": "${{ github.event.pull_request.title || 'Direct Push' }}",
+#            "author": "${{ github.event.pull_request.user.login || github.actor }}",
+#            "coverage": "${{ steps.coverage.outputs.coverage }}",
+#            "pythonVersion": "$(python --version | cut -d' ' -f2)"
+#          }
+#          EOF
+#          cat build-info/metadata.json
+#
+#      - name: 📤 Upload build metadata
+#        if: success()
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: ai-build-metadata-${{ github.event.pull_request.head.sha || github.sha }}
+#          path: build-info/metadata.json
+#          retention-days: 30
+#
+#      # ------------------------------------------------------
+#      # 16. PR에 결과 코멘트 작성
+#      # ------------------------------------------------------
+#      - name: 💬 Comment PR with results
+#        if: github.event_name == 'pull_request'
+#        uses: actions/github-script@v7
+#        with:
+#          script: |
+#            const coverage = '${{ steps.coverage.outputs.coverage }}' || 'N/A';
+#            const ruffLint = '${{ steps.ruff_lint.outcome }}';
+#            const ruffFormat = '${{ steps.ruff_format.outcome }}';
+#            const test = '${{ steps.test.outcome }}';
+#            const importTest = '${{ steps.import_test.outcome }}';
+#
+#            const getIcon = (status) => status === 'success' ? '✅' : status === 'failure' ? '❌' : '⚠️';
+#
+#            const getCoverageColor = (cov) => {
+#              const num = parseInt(cov);
+#              if (num >= 80) return '🟢';
+#              if (num >= 70) return '🟡';
+#              return '🔴';
+#            };
+#
+#            const body = `## 🤖 AI Service CI Results
+#
+#            | Check | Status | Details |
+#            |-------|--------|---------|
+#            | 🔍 Code Lint | ${getIcon(ruffLint)} ${ruffLint} | Ruff 린트 검사 |
+#            | 🎨 Code Format | ${getIcon(ruffFormat)} ${ruffFormat} | Ruff 포맷 검사 |
+#            | 🧪 Tests | ${getIcon(test)} ${test} | 단위 테스트 |
+#            | 📦 Import Test | ${getIcon(importTest)} ${importTest} | 앱 임포트 검증 |
+#            | 📊 Coverage | ${getCoverageColor(coverage)} ${coverage}% | 테스트 커버리지 |
+#
+#            <details>
+#            <summary>📋 상세 정보</summary>
+#
+#            - **브랜치:** \`${{ github.head_ref }}\` → \`${{ github.base_ref }}\`
+#            - **커밋:** \`${context.payload.pull_request.head.sha.substring(0, 7)}\`
+#            - **작성자:** @${{ github.event.pull_request.user.login }}
+#
+#            ### 📊 테스트 커버리지 기준
+#            - 🟢 80% 이상: 우수
+#            - 🟡 70-79%: 양호
+#            - 🔴 70% 미만: 개선 필요
+#
+#            [📊 전체 리포트 보기](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+#            </details>
+#
+#            ${coverage < 70 ? '\n⚠️ **주의:** 테스트 커버리지가 기준(70%)에 미달합니다.' : ''}
+#            ${test === 'failure' ? '\n❌ **테스트 실패:** 실패한 테스트를 확인해주세요.' : ''}
+#            `;
+#
+#            const comments = await github.rest.issues.listComments({
+#              owner: context.repo.owner,
+#              repo: context.repo.repo,
+#              issue_number: context.issue.number,
+#            });
+#
+#            const botComment = comments.data.find(comment =>
+#              comment.user.type === 'Bot' &&
+#              comment.body.includes('AI Service CI Results')
+#            );
+#
+#            if (botComment) {
+#              await github.rest.issues.updateComment({
+#                owner: context.repo.owner,
+#                repo: context.repo.repo,
+#                comment_id: botComment.id,
+#                body: body
+#              });
+#            } else {
+#              await github.rest.issues.createComment({
+#                owner: context.repo.owner,
+#                repo: context.repo.repo,
+#                issue_number: context.issue.number,
+#                body: body
+#              });
+#            }
+#
+#      # ------------------------------------------------------
+#      # 17. Discord 알림 - 성공 (PR only)
+#      # ------------------------------------------------------
+#      - name: 📢 Send Discord notification on success
+#        if: success() && github.event_name == 'pull_request'
+#        uses: tsickert/discord-webhook@v5.3.0
+#        with:
+#          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+#          username: "AI CI Bot"
+#          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+#          embed-title: "✅ AI Service CI 성공"
+#          embed-description: |
+#            **PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}
+#            **브랜치:** `${{ github.head_ref }}` → `${{ github.base_ref }}`
+#            **작성자:** @${{ github.event.pull_request.user.login }}
+#            **커버리지:** ${{ steps.coverage.outputs.coverage }}%
+#
+#            모든 검사를 통과했습니다! 🎉
+#
+#            [🔗 PR 보기](${{ github.event.pull_request.html_url }})
+#          embed-color: 3066993
+#          embed-footer-text: ${{ github.repository }}
+#          embed-timestamp: ${{ github.event.pull_request.updated_at }}
+#
+#      # ------------------------------------------------------
+#      # 18. Discord 알림 - 실패 (PR only)
+#      # ------------------------------------------------------
+#      - name: 📢 Send Discord notification on failure
+#        if: failure() && github.event_name == 'pull_request'
+#        uses: tsickert/discord-webhook@v5.3.0
+#        with:
+#          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+#          username: "AI CI Bot"
+#          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+#          embed-title: "❌ AI Service CI 실패"
+#          embed-description: |
+#            **PR:** #${{ github.event.pull_request.number }} - ${{ github.event.pull_request.title }}
+#            **브랜치:** `${{ github.head_ref }}` → `${{ github.base_ref }}`
+#            **작성자:** @${{ github.event.pull_request.user.login }}
+#
+#            **실패 단계:**
+#            • Lint: ${{ steps.ruff_lint.outcome }}
+#            • Format: ${{ steps.ruff_format.outcome }}
+#            • Tests: ${{ steps.test.outcome }}
+#            • Import: ${{ steps.import_test.outcome }}
+#
+#            [🔗 PR 보기](${{ github.event.pull_request.html_url }})
+#            [📋 CI 로그 보기](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+#          embed-color: 15158332
+#          embed-footer-text: ${{ github.repository }}
+#          embed-timestamp: ${{ github.event.pull_request.updated_at }}

@@ -1,10 +1,12 @@
 import asyncio
 import logging
 
+from langfuse import observe
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models as qdrant_models
-from qdrant_client.http.models import ScoredPoint
+from qdrant_client.http.models import Record, ScoredPoint
 
+from app.common.metrics import measure_time
 from app.config import Settings, get_settings
 from app.core.database import get_qdrant_client
 from app.embedding.service import EmbeddingService, get_embedding_service
@@ -40,12 +42,8 @@ class ClothingRepository:
         query: SearchQuery,
         top_k: int = 5,
     ) -> SearchResult:
-        embedding_service = await self._get_embedding_service()
         qdrant = await self._get_qdrant()
 
-        query_vector = await embedding_service.get_embedding(query.text)
-
-        # 필터 구성: user_id 필수 + category 선택
         must_conditions: list[qdrant_models.Condition] = [
             qdrant_models.FieldCondition(
                 key="userId",
@@ -63,43 +61,69 @@ class ClothingRepository:
 
         query_filter = qdrant_models.Filter(must=must_conditions)
 
-        response = await qdrant.query_points(
-            collection_name=self.settings.qdrant_collection_name,
-            query=query_vector,
-            query_filter=query_filter,
-            limit=top_k,
-            with_payload=True,
-        )
+        if not query.text:
+            response = await qdrant.scroll(
+                collection_name=self.settings.qdrant_collection_name,
+                scroll_filter=query_filter,
+                limit=top_k,
+                with_payload=True,
+            )
+            points = response[0]
+            candidates = [self._to_candidate_from_record(point) for point in points]
+        else:
+            embedding_service = await self._get_embedding_service()
+            query_vector = await embedding_service.get_embedding(query.text)
 
-        candidates = [self._to_candidate(hit) for hit in response.points]
+            response = await qdrant.query_points(
+                collection_name=self.settings.qdrant_collection_name,
+                query=query_vector,
+                query_filter=query_filter,
+                limit=top_k,
+                with_payload=True,
+            )
+            candidates = [self._to_candidate(hit) for hit in response.points]
+
         category = query.category_filter or "전체"
-
         logger.info(
             "Search completed: user_id=%s, category=%s, found=%d",
             user_id,
             category,
             len(candidates),
         )
-
         return SearchResult(category=category, candidates=candidates)
 
+    @observe(name="outfit_vector_search")
+    @measure_time("vector_search")
     async def search_multiple(
         self,
         user_id: int,
         queries: list[SearchQuery],
         top_k: int = 5,
+        trace_id: str | None = None,
     ) -> list[SearchResult]:
+        log_context = f"trace_id={trace_id} " if trace_id else ""
+        logger.info(
+            f"Searching multiple queries | {log_context}"
+            f"user_id={user_id} query_count={len(queries)}"
+        )
+
         tasks = [self.search_by_query(user_id, query, top_k) for query in queries]
-        return await asyncio.gather(*tasks)
+        results = await asyncio.gather(*tasks)
+
+        total_found = sum(len(r.candidates) for r in results)
+        logger.info(
+            f"Search completed | {log_context}"
+            f"user_id={user_id} total_candidates={total_found}"
+        )
+
+        return results
 
     @staticmethod
-    def _to_candidate(hit: ScoredPoint) -> ClothingCandidate:
-        payload = hit.payload or {}
-
+    def _to_candidate_from_record(record: Record) -> ClothingCandidate:
+        payload = record.payload or {}
         raw_color = payload.get("color")
         if raw_color is None:
             color_list: list[str] = []
-        # 하위호환성 추후 제거
         elif isinstance(raw_color, str):
             color_list = [raw_color] if raw_color else []
         else:
@@ -111,5 +135,35 @@ class ClothingRepository:
             color=color_list,
             style_tags=payload.get("styleTags", []),
             caption=payload.get("caption"),
+            material=payload.get("material") or [],
+            season=payload.get("season") or [],
+            formality=payload.get("formality") or "",
+            occasion=payload.get("occasion") or [],
+            similarity_score=0.0,  # scroll은 score 없음
+        )
+
+    @staticmethod
+    def _to_candidate(hit: ScoredPoint) -> ClothingCandidate:
+        payload = hit.payload or {}
+
+        raw_color = payload.get("color")
+        if raw_color is None:
+            color_list: list[str] = []
+
+        elif isinstance(raw_color, str):
+            color_list = [raw_color] if raw_color else []
+        else:
+            color_list = list(raw_color)
+        return ClothingCandidate(
+            clothes_id=payload.get("clothesId", 0),
+            image_url=payload.get("imageUrl", ""),
+            category=payload.get("category", ""),
+            color=color_list,
+            style_tags=payload.get("styleTags", []),
+            caption=payload.get("caption"),
+            material=payload.get("material") or [],
+            season=payload.get("season") or [],
+            formality=payload.get("formality") or "",
+            occasion=payload.get("occasion") or [],
             similarity_score=hit.score,
         )

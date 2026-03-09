@@ -55,21 +55,24 @@ async def init_databases() -> None:
             f"Qdrant connected successfully. Collections: {len(collections.collections)}"
         )
 
-        collection_exists = any(
-            col.name == settings.qdrant_collection_name
-            for col in collections.collections
-        )
-        if not collection_exists:
-            logger.info(f"Creating collection '{settings.qdrant_collection_name}'")
-            await _qdrant_client.create_collection(
-                collection_name=settings.qdrant_collection_name,
-                vectors_config=qdrant_models.VectorParams(
-                    size=4096, distance=qdrant_models.Distance.COSINE
-                ),
+        for coll_name in [
+            settings.qdrant_collection_name,
+            settings.qdrant_shop_collection_name,
+        ]:
+            collection_exists = any(
+                col.name == coll_name for col in collections.collections
             )
-            logger.info(f"Collection '{settings.qdrant_collection_name}' created")
-        else:
-            logger.info(f"Collection '{settings.qdrant_collection_name}' found")
+            if not collection_exists:
+                logger.info(f"Creating collection '{coll_name}'")
+                await _qdrant_client.create_collection(
+                    collection_name=coll_name,
+                    vectors_config=qdrant_models.VectorParams(
+                        size=4096, distance=qdrant_models.Distance.COSINE
+                    ),
+                )
+                logger.info(f"Collection '{coll_name}' created")
+            else:
+                logger.info(f"Collection '{coll_name}' found")
 
     except Exception as e:
         logger.error(f"Failed to connect to Qdrant: {e}")
@@ -86,6 +89,8 @@ async def init_databases() -> None:
             db=settings.redis_db,
             password=settings.redis_password if settings.redis_password else None,
             max_connections=settings.redis_max_connections,
+            socket_timeout=5.0,
+            socket_connect_timeout=3.0,
             decode_responses=True,
         )
 

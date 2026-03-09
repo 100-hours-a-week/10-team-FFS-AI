@@ -39,6 +39,9 @@ ignore = [
 # 자동 수정 허용
 fixable = ["ALL"]
 
+[lint.per-file-ignores]
+"app/common/metrics.py" = ["ANN"]
+
 [lint.isort]
 # import 정렬 설정
 known-first-party = ["app"]

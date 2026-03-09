@@ -1,66 +1,48 @@
 import logging
 from functools import lru_cache
-from typing import Any
-
-import httpx
-from qdrant_client.http import models as qdrant_models
 
 from app.closet.schemas import EmbeddingRequest
-from app.config import get_settings
-from app.core.database import get_qdrant_client
-from app.embedding.exceptions import ExternalAPIError, VectorDBError
+from app.embedding.client import EmbeddingClient, UpstageEmbeddingClient
 from app.embedding.formatter import EmbeddingTextFormatter, HybridFormatter
+from app.embedding.repository import QdrantVectorRepository, VectorRepository
 
 logger = logging.getLogger(__name__)
 
 
 class EmbeddingService:
     def __init__(
-        self: "EmbeddingService", formatter: EmbeddingTextFormatter | None = None
+        self,
+        client: EmbeddingClient | None = None,
+        repository: VectorRepository | None = None,
+        formatter: EmbeddingTextFormatter | None = None,
     ) -> None:
-        self.formatter: EmbeddingTextFormatter = formatter or HybridFormatter()
-        self.settings = get_settings()
+        self.client = client or UpstageEmbeddingClient()
+        self.repository = repository or QdrantVectorRepository()
+        self.formatter = formatter or HybridFormatter()
 
-    async def get_embedding(self: "EmbeddingService", text: str) -> list[float]:
-        if not self.settings.upstage_api_key:
-            logger.error("UPSTAGE_API_KEY is not set")
-            raise ExternalAPIError("Upstage", "API key is not configured")
-
-        url = "https://api.upstage.ai/v1/solar/embeddings"
-        headers = {
-            "Authorization": f"Bearer {self.settings.upstage_api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {"model": self.settings.embedding_model, "input": text}
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    url, headers=headers, json=payload, timeout=10.0
-                )
-                response.raise_for_status()
-                result: dict[str, Any] = response.json()
-                return result["data"][0]["embedding"]
-        except httpx.HTTPStatusError as err:
-            logger.error("Upstage API error: %s", err.response.text)
-            raise ExternalAPIError("Upstage", err.response.text) from err
-        except httpx.TimeoutException as err:
-            logger.error("Upstage API timeout")
-            raise ExternalAPIError("Upstage", "Request timeout") from err
-        except Exception as err:
-            logger.exception("Unexpected error during embedding: %s", err)
-            raise ExternalAPIError("Upstage", str(err)) from err
-
-    async def upsert(self: "EmbeddingService", request: EmbeddingRequest) -> bool:
+    async def upsert(self, request: EmbeddingRequest) -> bool:
         embedding_text = self.formatter.format(request.major, request.extra)
         logger.info("Formatted embedding text: %s...", embedding_text[:100])
 
-        vector = await self.get_embedding(embedding_text)
+        vector = await self.client.embed(embedding_text)
 
-        qdrant = await get_qdrant_client()
-        point_id = request.clothes_id
+        payload = self._build_payload(request, embedding_text)
 
-        payload = {
+        return await self.repository.upsert(
+            point_id=request.clothes_id,
+            vector=vector,
+            payload=payload,
+        )
+
+    async def delete(self, clothes_id: int) -> bool:
+        return await self.repository.delete(point_id=clothes_id)
+
+    async def get_embedding(self, text: str) -> list[float]:
+        return await self.client.embed(text)
+
+    @staticmethod
+    def _build_payload(request: EmbeddingRequest, embedding_text: str) -> dict:
+        return {
             "userId": request.user_id,
             "clothesId": request.clothes_id,
             "imageUrl": request.image_url,
@@ -77,40 +59,7 @@ class EmbeddingService:
             "embeddingText": embedding_text,
         }
 
-        try:
-            logger.info("Upserting to Qdrant: point_id=%s", point_id)
-            await qdrant.upsert(
-                collection_name=self.settings.qdrant_collection_name,
-                points=[
-                    qdrant_models.PointStruct(
-                        id=point_id,
-                        vector=vector,
-                        payload=payload,
-                    )
-                ],
-            )
-            logger.info("Successfully upserted point %s", point_id)
-            return True
-        except Exception as err:
-            logger.exception("Failed to upsert to Qdrant: %s", err)
-            raise VectorDBError("upsert", str(err)) from err
 
-    async def delete(self: "EmbeddingService", clothes_id: int) -> bool:
-        qdrant = await get_qdrant_client()
-
-        try:
-            await qdrant.delete(
-                collection_name=self.settings.qdrant_collection_name,
-                points_selector=qdrant_models.PointIdsList(points=[clothes_id]),
-            )
-            logger.info("Successfully deleted point %s", clothes_id)
-            return True
-        except Exception as err:
-            logger.exception("Failed to delete from Qdrant: %s", err)
-            raise VectorDBError("delete", str(err)) from err
-
-
-# 기본 서비스 인스턴스 (DI 컨테이너 도입 전까지 사용)
 @lru_cache
 def get_embedding_service() -> EmbeddingService:
     return EmbeddingService()
