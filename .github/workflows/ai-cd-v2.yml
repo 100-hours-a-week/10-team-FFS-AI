@@ -471,7 +471,7 @@ jobs:
 
           CURRENT_TG=$(aws elbv2 describe-listeners \
             --listener-arns ${LISTENER_ARN} \
-            --query 'Listeners[0].DefaultActions[0].TargetGroupArn' \
+            --query 'Listeners[0].DefaultActions[0].ForwardConfig.TargetGroups | sort_by(@, &Weight) | [-1].TargetGroupArn' \
             --output text)
 
           if [ "$CURRENT_TG" != "$BLUE_TG_ARN" ]; then
