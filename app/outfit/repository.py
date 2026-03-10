@@ -110,13 +110,27 @@ class ClothingRepository:
         tasks = [self.search_by_query(user_id, query, top_k) for query in queries]
         results = await asyncio.gather(*tasks)
 
-        total_found = sum(len(r.candidates) for r in results)
+        merged: dict[str, dict[int, ClothingCandidate]] = {}
+        for result in results:
+            cat = result.category
+            if cat not in merged:
+                merged[cat] = {}
+            for candidate in result.candidates:
+                if candidate.clothes_id not in merged[cat]:
+                    merged[cat][candidate.clothes_id] = candidate
+
+        final_results = [
+            SearchResult(category=cat, candidates=list(cands.values()))
+            for cat, cands in merged.items()
+        ]
+
+        total_found = sum(len(r.candidates) for r in final_results)
         logger.info(
             f"Search completed | {log_context}"
             f"user_id={user_id} total_candidates={total_found}"
         )
 
-        return results
+        return final_results
 
     @staticmethod
     def _to_candidate_from_record(record: Record) -> ClothingCandidate:
@@ -132,6 +146,7 @@ class ClothingRepository:
             clothes_id=payload.get("clothesId", 0),
             image_url=payload.get("imageUrl", ""),
             category=payload.get("category", ""),
+            sub_category=payload.get("subCategory"),
             color=color_list,
             style_tags=payload.get("styleTags", []),
             caption=payload.get("caption"),
@@ -158,6 +173,7 @@ class ClothingRepository:
             clothes_id=payload.get("clothesId", 0),
             image_url=payload.get("imageUrl", ""),
             category=payload.get("category", ""),
+            sub_category=payload.get("subCategory"),
             color=color_list,
             style_tags=payload.get("styleTags", []),
             caption=payload.get("caption"),
