@@ -47,6 +47,7 @@ class EmbeddingService:
             "clothesId": request.clothes_id,
             "imageUrl": request.image_url,
             "category": request.major.category,
+            "subCategory": request.major.sub_category,
             "color": request.major.color,
             "material": request.major.material,
             "styleTags": request.major.style_tags,

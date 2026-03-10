@@ -19,14 +19,21 @@ class HybridFormatter:
         color_str = ", ".join(major.color) if major.color else ""
         material_str = ", ".join(major.material) if major.material else ""
 
+        # sub_category가 있으면 "맨투맨_스웨트 TOP" 형태로 앞에 prefix 추가
+        category_part = (
+            f"{major.sub_category} {major.category}"
+            if major.sub_category
+            else major.category
+        )
+
         if color_str and material_str:
-            parts.append(f"{color_str} {material_str} {major.category}")
+            parts.append(f"{color_str} {material_str} {category_part}")
         elif color_str:
-            parts.append(f"{color_str} {major.category}")
+            parts.append(f"{color_str} {category_part}")
         elif material_str:
-            parts.append(f"{material_str} {major.category}")
+            parts.append(f"{material_str} {category_part}")
         else:
-            parts.append(major.category)
+            parts.append(category_part)
 
         if meta.formality:
             parts.append(f"{meta.formality} 스타일")
