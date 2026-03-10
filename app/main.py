@@ -3,6 +3,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import pydantic.v1  # type: ignore # noqa: F401 (Fixes infinite import hang in Langfuse/OpenAI)
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator

@@ -1,125 +1,441 @@
-#name: AI CD
-#
-#on:
-#  workflow_run:
-#    workflows: ["AI CI"]
-#    types:
-#      - completed
-#    branches:
-#      - dev
-#      - main
-#
-#  workflow_dispatch:
-#    inputs:
-#      environment:
-#        description: '배포 환경'
-#        required: true
-#        type: choice
-#        options:
-#          - development
-#          - production
-#
-#permissions:
-#  contents: read
-#  actions: read
-#
-#env:
-#  APP_DIR: /home/ubuntu/app/ai
-#  BACKUP_DIR: /home/ubuntu/app/backups/ai
-#  LOG_DIR: /home/ubuntu/app/ai/logs
-#  SERVICE_NAME: klosetlab-ai.service
-#
-## ============================================================
-## Dev 환경 배포
-## ============================================================
-#jobs:
-#  deploy-dev:
-#    name: Deploy to Development
-#    if: |
-#      (github.event.workflow_run.conclusion == 'success' &&
-#       github.event.workflow_run.head_branch == 'dev') ||
-#      (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')
-#    runs-on: ubuntu-latest
-#    timeout-minutes: 15
-#
-#    steps:
-#      - name: 📥 Checkout source code
-#        uses: actions/checkout@v4
-#        with:
-#          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-#
-#      - name: ✅ Verify CI success
-#        if: github.event_name == 'workflow_run'
-#        run: |
-#          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-#            echo "❌ CI did not succeed. Aborting deployment."
-#            exit 1
-#          fi
-#
-#      # ------------------------------------------------------
-#      # 서버 상태 확인
-#      # ------------------------------------------------------
-#      - name: 🔍 Check server status
-#        uses: appleboy/ssh-action@v1.0.0
-#        with:
-#          host: ${{ secrets.DEV_SERVER_HOST }}
-#          username: ${{ secrets.DEV_SERVER_USER }}
-#          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
-#          script: |
-#            echo "=== Dev Server Status Check ==="
-#            df -h ${{ env.APP_DIR }}
-#
-#            curl -sf http://localhost:6333/ > /dev/null && echo "✅ Qdrant OK" || echo "⚠️ Qdrant issue"
-#            redis-cli -p 6379 ping > /dev/null 2>&1 && echo "✅ Redis OK" || echo "⚠️ Redis issue"
-#
-#            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
-#              echo "✅ AI Service is running"
-#              sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -10
-#            else
-#              echo "⚠️ AI Service is not running (will be started)"
-#            fi
-#
-#            mkdir -p ${{ env.APP_DIR }} ${{ env.BACKUP_DIR }} ${{ env.LOG_DIR }} /tmp/ai-deploy
-#
-#      - name: 📤 Transfer files to Dev Server
-#        uses: appleboy/scp-action@v0.1.4
-#        with:
-#          host: ${{ secrets.DEV_SERVER_HOST }}
-#          username: ${{ secrets.DEV_SERVER_USER }}
-#          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
-#          source: "app/,requirements.txt"
-#          target: "/tmp/ai-deploy"
-#          overwrite: true
-#          strip_components: 0
-#
-#      # ------------------------------------------------------
-#      # 배포 실행
-#      # ------------------------------------------------------
-#      - name: 🚀 Deploy application
-#        id: deploy
-#        uses: appleboy/ssh-action@v1.0.0
-#        with:
-#          host: ${{ secrets.DEV_SERVER_HOST }}
-#          username: ${{ secrets.DEV_SERVER_USER }}
-#          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
-#          command_timeout: 300s
-#          script: |
-#            set -e
-#            cd ${{ env.APP_DIR }}
-#
-#            # 백업
-#            if [ -d "app" ]; then
-#              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-#              tar -czf ${{ env.BACKUP_DIR }}/ai-app_dev_backup_$TIMESTAMP.tar.gz app/ requirements.txt 2>/dev/null || true
-#              cd ${{ env.BACKUP_DIR }}
-#              ls -t ai-app_dev_*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -v
-#              cd ${{ env.APP_DIR }}
-#            fi
-#
-#            # 새 버전 적용
-#            rm -rf app/
-#            cp -r /tmp/ai-deploy/app .
-#            cp /tmp/ai-deploy/requirements.txt .
+##name: AI CD
+##
+##on:
+##  workflow_run:
+##    workflows: ["AI CI"]
+##    types:
+##      - completed
+##    branches:
+##      - dev
+##      - main
+##
+##  workflow_dispatch:
+##    inputs:
+##      environment:
+##        description: '배포 환경'
+##        required: true
+##        type: choice
+##        options:
+##          - development
+##          - production
+##
+##permissions:
+##  contents: read
+##  actions: read
+##
+##env:
+##  APP_DIR: /home/ubuntu/app/ai
+##  BACKUP_DIR: /home/ubuntu/app/backups/ai
+##  LOG_DIR: /home/ubuntu/app/ai/logs
+##  SERVICE_NAME: klosetlab-ai.service
+##
+### ============================================================
+### Dev 환경 배포
+### ============================================================
+##jobs:
+##  deploy-dev:
+##    name: Deploy to Development
+##    if: |
+##      (github.event.workflow_run.conclusion == 'success' &&
+##       github.event.workflow_run.head_branch == 'dev') ||
+##      (github.event_name == 'workflow_dispatch' && inputs.environment == 'development')
+##    runs-on: ubuntu-latest
+##    timeout-minutes: 15
+##
+##    steps:
+##      - name: 📥 Checkout source code
+##        uses: actions/checkout@v4
+##        with:
+##          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+##
+##      - name: ✅ Verify CI success
+##        if: github.event_name == 'workflow_run'
+##        run: |
+##          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+##            echo "❌ CI did not succeed. Aborting deployment."
+##            exit 1
+##          fi
+##
+##      # ------------------------------------------------------
+##      # 서버 상태 확인
+##      # ------------------------------------------------------
+##      - name: 🔍 Check server status
+##        uses: appleboy/ssh-action@v1.0.0
+##        with:
+##          host: ${{ secrets.DEV_SERVER_HOST }}
+##          username: ${{ secrets.DEV_SERVER_USER }}
+##          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+##          script: |
+##            echo "=== Dev Server Status Check ==="
+##            df -h ${{ env.APP_DIR }}
+##
+##            curl -sf http://localhost:6333/ > /dev/null && echo "✅ Qdrant OK" || echo "⚠️ Qdrant issue"
+##            redis-cli -p 6379 ping > /dev/null 2>&1 && echo "✅ Redis OK" || echo "⚠️ Redis issue"
+##
+##            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+##              echo "✅ AI Service is running"
+##              sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -10
+##            else
+##              echo "⚠️ AI Service is not running (will be started)"
+##            fi
+##
+##            mkdir -p ${{ env.APP_DIR }} ${{ env.BACKUP_DIR }} ${{ env.LOG_DIR }} /tmp/ai-deploy
+##
+##      - name: 📤 Transfer files to Dev Server
+##        uses: appleboy/scp-action@v0.1.4
+##        with:
+##          host: ${{ secrets.DEV_SERVER_HOST }}
+##          username: ${{ secrets.DEV_SERVER_USER }}
+##          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+##          source: "app/,requirements.txt"
+##          target: "/tmp/ai-deploy"
+##          overwrite: true
+##          strip_components: 0
+##
+##      # ------------------------------------------------------
+##      # 배포 실행
+##      # ------------------------------------------------------
+##      - name: 🚀 Deploy application
+##        id: deploy
+##        uses: appleboy/ssh-action@v1.0.0
+##        with:
+##          host: ${{ secrets.DEV_SERVER_HOST }}
+##          username: ${{ secrets.DEV_SERVER_USER }}
+##          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+##          command_timeout: 300s
+##          script: |
+##            set -e
+##            cd ${{ env.APP_DIR }}
+##
+##            # 백업
+##            if [ -d "app" ]; then
+##              TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+##              tar -czf ${{ env.BACKUP_DIR }}/ai-app_dev_backup_$TIMESTAMP.tar.gz app/ requirements.txt 2>/dev/null || true
+##              cd ${{ env.BACKUP_DIR }}
+##              ls -t ai-app_dev_*.tar.gz 2>/dev/null | tail -n +6 | xargs -r rm -v
+##              cd ${{ env.APP_DIR }}
+##            fi
+##
+##            # 새 버전 적용
+##            rm -rf app/
+##            cp -r /tmp/ai-deploy/app .
+##            cp /tmp/ai-deploy/requirements.txt .
+##
+##            # 의존성 설치
+##            if [ -d "venv" ]; then
+##              source venv/bin/activate
+##              pip install -r requirements.txt --quiet --no-cache-dir
+##            else
+##              echo "❌ Virtual environment not found!"
+##              exit 1
+##            fi
+##
+##            mkdir -p ${{ env.LOG_DIR }}
+##
+##            # 서비스 재시작
+##            sudo systemctl restart ${{ env.SERVICE_NAME }}
+##            sleep 5
+##
+##            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+##              echo "✅ Service restarted successfully"
+##              sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
+##            else
+##              echo "❌ Service failed to start"
+##              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
+##              exit 1
+##            fi
+##
+##            rm -rf /tmp/ai-deploy
+##
+##      # ------------------------------------------------------
+##      # 배포 검증
+##      # ------------------------------------------------------
+##      - name: 🏥 Verify deployment
+##        uses: appleboy/ssh-action@v1.0.0
+##        with:
+##          host: ${{ secrets.DEV_SERVER_HOST }}
+##          username: ${{ secrets.DEV_SERVER_USER }}
+##          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+##          script: |
+##            if ! sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+##              echo "❌ Service is not running!"
+##              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
+##              exit 1
+##            fi
+##
+##            for i in $(seq 1 6); do
+##              echo "Health check attempt $i/6..."
+##              if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
+##                echo "✅ Application is healthy"
+##                curl -s http://localhost:8000/health | python3 -m json.tool
+##                exit 0
+##              fi
+##              sleep 5
+##            done
+##
+##            echo "❌ Health check failed after 6 attempts!"
+##            sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
+##            exit 1
+##
+##      - name: 📢 Discord notification
+##        if: always()
+##        uses: tsickert/discord-webhook@v5.3.0
+##        with:
+##          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+##          username: "AI CD Bot"
+##          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+##          embed-title: "${{ steps.deploy.outcome == 'success' && '✅' || '❌' }} Dev 배포 ${{ steps.deploy.outcome == 'success' && '성공' || '실패' }}"
+##          embed-description: |
+##            **환경:** Development 🟢
+##            **브랜치:** `${{ github.event.workflow_run.head_branch || github.ref_name }}`
+##            **커밋:** `${{ github.event.workflow_run.head_sha || github.sha }}`
+##            **서비스:** systemd (${{ env.SERVICE_NAME }})
+##
+##            [📋 배포 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+##          embed-color: ${{ steps.deploy.outcome == 'success' && '3066993' || '15158332' }}
+##
+##  # ============================================================
+##  # Production 환경 배포
+##  # ============================================================
+##  deploy-prod:
+##    name: Deploy to Production
+##    if: |
+##      (github.event.workflow_run.conclusion == 'success' &&
+##       github.event.workflow_run.head_branch == 'main') ||
+##      (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
+##    runs-on: ubuntu-latest
+##    environment:
+##      name: ai-environment
+##    timeout-minutes: 30
+##
+##    steps:
+##      - name: 📥 Checkout source code
+##        uses: actions/checkout@v4
+##        with:
+##          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+##
+##      - name: ✅ Verify CI success
+##        if: github.event_name == 'workflow_run'
+##        run: |
+##          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+##            echo "❌ CI did not succeed. Aborting production deployment."
+##            exit 1
+##          fi
+##
+##      - name: 🔍 Check Production server
+##        uses: appleboy/ssh-action@v1.0.0
+##        with:
+##          host: ${{ secrets.PROD_SERVER_HOST }}
+##          username: ${{ secrets.PROD_SERVER_USER }}
+##          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+##          script: |
+##            echo "=== Production Server Status Check ==="
+##
+##            DISK_USAGE=$(df ${{ env.APP_DIR }} | tail -1 | awk '{print $5}' | sed 's/%//')
+##            if [ "$DISK_USAGE" -gt 85 ]; then
+##              echo "❌ ERROR: Disk usage too high: ${DISK_USAGE}%"
+##              exit 1
+##            fi
+##            echo "✅ Disk usage: ${DISK_USAGE}%"
+##
+##            if ! curl -sf http://localhost:6333/ > /dev/null; then
+##              echo "❌ Qdrant is not accessible!"
+##              exit 1
+##            fi
+##            echo "✅ Qdrant is accessible"
+##
+##            if ! redis-cli -p 6379 ping > /dev/null 2>&1; then
+##              echo "❌ Redis is not accessible!"
+##              exit 1
+##            fi
+##            echo "✅ Redis is accessible"
+##
+##            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+##              echo "✅ AI Service is running"
+##            else
+##              echo "⚠️ AI Service is not running"
+##            fi
+##
+##            echo "✅ Production server check passed"
+##            mkdir -p ${{ env.APP_DIR }} ${{ env.BACKUP_DIR }} ${{ env.LOG_DIR }} /tmp/ai-deploy
+##
+##      - name: 💾 Backup current version
+##        uses: appleboy/ssh-action@v1.0.0
+##        with:
+##          host: ${{ secrets.PROD_SERVER_HOST }}
+##          username: ${{ secrets.PROD_SERVER_USER }}
+##          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+##          script: |
+##            cd ${{ env.APP_DIR }}
+##            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+##
+##            if [ -d "app" ]; then
+##              tar -czf ${{ env.BACKUP_DIR }}/ai-app_prod_$TIMESTAMP.tar.gz app/ requirements.txt
+##              echo "✅ Production backup created"
+##              cd ${{ env.BACKUP_DIR }}
+##              ls -t ai-app_prod_*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm -v
+##            else
+##              echo "⚠️ No existing app directory to backup"
+##            fi
+##
+##      - name: 📤 Transfer to Production
+##        uses: appleboy/scp-action@v0.1.4
+##        with:
+##          host: ${{ secrets.PROD_SERVER_HOST }}
+##          username: ${{ secrets.PROD_SERVER_USER }}
+##          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+##          source: "app/,requirements.txt"
+##          target: "/tmp/ai-deploy"
+##          overwrite: true
+##
+##      - name: 🚀 Deploy to Production
+##        id: deploy
+##        uses: appleboy/ssh-action@v1.0.0
+##        with:
+##          host: ${{ secrets.PROD_SERVER_HOST }}
+##          username: ${{ secrets.PROD_SERVER_USER }}
+##          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+##          command_timeout: 300s
+##          script: |
+##            set -e
+##            cd ${{ env.APP_DIR }}
+##
+##            # 새 버전 적용
+##            rm -rf app/
+##            cp -r /tmp/ai-deploy/app .
+##            cp /tmp/ai-deploy/requirements.txt .
+##
+##            # 의존성 설치
+##            if [ -d "venv" ]; then
+##              source venv/bin/activate
+##              pip install -r requirements.txt --quiet --no-cache-dir
+##            else
+##              echo "❌ Virtual environment not found!"
+##              exit 1
+##            fi
+##
+##            mkdir -p ${{ env.LOG_DIR }}
+##
+##            # uvicorn은 reload 신호 불가 → restart 사용
+##            echo "Restarting AI service via systemd..."
+##            sudo systemctl restart ${{ env.SERVICE_NAME }}
+##            sleep 5
+##
+##            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+##              echo "✅ Service restarted successfully"
+##              sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
+##            else
+##              echo "❌ Service failed to start"
+##              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
+##              exit 1
+##            fi
+##
+##            rm -rf /tmp/ai-deploy
+##
+##      - name: 🧪 Verify & Smoke Test
+##        id: smoke_test
+##        uses: appleboy/ssh-action@v1.0.0
+##        with:
+##          host: ${{ secrets.PROD_SERVER_HOST }}
+##          username: ${{ secrets.PROD_SERVER_USER }}
+##          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+##          script: |
+##            echo "=== Production Verification ==="
+##
+##            if ! sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+##              echo "❌ Service is not running!"
+##              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
+##              exit 1
+##            fi
+##
+##            for i in $(seq 1 10); do
+##              echo "Health check attempt $i/10..."
+##              if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
+##                echo "✅ Health check passed"
+##
+##                HEALTH=$(curl -s http://localhost:8000/health)
+##                echo "$HEALTH" | python3 -m json.tool || echo "$HEALTH"
+##
+##                QDRANT=$(echo $HEALTH | python3 -c "import sys, json; print(json.load(sys.stdin)['services']['qdrant'])" 2>/dev/null || echo "unknown")
+##                REDIS=$(echo $HEALTH | python3 -c "import sys, json; print(json.load(sys.stdin)['services']['redis'])" 2>/dev/null || echo "unknown")
+##
+##                if [ "$QDRANT" != "connected" ] || [ "$REDIS" != "connected" ]; then
+##                  echo "⚠️ Service connectivity issue (Qdrant: $QDRANT, Redis: $REDIS)"
+##                  exit 1
+##                fi
+##
+##                echo "✅ All smoke tests passed"
+##                exit 0
+##              fi
+##              sleep 5
+##            done
+##
+##            echo "❌ Verification failed after 10 attempts!"
+##            sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
+##            exit 1
+##
+##      # ------------------------------------------------------
+##      # 롤백: deploy 또는 smoke_test 실패 시 트리거
+##      # ------------------------------------------------------
+##      - name: ⚠️ Rollback on failure
+##        if: failure() && (steps.deploy.outcome == 'failure' || steps.smoke_test.outcome == 'failure')
+##        uses: appleboy/ssh-action@v1.0.0
+##        with:
+##          host: ${{ secrets.PROD_SERVER_HOST }}
+##          username: ${{ secrets.PROD_SERVER_USER }}
+##          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
+##          script: |
+##            echo "=== Rolling back to previous version ==="
+##            cd ${{ env.BACKUP_DIR }}
+##
+##            LATEST_BACKUP=$(ls -t ai-app_prod_*.tar.gz 2>/dev/null | head -1)
+##
+##            if [ -n "$LATEST_BACKUP" ]; then
+##              echo "Found backup: $LATEST_BACKUP"
+##              cd ${{ env.APP_DIR }}
+##
+##              tar -xzf ${{ env.BACKUP_DIR }}/$LATEST_BACKUP
+##
+##              if [ -d "venv" ]; then
+##                source venv/bin/activate
+##                pip install -r requirements.txt --quiet
+##              fi
+##
+##              sudo systemctl restart ${{ env.SERVICE_NAME }}
+##              sleep 5
+##
+##              if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
+##                if curl -f -s http://localhost:8000/health > /dev/null; then
+##                  echo "✅ Rollback successful"
+##                else
+##                  echo "⚠️ Service running but health check failed"
+##                fi
+##              else
+##                echo "❌ Rollback failed - service not running!"
+##                sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
+##              fi
+##            else
+##              echo "❌ No backup found for rollback!"
+##            fi
+##
+##      - name: 📢 Discord notification
+##        if: always()
+##        uses: tsickert/discord-webhook@v5.3.0
+##        with:
+##          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+##          username: "AI CD Bot"
+##          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+##          embed-title: "${{ steps.deploy.outcome == 'success' && steps.smoke_test.outcome == 'success' && '✅ Production 배포 성공' || '❌ Production 배포 실패' }}"
+##          embed-description: |
+##            **환경:** Production 🔴
+##            **브랜치:** `${{ github.event.workflow_run.head_branch || github.ref_name }}`
+##            **커밋:** `${{ github.event.workflow_run.head_sha || github.sha }}`
+##            **서비스:** systemd (${{ env.SERVICE_NAME }})
+##
+##            ${{ steps.deploy.outcome == 'failure' && '⚠️ Deploy 실패 - 자동 롤백 시도됨' || steps.smoke_test.outcome == 'failure' && '⚠️ Smoke Test 실패 - 자동 롤백 시도됨' || '🎉 배포 완료' }}
+##
+##            [📋 배포 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+##          embed-color: ${{ steps.deploy.outcome == 'success' && steps.smoke_test.outcome == 'success' && '3066993' || '15158332' }}
 #
 #            # 의존성 설치
 #            if [ -d "venv" ]; then
@@ -436,319 +752,3 @@
 #
 #            [📋 배포 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 #          embed-color: ${{ steps.deploy.outcome == 'success' && steps.smoke_test.outcome == 'success' && '3066993' || '15158332' }}
-
-            # 의존성 설치
-            if [ -d "venv" ]; then
-              source venv/bin/activate
-              pip install -r requirements.txt --quiet --no-cache-dir
-            else
-              echo "❌ Virtual environment not found!"
-              exit 1
-            fi
-
-            mkdir -p ${{ env.LOG_DIR }}
-
-            # 서비스 재시작
-            sudo systemctl restart ${{ env.SERVICE_NAME }}
-            sleep 5
-
-            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
-              echo "✅ Service restarted successfully"
-              sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
-            else
-              echo "❌ Service failed to start"
-              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
-              exit 1
-            fi
-
-            rm -rf /tmp/ai-deploy
-
-      # ------------------------------------------------------
-      # 배포 검증
-      # ------------------------------------------------------
-      - name: 🏥 Verify deployment
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.DEV_SERVER_HOST }}
-          username: ${{ secrets.DEV_SERVER_USER }}
-          key: ${{ secrets.DEV_SERVER_SSH_KEY }}
-          script: |
-            if ! sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
-              echo "❌ Service is not running!"
-              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
-              exit 1
-            fi
-
-            for i in $(seq 1 6); do
-              echo "Health check attempt $i/6..."
-              if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
-                echo "✅ Application is healthy"
-                curl -s http://localhost:8000/health | python3 -m json.tool
-                exit 0
-              fi
-              sleep 5
-            done
-
-            echo "❌ Health check failed after 6 attempts!"
-            sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
-            exit 1
-
-      - name: 📢 Discord notification
-        if: always()
-        uses: tsickert/discord-webhook@v5.3.0
-        with:
-          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          username: "AI CD Bot"
-          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-          embed-title: "${{ steps.deploy.outcome == 'success' && '✅' || '❌' }} Dev 배포 ${{ steps.deploy.outcome == 'success' && '성공' || '실패' }}"
-          embed-description: |
-            **환경:** Development 🟢
-            **브랜치:** `${{ github.event.workflow_run.head_branch || github.ref_name }}`
-            **커밋:** `${{ github.event.workflow_run.head_sha || github.sha }}`
-            **서비스:** systemd (${{ env.SERVICE_NAME }})
-
-            [📋 배포 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          embed-color: ${{ steps.deploy.outcome == 'success' && '3066993' || '15158332' }}
-
-  # ============================================================
-  # Production 환경 배포
-  # ============================================================
-  deploy-prod:
-    name: Deploy to Production
-    if: |
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_branch == 'main') ||
-      (github.event_name == 'workflow_dispatch' && inputs.environment == 'production')
-    runs-on: ubuntu-latest
-    environment:
-      name: ai-environment
-    timeout-minutes: 30
-
-    steps:
-      - name: 📥 Checkout source code
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      - name: ✅ Verify CI success
-        if: github.event_name == 'workflow_run'
-        run: |
-          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
-            echo "❌ CI did not succeed. Aborting production deployment."
-            exit 1
-          fi
-
-      - name: 🔍 Check Production server
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PROD_SERVER_HOST }}
-          username: ${{ secrets.PROD_SERVER_USER }}
-          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          script: |
-            echo "=== Production Server Status Check ==="
-
-            DISK_USAGE=$(df ${{ env.APP_DIR }} | tail -1 | awk '{print $5}' | sed 's/%//')
-            if [ "$DISK_USAGE" -gt 85 ]; then
-              echo "❌ ERROR: Disk usage too high: ${DISK_USAGE}%"
-              exit 1
-            fi
-            echo "✅ Disk usage: ${DISK_USAGE}%"
-
-            if ! curl -sf http://localhost:6333/ > /dev/null; then
-              echo "❌ Qdrant is not accessible!"
-              exit 1
-            fi
-            echo "✅ Qdrant is accessible"
-
-            if ! redis-cli -p 6379 ping > /dev/null 2>&1; then
-              echo "❌ Redis is not accessible!"
-              exit 1
-            fi
-            echo "✅ Redis is accessible"
-
-            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
-              echo "✅ AI Service is running"
-            else
-              echo "⚠️ AI Service is not running"
-            fi
-
-            echo "✅ Production server check passed"
-            mkdir -p ${{ env.APP_DIR }} ${{ env.BACKUP_DIR }} ${{ env.LOG_DIR }} /tmp/ai-deploy
-
-      - name: 💾 Backup current version
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PROD_SERVER_HOST }}
-          username: ${{ secrets.PROD_SERVER_USER }}
-          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          script: |
-            cd ${{ env.APP_DIR }}
-            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-            if [ -d "app" ]; then
-              tar -czf ${{ env.BACKUP_DIR }}/ai-app_prod_$TIMESTAMP.tar.gz app/ requirements.txt
-              echo "✅ Production backup created"
-              cd ${{ env.BACKUP_DIR }}
-              ls -t ai-app_prod_*.tar.gz 2>/dev/null | tail -n +11 | xargs -r rm -v
-            else
-              echo "⚠️ No existing app directory to backup"
-            fi
-
-      - name: 📤 Transfer to Production
-        uses: appleboy/scp-action@v0.1.4
-        with:
-          host: ${{ secrets.PROD_SERVER_HOST }}
-          username: ${{ secrets.PROD_SERVER_USER }}
-          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          source: "app/,requirements.txt"
-          target: "/tmp/ai-deploy"
-          overwrite: true
-
-      - name: 🚀 Deploy to Production
-        id: deploy
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PROD_SERVER_HOST }}
-          username: ${{ secrets.PROD_SERVER_USER }}
-          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          command_timeout: 300s
-          script: |
-            set -e
-            cd ${{ env.APP_DIR }}
-
-            # 새 버전 적용
-            rm -rf app/
-            cp -r /tmp/ai-deploy/app .
-            cp /tmp/ai-deploy/requirements.txt .
-
-            # 의존성 설치
-            if [ -d "venv" ]; then
-              source venv/bin/activate
-              pip install -r requirements.txt --quiet --no-cache-dir
-            else
-              echo "❌ Virtual environment not found!"
-              exit 1
-            fi
-
-            mkdir -p ${{ env.LOG_DIR }}
-
-            # uvicorn은 reload 신호 불가 → restart 사용
-            echo "Restarting AI service via systemd..."
-            sudo systemctl restart ${{ env.SERVICE_NAME }}
-            sleep 5
-
-            if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
-              echo "✅ Service restarted successfully"
-              sudo systemctl status ${{ env.SERVICE_NAME }} --no-pager | head -20
-            else
-              echo "❌ Service failed to start"
-              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
-              exit 1
-            fi
-
-            rm -rf /tmp/ai-deploy
-
-      - name: 🧪 Verify & Smoke Test
-        id: smoke_test
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PROD_SERVER_HOST }}
-          username: ${{ secrets.PROD_SERVER_USER }}
-          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          script: |
-            echo "=== Production Verification ==="
-
-            if ! sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
-              echo "❌ Service is not running!"
-              sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
-              exit 1
-            fi
-
-            for i in $(seq 1 10); do
-              echo "Health check attempt $i/10..."
-              if curl -f -s http://localhost:8000/health > /dev/null 2>&1; then
-                echo "✅ Health check passed"
-
-                HEALTH=$(curl -s http://localhost:8000/health)
-                echo "$HEALTH" | python3 -m json.tool || echo "$HEALTH"
-
-                QDRANT=$(echo $HEALTH | python3 -c "import sys, json; print(json.load(sys.stdin)['services']['qdrant'])" 2>/dev/null || echo "unknown")
-                REDIS=$(echo $HEALTH | python3 -c "import sys, json; print(json.load(sys.stdin)['services']['redis'])" 2>/dev/null || echo "unknown")
-
-                if [ "$QDRANT" != "connected" ] || [ "$REDIS" != "connected" ]; then
-                  echo "⚠️ Service connectivity issue (Qdrant: $QDRANT, Redis: $REDIS)"
-                  exit 1
-                fi
-
-                echo "✅ All smoke tests passed"
-                exit 0
-              fi
-              sleep 5
-            done
-
-            echo "❌ Verification failed after 10 attempts!"
-            sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
-            exit 1
-
-      # ------------------------------------------------------
-      # 롤백: deploy 또는 smoke_test 실패 시 트리거
-      # ------------------------------------------------------
-      - name: ⚠️ Rollback on failure
-        if: failure() && (steps.deploy.outcome == 'failure' || steps.smoke_test.outcome == 'failure')
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PROD_SERVER_HOST }}
-          username: ${{ secrets.PROD_SERVER_USER }}
-          key: ${{ secrets.PROD_SERVER_SSH_KEY }}
-          script: |
-            echo "=== Rolling back to previous version ==="
-            cd ${{ env.BACKUP_DIR }}
-
-            LATEST_BACKUP=$(ls -t ai-app_prod_*.tar.gz 2>/dev/null | head -1)
-
-            if [ -n "$LATEST_BACKUP" ]; then
-              echo "Found backup: $LATEST_BACKUP"
-              cd ${{ env.APP_DIR }}
-
-              tar -xzf ${{ env.BACKUP_DIR }}/$LATEST_BACKUP
-
-              if [ -d "venv" ]; then
-                source venv/bin/activate
-                pip install -r requirements.txt --quiet
-              fi
-
-              sudo systemctl restart ${{ env.SERVICE_NAME }}
-              sleep 5
-
-              if sudo systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
-                if curl -f -s http://localhost:8000/health > /dev/null; then
-                  echo "✅ Rollback successful"
-                else
-                  echo "⚠️ Service running but health check failed"
-                fi
-              else
-                echo "❌ Rollback failed - service not running!"
-                sudo journalctl -u ${{ env.SERVICE_NAME }} -n 50 --no-pager
-              fi
-            else
-              echo "❌ No backup found for rollback!"
-            fi
-
-      - name: 📢 Discord notification
-        if: always()
-        uses: tsickert/discord-webhook@v5.3.0
-        with:
-          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          username: "AI CD Bot"
-          avatar-url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-          embed-title: "${{ steps.deploy.outcome == 'success' && steps.smoke_test.outcome == 'success' && '✅ Production 배포 성공' || '❌ Production 배포 실패' }}"
-          embed-description: |
-            **환경:** Production 🔴
-            **브랜치:** `${{ github.event.workflow_run.head_branch || github.ref_name }}`
-            **커밋:** `${{ github.event.workflow_run.head_sha || github.sha }}`
-            **서비스:** systemd (${{ env.SERVICE_NAME }})
-
-            ${{ steps.deploy.outcome == 'failure' && '⚠️ Deploy 실패 - 자동 롤백 시도됨' || steps.smoke_test.outcome == 'failure' && '⚠️ Smoke Test 실패 - 자동 롤백 시도됨' || '🎉 배포 완료' }}
-
-            [📋 배포 로그](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          embed-color: ${{ steps.deploy.outcome == 'success' && steps.smoke_test.outcome == 'success' && '3066993' || '15158332' }}

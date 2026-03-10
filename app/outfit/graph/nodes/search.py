@@ -65,16 +65,25 @@ async def vector_search(state: OutfitGraphState, config: RunnableConfig) -> dict
 async def evaluate_search(state: OutfitGraphState) -> dict:
     search_results = state.get("search_results", [])
     required_categories = state.get("required_categories", [])
+    # optional_categories는 insufficient 판정 제외
+    # — coverage에 있으면 merged_candidates에 자동 포함되어 코디에 활용됨
+    optional_categories = state.get("optional_categories", [])
 
     category_coverage: dict[str, int] = {}
     for result in search_results:
         category_coverage[result.category] = len(result.candidates)
 
+    # required만 insufficient 체크 (optional은 부족해도 코디 성립)
     insufficient = [
         cat
         for cat in required_categories
         if category_coverage.get(cat, 0) < get_min_count(cat)
     ]
+
+    if optional_categories:
+        logger.debug(
+            f"Optional categories skipped in insufficient check: {optional_categories}"
+        )
 
     total_count = sum(category_coverage.values())
 
