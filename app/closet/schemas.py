@@ -40,6 +40,9 @@ class AnalyzeRequest(BaseSchema):
 
 class MajorAttributes(BaseSchema):
     category: CategoryType = Field(..., description="카테고리")
+    sub_category: str | None = Field(
+        default=None, description="세부 카테고리 (L2) — 임베딩/payload 전용"
+    )
     color: list[str] = Field(default_factory=list, description="색상 목록")
     material: list[str] = Field(default_factory=list, description="소재 목록")
     style_tags: list[str] = Field(default_factory=list, description="스타일 태그 목록")
