@@ -10,11 +10,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 의존성 파일 복사
-COPY requirements.txt .
+COPY requirements/ requirements/
 
 # pip 업그레이드 및 의존성 설치
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install uv \
+    && uv pip sync requirements/prod.lock --system
 
 # Runtime stage - 경량화
 FROM python:3.11-slim
