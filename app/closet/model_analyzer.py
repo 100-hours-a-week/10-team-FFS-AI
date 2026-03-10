@@ -16,6 +16,7 @@ import httpx
 from PIL import Image
 
 from app.common.llm_schemas import (
+    CATEGORY_DETAIL,
     ImageAnalysisResult,
     ImageExtraAttributes,
     ImageExtraMetadata,
@@ -29,18 +30,25 @@ logger = logging.getLogger(__name__)
 ANALYSIS_PROMPT = """
 [가장 중요한 규칙]
 모든 JSON 필드의 값(Value)은 반드시 **'한국어(Korean)'**로만 작성해줘 (caption 포함).
-단, `category` 필드의 값은 반드시 제공된 대문자 영어만을 사용해야 해.
+단, `category`와 `sub_category` 필드의 값은 반드시 제공된 정해진 값만 사용해야 해.
 
 이 옷의 이미지를 분석해서 다음 정보를 JSON 형식으로 추출해줘:
-1. category: 카테고리 (반드시 다음 중 하나 선택: TOP, BOTTOM, DRESS, SHOES, ACCESSORY, ETC)
-2. color: 색상 목록 (예: ["검정", "흰색"])
-3. material: 소재 목록 (예: ["면", "데님", "가죽"])
-4. style_tags: 스타일 태그 목록 (예: ["캐주얼", "오버핏", "빈티지"])
-5. gender: 성별 (남성, 여성, 유니섹스 중 하나)
-6. season: 착용 계절 목록 (예: ["봄", "여름", "가을", "겨울 중 해당하는 것"])
-7. formality: 격식 수준 (캐주얼, 세미포멀, 비즈니스캐주얼, 포멀 중 가장 적절한 것)
-8. fit: 핏 (슬림핏, 레귤러핏, 오버핏 등)
-9. occasion: 적절한 상황/장소 목록 (예: ["데이트", "출근", "파티"])
+1. category: 카테고리 (반드시 다음 중 하나 선택: TOP, BOTTOM, OUTER, DRESS, SHOES, ACCESSORY, ETC)
+2. sub_category: 세부 카테고리 (category에 맞는 값 하나만 선택, ETC는 null)
+   - TOP: 반소매_티셔츠, 긴소매_티셔츠, 셔츠_블라우스, 맨투맨_스웨트, 니트_스웨터
+   - BOTTOM: 데님_팬츠, 슬랙스_트라우저, 트레이닝_조거, 숏츠, 스커트, 레깅스
+   - OUTER: 가디건_니트아우터, 집업_후드아우터, 자켓, 코트, 패딩, 블레이저_수트자켓
+   - SHOES: 스니커즈, 로퍼_단화, 구두_힐, 부츠, 샌들_슬리퍼
+   - DRESS: 원피스, 점프슈트
+   - ACCESSORY: 모자, 스카프_넥, 주얼리, 벨트, 양말_레그웨어, 백팩, 크로스_숄더백, 클러치_파우치, 웨이스트백
+3. color: 색상 목록 (예: ["검정", "흰색"])
+4. material: 소재 목록 (예: ["면", "데님", "가죽"])
+5. style_tags: 스타일 태그 목록 (예: ["캐주얼", "오버핏", "빈티지"])
+6. gender: 성별 (남성, 여성, 유니섹스 중 하나)
+7. season: 착용 계절 목록 (예: ["봄", "여름", "가을", "겨울 중 해당하는 것"])
+8. formality: 격식 수준 (캐주얼, 세미포멀, 비즈니스캐주얼, 포멀 중 가장 적절한 것)
+9. fit: 핏 (슬림핏, 레귤러핏, 오버핏 등)
+10. occasion: 적절한 상황/장소 목록 (예: ["데이트", "출근", "파티"])
 
 추가로 이미지에 대한 자연스러운 설명을 caption 필드에 작성해줘.
 
@@ -48,6 +56,7 @@ JSON 응답 형식:
 {
   "major": {
     "category": "...",
+    "sub_category": "...",
     "color": ["..."],
     "material": ["..."],
     "style_tags": ["..."]
@@ -66,42 +75,61 @@ JSON 응답 형식:
 """
 
 # ── 카테고리 정규화 ──
-VALID_CATEGORIES = {"TOP", "BOTTOM", "DRESS", "SHOES", "ACCESSORY", "ETC"}
-CATEGORY_MAP = {
-    "OUTERWEAR": "TOP",
-    "OUTER": "TOP",
-    "COAT": "TOP",
-    "JACKET": "TOP",
-    "BAG": "ACCESSORY",
-    "HAT": "ACCESSORY",
-    "SCARF": "ACCESSORY",
-    "BELT": "ACCESSORY",
-    "WATCH": "ACCESSORY",
-    "JEWELRY": "ACCESSORY",
-    "GLASSES": "ACCESSORY",
-    "SUNGLASSES": "ACCESSORY",
-    "SOCKS": "ACCESSORY",
-    "SNEAKERS": "SHOES",
-    "BOOTS": "SHOES",
-    "SANDALS": "SHOES",
-    "HEELS": "SHOES",
-    "SKIRT": "BOTTOM",
-    "PANTS": "BOTTOM",
-    "JEANS": "BOTTOM",
-    "SHORTS": "BOTTOM",
+# OUTER가 VALID_CATEGORIES에 포함되어 직접 통과 처리됨
+VALID_CATEGORIES = {"TOP", "BOTTOM", "OUTER", "DRESS", "SHOES", "ACCESSORY", "ETC"}
+CATEGORY_MAP: dict[str, str] = {
+    # TOP 계열 — 기존 보존
     "SHIRT": "TOP",
     "BLOUSE": "TOP",
     "SWEATER": "TOP",
+    "KNIT": "TOP",
+    "KNITWEAR": "TOP",
     "SWEATSHIRT": "TOP",
     "HOODIE": "TOP",
     "T-SHIRT": "TOP",
     "TSHIRT": "TOP",
-    "KNIT": "TOP",
-    "KNITWEAR": "TOP",
-    "CARDIGAN": "TOP",
+    "TEE": "TOP",
     "PULLOVER": "TOP",
-    "SUIT": "TOP",
-    "JUMPER": "TOP",
+    # OUTER 계열 — 기존 TOP에서 OUTER로 재매핑 + 신규 추가
+    "OUTERWEAR": "OUTER",
+    "COAT": "OUTER",
+    "JACKET": "OUTER",
+    "JUMPER": "OUTER",
+    "CARDIGAN": "OUTER",
+    "BLAZER": "OUTER",
+    "SUIT": "OUTER",
+    "VEST": "OUTER",
+    "PADDING": "OUTER",
+    # BOTTOM 계열 — 기존 보존 + 신규 추가
+    "PANTS": "BOTTOM",
+    "JEANS": "BOTTOM",
+    "SKIRT": "BOTTOM",
+    "SHORTS": "BOTTOM",
+    "LEGGINGS": "BOTTOM",
+    "TROUSERS": "BOTTOM",
+    # SHOES 계열 — 기존 보존 + 신규 추가
+    "SNEAKERS": "SHOES",
+    "BOOTS": "SHOES",
+    "SANDALS": "SHOES",
+    "HEELS": "SHOES",
+    "LOAFERS": "SHOES",
+    "FLATS": "SHOES",
+    # ACCESSORY 계열 — 기존 보존
+    "BAG": "ACCESSORY",
+    "BACKPACK": "ACCESSORY",
+    "HAT": "ACCESSORY",
+    "CAP": "ACCESSORY",
+    "SCARF": "ACCESSORY",
+    "BELT": "ACCESSORY",
+    "JEWELRY": "ACCESSORY",
+    "SOCKS": "ACCESSORY",
+    "WATCH": "ACCESSORY",
+    "GLASSES": "ACCESSORY",
+    "SUNGLASSES": "ACCESSORY",
+    # DRESS 계열 — 신규 추가
+    "JUMPSUIT": "DRESS",
+    "ONE-PIECE": "DRESS",
+    # ETC
     "UNKNOWN": "ETC",
 }
 
@@ -279,6 +307,7 @@ class ModelServerAnalyzer:
         return ImageAnalysisResult(
             major=ImageMajorAttributes(
                 category=major["category"],
+                sub_category=major.get("sub_category"),
                 color=major.get("color", []),
                 material=major.get("material", []),
                 style_tags=major.get("style_tags", []),
@@ -302,9 +331,18 @@ class ModelServerAnalyzer:
         extra = data.get("extra", {})
         meta = extra.get("meta_data", {})
 
+        # L1 카테고리 정규화
+        normalized_category = cls._normalize_category(major.get("category", ""))
+
+        # L2 sub_category: VLM이 선택한 값이 해당 L1의 허용 목록에 있을 때만 채택
+        raw_sub = major.get("sub_category")
+        valid_subs = CATEGORY_DETAIL.get(normalized_category, [])
+        sub_category = raw_sub if raw_sub in valid_subs else None
+
         return {
             "major": {
-                "category": cls._normalize_category(major.get("category", "")),
+                "category": normalized_category,
+                "sub_category": sub_category,
                 "color": cls._to_list(major.get("color")),
                 "material": cls._to_list(major.get("material")),
                 "style_tags": cls._to_list(major.get("style_tags")),
