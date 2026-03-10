@@ -2,6 +2,8 @@ import asyncio
 import json
 import logging
 
+from aiokafka import ConsumerRecord
+
 from app.common.kafka.schemas import (
     ErrorDetail,
     ErrorResponse,
@@ -17,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class OutfitWorker(BaseWorker):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             bootstrap_servers=worker_settings.KAFKA_BOOTSTRAP_SERVERS,
             group_id=worker_settings.OUTFIT_GROUP_ID,
@@ -25,7 +27,7 @@ class OutfitWorker(BaseWorker):
             produce_topic=worker_settings.OUTFIT_RESPONSE_TOPIC,
         )
 
-    async def process_message(self, msg):
+    async def process_message(self, msg: ConsumerRecord) -> None:
         request = deserialize(msg.value, OutfitRequestMessage)
 
         await self.send_progress(request.request_id, "query_parsing", "의도 분석 중...")
@@ -41,7 +43,7 @@ class OutfitWorker(BaseWorker):
         )
         await self.producer.send_and_wait(self.produce_topic, serialize(response))
 
-    async def _handle_failure(self, msg, error: Exception):
+    async def _handle_failure(self, msg: ConsumerRecord, error: Exception) -> None:  # noqa: ANN401
         request_id = "unknown"
         try:
             raw_data = json.loads(msg.value.decode("utf-8"))
