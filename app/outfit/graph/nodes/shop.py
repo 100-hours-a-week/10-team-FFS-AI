@@ -33,7 +33,7 @@ def convert_product_to_clothing(product: ProductCandidate) -> ClothingCandidate:
         clothes_id=abs(hash(product.product_id)) % (10**9),
         image_url=product.image_url,
         category=product.category,
-        color=[],
+        color=product.color,
         style_tags=product.style_tags,
         caption=product.title,
         similarity_score=product.similarity_score,
@@ -41,6 +41,10 @@ def convert_product_to_clothing(product: ProductCandidate) -> ClothingCandidate:
         price=product.price,
         brand=product.brand if product.brand else None,
         purchase_url=product.link,
+        material=product.material,
+        season=product.season,
+        formality=product.formality,
+        occasion=product.occasion,
     )
 
 

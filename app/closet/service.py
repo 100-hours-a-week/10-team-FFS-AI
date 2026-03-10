@@ -12,14 +12,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
 from dataclasses import dataclass, field
 
 import httpx
+from ulid import ULID
 
 from app.closet.gemini_client import GeminiImageAnalyzer
 from app.closet.s3_client import S3Client
 from app.closet.schemas import ExtraAttributes, ExtraMetadata, MajorAttributes
+from app.closet.validators import ImageValidator, MockImageValidator
 from app.common.metrics import (
     CLOSET_PIPELINE_ERRORS,
     CLOSET_STAGE_DURATION,
@@ -78,6 +79,8 @@ class ClosetService:
         self._s3_client = S3Client()
         self._use_mock = settings.use_mock_analyzer
 
+        self._fallback_analyzer = None
+
         if self._use_mock:
             from app.closet.mock_analyzer import (
                 MockImageAnalyzer,
@@ -88,16 +91,45 @@ class ClosetService:
             self._segmentation = MockSegmentationService(
                 item_count=3, delay_seconds=9.0
             )
+            self.validator = MockImageValidator()
             logger.info("Using Mock mode for load testing")
+        elif settings.vllm_server_url:
+            from app.closet.model_analyzer import ModelServerAnalyzer
+
+            self._analyzer = ModelServerAnalyzer(
+                base_url=settings.vllm_server_url,
+            )
+            self._fallback_analyzer = GeminiImageAnalyzer()
+            from app.closet.segmentation import SegmentationService
+
+            self._segmentation = SegmentationService(
+                gemini_client=self._fallback_analyzer,
+            )
+            self.validator = ImageValidator()
+            logger.info(
+                f"Using vLLM model server: {settings.vllm_server_url} "
+                "(Gemini fallback enabled)"
+            )
         else:
+            logger.warning(
+                "GCP_SERVER_URL environment variable is not set. "
+                "Falling back to Gemini API for image analysis."
+            )
             self._analyzer = GeminiImageAnalyzer()
             from app.closet.segmentation import SegmentationService
 
-            self._segmentation = SegmentationService(self._analyzer)
+            self._segmentation = SegmentationService(
+                gemini_client=self._analyzer,
+            )
+            self.validator = ImageValidator()
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # 공개 메서드
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    async def validate_image(self, image_url: str) -> dict:
+        """단일 이미지 어뷰징 및 유효성 검증을 수행합니다."""
+        return await self.validator.validate_image(image_url)
 
     async def preprocess(self, target_image_url: str, user_id: int) -> PreprocessResult:
         """세그멘테이션 → presigned URL 발급 → S3 업로드 (N개 아이템).
@@ -111,7 +143,7 @@ class ClosetService:
             return PreprocessResult(success=False, error="SEGMENTATION_FAILED")
 
         count = len(item_images)
-        task_ids = [str(uuid.uuid4()) for _ in range(count)]
+        task_ids = [str(ULID()) for _ in range(count)]
 
         # 2. Presigned URL N개 한 번에 발급
         presigned_list = await self._request_presigned_urls(
@@ -191,11 +223,19 @@ class ClosetService:
         error_counter=CLOSET_PIPELINE_ERRORS,
     )
     async def _safe_analyze(self, image_bytes: bytes) -> dict:
-        """이미지 분석. 실패 시 DEFAULT_ANALYSIS 반환."""
+        """이미지 분석. vLLM 실패 시 Gemini 폴백, 둘 다 실패 시 DEFAULT_ANALYSIS 반환."""
         try:
             result = await self._analyzer.analyze_image(image_bytes)
             return result.model_dump()
         except Exception as e:
+            if self._fallback_analyzer is not None:
+                logger.warning(f"vLLM 분석 실패, Gemini 폴백 시도: {e}")
+                try:
+                    result = await self._fallback_analyzer.analyze_image(image_bytes)
+                    return result.model_dump()
+                except Exception as fallback_err:
+                    logger.error(f"Gemini 폴백도 실패 (기본값 사용): {fallback_err}")
+                    return DEFAULT_ANALYSIS.copy()
             logger.error(f"분석 실패 (기본값 사용): {e}")
             return DEFAULT_ANALYSIS.copy()
 

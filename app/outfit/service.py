@@ -1,6 +1,9 @@
+import asyncio
 import logging
 import uuid
 from functools import lru_cache
+
+from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
 
 from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.graph import build_outfit_graph
@@ -15,6 +18,9 @@ from app.shop.repository import ShopProductRepository
 from app.shop.search_query_builder import ShopSearchQueryBuilder
 
 logger = logging.getLogger(__name__)
+
+
+PIPELINE_TIMEOUT_SECONDS = 90
 
 
 class OutfitService:
@@ -59,7 +65,10 @@ class OutfitService:
             "trace_id": trace_id,
             "weather": request.weather,
             "upload_slots": request.urls,
+            "quality_retry_count": 0,
         }
+
+        langfuse_handler = LangfuseCallbackHandler()
 
         config = {
             "configurable": {
@@ -70,11 +79,31 @@ class OutfitService:
                 "vton_processor": self.vton_processor,
                 "shop_repository": self.shop_repository,
                 "shop_search_builder": self.shop_search_builder,
-            }
+            },
+            "callbacks": [langfuse_handler],
+            "metadata": {
+                "langfuse_user_id": str(request.user_id),
+                "langfuse_session_id": request.session_id,
+                "langfuse_tags": ["langgraph", "outfit"],
+            },
         }
 
-        result = await self.graph.ainvoke(initial_state, config=config)
-        return result["response"]
+        try:
+            result = await asyncio.wait_for(
+                self.graph.ainvoke(initial_state, config=config),
+                timeout=PIPELINE_TIMEOUT_SECONDS,
+            )
+            return result["response"]
+        except TimeoutError:
+            logger.error(
+                f"Pipeline timeout after {PIPELINE_TIMEOUT_SECONDS}s | "
+                f"trace_id={trace_id} user_id={request.user_id}"
+            )
+            return OutfitResponse(
+                query_summary="코디 추천 (시간 초과)",
+                outfits=[],
+                session_id=request.session_id,
+            )
 
 
 # FastAPI 의존성 주입용 (DI 컨테이너 도입 전까지 사용)

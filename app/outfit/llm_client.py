@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 import openai
-from langfuse.decorators import langfuse_context, observe
+from langfuse import get_client, observe
 from pydantic import BaseModel
 
 from app.config import Settings, get_settings
@@ -46,8 +46,7 @@ class OpenAIClient(LLMClient):
         temperature: float = 0.7,
         max_tokens: int = 2000,
     ) -> BaseModel | dict[str, Any]:
-        # Langfuse generation 입력 메타데이터 기록
-        langfuse_context.update_current_observation(
+        get_client().update_current_generation(
             input=messages,
             model=self.model,
             model_parameters={
@@ -69,18 +68,18 @@ class OpenAIClient(LLMClient):
                 if parsed is None:
                     raise LLMError("Structured Output parsing returned None")
 
-                langfuse_context.update_current_observation(
+                get_client().update_current_generation(
                     output=parsed.model_dump()
                     if hasattr(parsed, "model_dump")
                     else str(parsed),
-                    usage={
-                        "input": completion.usage.prompt_tokens
+                    usage_details={
+                        "prompt_tokens": completion.usage.prompt_tokens
                         if completion.usage
                         else 0,
-                        "output": completion.usage.completion_tokens
+                        "completion_tokens": completion.usage.completion_tokens
                         if completion.usage
                         else 0,
-                        "total": completion.usage.total_tokens
+                        "total_tokens": completion.usage.total_tokens
                         if completion.usage
                         else 0,
                     },
@@ -96,17 +95,16 @@ class OpenAIClient(LLMClient):
                 )
                 result = completion.model_dump()
 
-                # Langfuse generation 출력 메타데이터 기록
-                langfuse_context.update_current_observation(
+                get_client().update_current_generation(
                     output=result,
-                    usage={
-                        "input": completion.usage.prompt_tokens
+                    usage_details={
+                        "prompt_tokens": completion.usage.prompt_tokens
                         if completion.usage
                         else 0,
-                        "output": completion.usage.completion_tokens
+                        "completion_tokens": completion.usage.completion_tokens
                         if completion.usage
                         else 0,
-                        "total": completion.usage.total_tokens
+                        "total_tokens": completion.usage.total_tokens
                         if completion.usage
                         else 0,
                     },

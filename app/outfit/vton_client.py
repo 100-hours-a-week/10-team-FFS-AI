@@ -8,7 +8,7 @@ import base64
 import logging
 
 import httpx
-from langfuse.decorators import observe
+from langfuse import observe
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
