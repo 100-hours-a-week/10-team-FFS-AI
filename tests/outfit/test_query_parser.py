@@ -36,7 +36,6 @@ class TestQueryParserSuccess:
         # When
         result = await parser.parse("내일 면접인데 단정하게 입고 싶어")
 
-        # Then
         assert result.occasion == "면접"
         assert result.style == "포멀"
         assert result.season == "가을"
@@ -44,7 +43,27 @@ class TestQueryParserSuccess:
         assert result.reference_item is None
         assert result.target_category is None
         assert result.constraints == ["단정하게"]
+        assert result.sub_categories is None
         assert result.is_full_outfit_request() is True
+
+    @pytest.mark.asyncio
+    async def test_request_with_sub_categories(
+        self, parser: QueryParser, mock_llm_client: MagicMock
+    ) -> None:
+        """sub_categories가 응답 모델에 있을 때 잘 추출되는지 검증."""
+        mock_llm_client.chat_completion = AsyncMock(
+            return_value=OutfitQueryLLMResponse(
+                occasion="일상",
+                style="캐주얼",
+                sub_categories={"TOP": ["맨투맨_스웨트"], "BOTTOM": ["데님_팬츠"]},
+            )
+        )
+
+        result = await parser.parse("맨투맨에 청바지 추천해줘")
+
+        assert result.sub_categories is not None
+        assert result.sub_categories["TOP"] == ["맨투맨_스웨트"]
+        assert result.sub_categories["BOTTOM"] == ["데님_팬츠"]
 
     @pytest.mark.asyncio
     async def test_matching_request_with_reference_item(

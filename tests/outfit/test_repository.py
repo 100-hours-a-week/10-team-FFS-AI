@@ -126,6 +126,47 @@ class TestSearchMultiple:
         assert len(results) == 3
         assert mock_qdrant_client.query_points.await_count == 3
 
+    @pytest.mark.asyncio
+    async def test_search_multiple_removes_duplicates_by_clothes_id(
+        self,
+        repository: ClothingRepository,
+        mock_qdrant_client: MagicMock,
+    ) -> None:
+        """같은 카테고리 내에서 clothes_id가 중복되면 병합하여 1개만 반환한다."""
+        # Query 1 결과 : clothes_id=1, 2
+        hit1 = ScoredPoint(
+            id=1, version=1, score=0.9, payload={"clothesId": 1, "category": "TOP"}
+        )
+        hit2 = ScoredPoint(
+            id=2, version=1, score=0.8, payload={"clothesId": 2, "category": "TOP"}
+        )
+        # Query 2 결과 : clothes_id=2 (중복), 3
+        hit3 = ScoredPoint(
+            id=3, version=1, score=0.85, payload={"clothesId": 2, "category": "TOP"}
+        )
+        hit4 = ScoredPoint(
+            id=4, version=1, score=0.7, payload={"clothesId": 3, "category": "TOP"}
+        )
+
+        mock_qdrant_client.query_points.side_effect = [
+            QueryResponse(points=[hit1, hit2]),
+            QueryResponse(points=[hit3, hit4]),
+        ]
+
+        queries = [
+            SearchQuery(text="q1", category_filter="TOP"),
+            SearchQuery(text="q2", category_filter="TOP"),
+        ]
+
+        results = await repository.search_multiple(user_id="user123", queries=queries)
+
+        assert len(results) == 1
+        assert results[0].category == "TOP"
+        # 1, 2, 3 총 3개의 유니크한 clothes_id만 남아야 함
+        clothes_ids = {c.clothes_id for c in results[0].candidates}
+        assert clothes_ids == {1, 2, 3}
+        assert len(results[0].candidates) == 3
+
 
 class TestToCandidateStatic:
     def test_to_candidate_with_full_payload(self) -> None:
@@ -137,6 +178,7 @@ class TestToCandidateStatic:
                 "clothesId": 456,
                 "imageUrl": "https://img.com/456.jpg",
                 "category": "BOTTOM",
+                "subCategory": "슬랙스_트라우저",
                 "color": "네이비",
                 "styleTags": ["포멀"],
                 "caption": "네이비 슬랙스",
@@ -148,6 +190,7 @@ class TestToCandidateStatic:
         assert candidate.clothes_id == 456
         assert candidate.image_url == "https://img.com/456.jpg"
         assert candidate.category == "BOTTOM"
+        assert candidate.sub_category == "슬랙스_트라우저"
         assert candidate.color == ["네이비"]
         assert candidate.style_tags == ["포멀"]
         assert candidate.caption == "네이비 슬랙스"
