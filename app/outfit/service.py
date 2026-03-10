@@ -3,8 +3,6 @@ import logging
 import uuid
 from functools import lru_cache
 
-from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
-
 from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.graph import build_outfit_graph
 from app.outfit.llm_client import OpenAIClient
@@ -67,6 +65,7 @@ class OutfitService:
             "upload_slots": request.urls,
             "quality_retry_count": 0,
         }
+        from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
 
         langfuse_handler = LangfuseCallbackHandler()
 

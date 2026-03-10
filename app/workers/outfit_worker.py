@@ -43,7 +43,7 @@ class OutfitWorker(BaseWorker):
         )
         await self.producer.send_and_wait(self.produce_topic, serialize(response))
 
-    async def _handle_failure(self, msg: ConsumerRecord, error: Exception) -> None:  # noqa: ANN401
+    async def _handle_failure(self, msg: ConsumerRecord, error: Exception) -> None:
         request_id = "unknown"
         try:
             raw_data = json.loads(msg.value.decode("utf-8"))
