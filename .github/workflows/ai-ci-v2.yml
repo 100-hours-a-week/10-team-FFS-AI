@@ -159,8 +159,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
           cache-dependency-path: |
-            requirements/base.txt
-            requirements/dev.txt
+            requirements.txt
+            requirements-dev.txt
 
       # ------------------------------------------------------
       # 4. 의존성 설치
@@ -169,7 +169,8 @@ jobs:
         id: install
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements/dev.txt
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
           echo "### 📦 Installed Packages" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
