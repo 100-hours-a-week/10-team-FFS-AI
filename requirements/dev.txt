@@ -1,0 +1,17 @@
+
+
+-r base.txt
+
+
+pytest
+pytest-asyncio
+pytest-mock
+pytest-cov
+
+
+ruff
+pre-commit
+
+
+mypy
+types-redis
