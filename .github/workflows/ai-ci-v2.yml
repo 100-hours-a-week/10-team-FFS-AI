@@ -168,7 +168,7 @@ jobs:
       - name: Install dependencies
         id: install
         run: |
-          uv pip sync requirements/dev.lock  
+          uv pip sync requirements/dev.lock --system
 
           echo "### 📦 Installed Packages" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
