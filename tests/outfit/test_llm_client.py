@@ -1,7 +1,9 @@
+from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import openai
 import pytest
+import pytest_asyncio
 from pydantic import BaseModel
 
 from app.outfit.exceptions import LLMError
@@ -15,17 +17,18 @@ def mock_settings() -> MagicMock:
     settings.openai_chat_model = "gpt-4o-mini"
     settings.openai_base_url = None
     settings.llm_timeout = 10
-    settings.llm_max_retries = 0  # 테스트에서 재시도 비활성화
+    settings.llm_max_retries = 0
     return settings
 
 
-@pytest.fixture
-def client(mock_settings: MagicMock) -> OpenAIClient:
-    return OpenAIClient(settings=mock_settings)
+@pytest_asyncio.fixture
+async def client(mock_settings: MagicMock) -> AsyncGenerator[OpenAIClient, None]:
+    client_instance = OpenAIClient(settings=mock_settings)
+    yield client_instance
+    await client_instance._client.close()
 
 
 def _make_create_response(content: str = "hello") -> MagicMock:
-    """chat.completions.create 응답 mock 생성."""
     choice = MagicMock()
     choice.message.content = content
     completion = MagicMock()
@@ -37,7 +40,6 @@ def _make_create_response(content: str = "hello") -> MagicMock:
 
 
 def _make_parse_response(parsed: BaseModel | None) -> MagicMock:
-    """beta.chat.completions.parse 응답 mock 생성."""
     choice = MagicMock()
     choice.message.parsed = parsed
     completion = MagicMock()
@@ -46,8 +48,6 @@ def _make_parse_response(parsed: BaseModel | None) -> MagicMock:
 
 
 class TestChatCompletionWithoutStructuredOutput:
-    """response_format=None 일반 호출 테스트."""
-
     @pytest.mark.asyncio
     async def test_basic_completion(
         self: "TestChatCompletionWithoutStructuredOutput",
@@ -89,8 +89,6 @@ class TestChatCompletionWithoutStructuredOutput:
 
 
 class TestChatCompletionWithStructuredOutput:
-    """response_format 전달 시 Structured Output 경로 테스트."""
-
     @pytest.mark.asyncio
     async def test_returns_parsed_pydantic_instance(
         self: "TestChatCompletionWithStructuredOutput",
@@ -213,8 +211,8 @@ class TestApiKeyValidation:
     @pytest.mark.asyncio
     async def test_missing_api_key(
         self: "TestApiKeyValidation",
-        mock_settings: MagicMock,
     ) -> None:
+        mock_settings = MagicMock()
         mock_settings.openai_api_key = None
 
         with pytest.raises(LLMError, match="OPENAI_API_KEY is not configured"):
