@@ -144,3 +144,62 @@ class TestSearchQueryBuilder:
         expected_parts = ["TOP", "포멀 스타일", "겨울용", "면접에 적합"]
         for part in expected_parts:
             assert part in queries[0].text
+
+    def test_full_outfit_sub_categories_generates_multiple_queries(
+        self, builder: SearchQueryBuilder
+    ) -> None:
+        """sub_categories가 있으면 카테고리별로 다중 쿼리가 생성된다."""
+        # Given
+        parsed = ParsedQuery(
+            occasion="일상",
+            style="캐주얼",
+            sub_categories={"TOP": ["맨투맨_스웨트", "니트_스웨터"]},
+        )
+
+        # When
+        queries = builder.build(parsed)
+
+        # Then — TOP이 2개(sub별), BOTTOM/SHOES 각 1개 = 총 4개
+        assert len(queries) == 4
+        top_queries = [q for q in queries if q.category_filter == "TOP"]
+        assert len(top_queries) == 2
+        texts = [q.text for q in top_queries]
+        assert any("맨투맨_스웨트" in t for t in texts)
+        assert any("니트_스웨터" in t for t in texts)
+
+    def test_sub_category_prefix_in_query_text(
+        self, builder: SearchQueryBuilder
+    ) -> None:
+        """sub_category가 있으면 쿼리 텍스트에 'sub_category category' 형태로 포함된다."""
+        # Given
+        parsed = ParsedQuery(
+            occasion="일상",
+            style="캐주얼",
+            target_category="OUTER",
+            sub_categories={"OUTER": ["패딩"]},
+        )
+
+        # When
+        queries = builder.build(parsed)
+
+        # Then
+        assert len(queries) == 1
+        assert "패딩 OUTER" in queries[0].text
+        assert queries[0].category_filter == "OUTER"
+
+    def test_full_outfit_no_sub_categories_unchanged(
+        self, builder: SearchQueryBuilder
+    ) -> None:
+        """sub_categories가 없으면 기존처럼 카테고리당 1개 쿼리만 생성된다."""
+        # Given
+        parsed = ParsedQuery(occasion="일상", style="깔끔한")
+
+        # When
+        queries = builder.build(parsed)
+
+        # Then — DEFAULT_CATEGORIES 3개
+        assert len(queries) == 3
+        categories = [q.category_filter for q in queries]
+        assert "TOP" in categories
+        assert "BOTTOM" in categories
+        assert "SHOES" in categories

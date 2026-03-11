@@ -2,11 +2,98 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-CategoryType = Literal["TOP", "BOTTOM", "DRESS", "SHOES", "ACCESSORY", "ETC"]
+CategoryType = Literal["TOP", "BOTTOM", "OUTER", "DRESS", "SHOES", "ACCESSORY", "ETC"]
+
+
+SubCategoryType = Literal[
+    # TOP
+    "반소매_티셔츠",
+    "긴소매_티셔츠",
+    "셔츠_블라우스",
+    "맨투맨_스웨트",
+    "니트_스웨터",
+    # BOTTOM
+    "데님_팬츠",
+    "슬랙스_트라우저",
+    "트레이닝_조거",
+    "숏츠",
+    "스커트",
+    "레깅스",
+    # OUTER
+    "가디건_니트아우터",
+    "집업_후드아우터",
+    "자켓",
+    "코트",
+    "패딩",
+    "블레이저_수트자켓",
+    # SHOES
+    "스니커즈",
+    "로퍼_단화",
+    "구두_힐",
+    "부츠",
+    "샌들_슬리퍼",
+    # DRESS
+    "원피스",
+    "점프슈트",
+    # ACCESSORY
+    "모자",
+    "스카프_넥",
+    "주얼리",
+    "벨트",
+    "양말_레그웨어",
+    "백팩",
+    "크로스_숄더백",
+    "클러치_파우치",
+    "웨이스트백",
+]
+
+
+CATEGORY_DETAIL: dict[str, list[str]] = {
+    "TOP": [
+        "반소매_티셔츠",
+        "긴소매_티셔츠",
+        "셔츠_블라우스",
+        "맨투맨_스웨트",
+        "니트_스웨터",
+    ],
+    "BOTTOM": [
+        "데님_팬츠",
+        "슬랙스_트라우저",
+        "트레이닝_조거",
+        "숏츠",
+        "스커트",
+        "레깅스",
+    ],
+    "OUTER": [
+        "가디건_니트아우터",
+        "집업_후드아우터",
+        "자켓",
+        "코트",
+        "패딩",
+        "블레이저_수트자켓",
+    ],
+    "SHOES": ["스니커즈", "로퍼_단화", "구두_힐", "부츠", "샌들_슬리퍼"],
+    "DRESS": ["원피스", "점프슈트"],
+    "ACCESSORY": [
+        "모자",
+        "스카프_넥",
+        "주얼리",
+        "벨트",
+        "양말_레그웨어",
+        "백팩",
+        "크로스_숄더백",
+        "클러치_파우치",
+        "웨이스트백",
+    ],
+    "ETC": [],
+}
 
 
 class ImageMajorAttributes(BaseModel):
     category: CategoryType = Field(description="의류 카테고리")
+    sub_category: SubCategoryType | None = Field(
+        default=None, description="세부 카테고리 (L2) — 임베딩/payload 전용"
+    )
     color: list[str] = Field(default_factory=list, description="색상 목록")
     material: list[str] = Field(default_factory=list, description="소재 목록")
     style_tags: list[str] = Field(default_factory=list, description="스타일 태그 목록")
@@ -49,6 +136,10 @@ class OutfitQueryLLMResponse(BaseModel):
         default=None, description="찾는 카테고리"
     )
     constraints: list[str] = Field(default_factory=list, description="추가 제약사항")
+    sub_categories: dict[str, list[str]] | None = Field(
+        default=None,
+        description="카테고리별 세부 유형 (예: {'TOP': ['맨투맨_스웨트'], 'OUTER': ['패딩']})",
+    )
 
 
 class OutfitItemLLM(BaseModel):
