@@ -28,13 +28,13 @@ class FileUploadInfo(BaseSchema):
 class AnalyzeImageItem(BaseSchema):
     sequence: int = Field(..., description="순서")
     target_image: str = Field(..., description="분석 대상 이미지 URL (원본)")
-    task_id: str = Field(..., description="태스크 ID (UUID)")
+    task_id: str = Field(..., description="태스크 ID (ULID)")
     file_upload_info: list[FileUploadInfo] = Field(..., description="업로드 정보 목록")
 
 
 class AnalyzeRequest(BaseSchema):
     user_id: int = Field(..., description="사용자 ID")
-    batch_id: str = Field(..., description="배치 ID (UUID)")
+    batch_id: str = Field(..., description="배치 ID (ULID)")
     images: list[AnalyzeImageItem] = Field(..., description="분석할 이미지 목록")
 
 

@@ -1,8 +1,3 @@
-"""코디 추천 LangGraph 그래프 통합 테스트.
-
-Phase 2: 재검색 루프 + 쇼핑 보충 테스트 포함
-"""
-
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -49,10 +44,6 @@ def mock_search_builder() -> MagicMock:
 
 @pytest.fixture
 def mock_repository() -> MagicMock:
-    """Phase 2 최소 후보 수를 충족하는 mock repository.
-
-    최소 기준: TOP 2개, BOTTOM 2개, SHOES 1개
-    """
     repo = MagicMock()
     repo.search_multiple = AsyncMock(
         return_value=[
@@ -123,7 +114,6 @@ def mock_repository() -> MagicMock:
 
 @pytest.fixture
 def mock_shop_repository() -> MagicMock:
-    """쇼핑 보충용 mock repository."""
     repo = MagicMock()
     repo.search_multiple = AsyncMock(return_value=[])
     return repo
@@ -131,7 +121,6 @@ def mock_shop_repository() -> MagicMock:
 
 @pytest.fixture
 def mock_shop_search_builder() -> MagicMock:
-    """쇼핑 검색 쿼리 빌더 mock."""
     builder = MagicMock()
     builder.build = MagicMock(
         return_value=[ShopSearchQuery(text="검색 쿼리", category_filter="SHOES")]
@@ -142,29 +131,42 @@ def mock_shop_search_builder() -> MagicMock:
 @pytest.fixture
 def mock_composer() -> MagicMock:
     composer = MagicMock()
+
+    valid_combinations = [
+        ([101, 201, 301], "흰색 셔츠 + 검정 슬랙스 + 검정 구두"),
+        ([102, 202, 301], "하늘색 셔츠 + 네이비 슬랙스 + 검정 구두"),
+        ([101, 202, 301], "흰색 셔츠 + 네이비 슬랙스 + 검정 구두"),
+    ]
     composer.compose = AsyncMock(
         return_value=OutfitResponse(
             query_summary="면접용 포멀 코디",
             outfits=[
                 Outfit(
-                    outfit_id="outfit-001",
-                    description="깔끔한 비즈니스 룩",
-                    clothes_ids=[101, 201],
+                    outfit_id=f"outfit-{i:03d}",
+                    description=desc,
+                    clothes_ids=ids,
                     items=[
                         OutfitItem(
-                            clothes_id=101,
-                            image_url="https://img.com/101.jpg",
+                            clothes_id=ids[0],
+                            image_url=f"https://img.com/{ids[0]}.jpg",
                             category="TOP",
                             role="상의",
                         ),
                         OutfitItem(
-                            clothes_id=201,
-                            image_url="https://img.com/201.jpg",
+                            clothes_id=ids[1],
+                            image_url=f"https://img.com/{ids[1]}.jpg",
                             category="BOTTOM",
                             role="하의",
                         ),
+                        OutfitItem(
+                            clothes_id=ids[2],
+                            image_url=f"https://img.com/{ids[2]}.jpg",
+                            category="SHOES",
+                            role="신발",
+                        ),
                     ],
                 )
+                for i, (ids, desc) in enumerate(valid_combinations)
             ],
         )
     )
@@ -217,7 +219,6 @@ class TestOutfitGraph:
         mock_repository: MagicMock,
         mock_composer: MagicMock,
     ) -> None:
-        """전체 파이프라인이 정상 동작하여 기대한 결과를 반환한다."""
         initial_state = {
             "query": "면접에 입을 옷 추천해줘",
             "user_id": 123,
@@ -228,15 +229,14 @@ class TestOutfitGraph:
 
         result = await compiled_graph.ainvoke(initial_state, config=graph_config)
 
-        mock_query_parser.parse.assert_awaited_once()
-        mock_search_builder.build.assert_called_once()
-        mock_repository.search_multiple.assert_awaited_once()
-        mock_composer.compose.assert_awaited_once()
+        mock_query_parser.parse.assert_awaited()
+        mock_search_builder.build.assert_called()
+        mock_repository.search_multiple.assert_awaited()
+        mock_composer.compose.assert_awaited()
 
         response = result["response"]
         assert response.query_summary == "면접용 포멀 코디"
-        assert len(response.outfits) == 1
-        assert response.outfits[0].clothes_ids == [101, 201]
+        assert len(response.outfits) == 3
         assert response.session_id == "sess-001"
 
     @pytest.mark.asyncio
@@ -247,7 +247,6 @@ class TestOutfitGraph:
         mock_repository: MagicMock,
         mock_composer: MagicMock,
     ) -> None:
-        """검색 결과가 비어있으면 쇼핑 보충 후 응답을 반환한다 (Phase 2 fast path)."""
         mock_repository.search_multiple = AsyncMock(return_value=[])
         mock_composer.compose = AsyncMock(
             return_value=OutfitResponse(
@@ -268,7 +267,7 @@ class TestOutfitGraph:
         response = result["response"]
         assert len(response.outfits) == 0
         assert result["category_coverage"] == {}
-        assert result.get("shop_supplemented") is True  # Phase 2: fast path로 쇼핑 보충
+        assert result.get("shop_supplemented") is True
 
     @pytest.mark.asyncio
     async def test_vton_error_when_no_urls(
@@ -277,7 +276,6 @@ class TestOutfitGraph:
         graph_config: dict,
         mock_vton_processor: MagicMock,
     ) -> None:
-        """upload_slots가 없으면 vton_error가 설정된다."""
         initial_state = {
             "query": "추천해줘",
             "user_id": 123,
@@ -298,7 +296,6 @@ class TestOutfitGraph:
         compiled_graph: CompiledStateGraph,
         graph_config: dict,
     ) -> None:
-        """category_coverage가 카테고리별 후보 수를 정확히 계산한다."""
         initial_state = {
             "query": "추천해줘",
             "user_id": 123,
@@ -316,7 +313,6 @@ class TestOutfitGraph:
         compiled_graph: CompiledStateGraph,
         graph_config: dict,
     ) -> None:
-        """session_id가 최종 응답에 정상 전달된다."""
         initial_state = {
             "query": "추천해줘",
             "user_id": 123,
@@ -336,7 +332,6 @@ class TestOutfitGraph:
         graph_config: dict,
         mock_vton_processor: MagicMock,
     ) -> None:
-        """upload_slots가 있으면 vton_processor.process가 호출된다."""
         slot = UploadSlot(
             file_id=777, object_key="test.jpg", presigned_url="https://s3.com"
         )
@@ -353,13 +348,12 @@ class TestOutfitGraph:
         assert result["vton_completed"] is True
 
     @pytest.mark.asyncio
-    async def test_tpo_extract_error_sets_error_state(
+    async def test_tpo_extract_error_triggers_fallback(
         self,
         compiled_graph: CompiledStateGraph,
         graph_config: dict,
         mock_query_parser: MagicMock,
     ) -> None:
-        """tpo_extract에서 LLMError 발생 시 error 상태가 설정된다."""
         from app.outfit.exceptions import LLMError
 
         mock_query_parser.parse = AsyncMock(side_effect=LLMError("API timeout"))
@@ -373,17 +367,18 @@ class TestOutfitGraph:
 
         result = await compiled_graph.ainvoke(initial_state, config=graph_config)
 
-        assert result.get("error") == "API timeout"
-        assert result["response"].outfits == []
+        assert result.get("tpo_fallback_used") is True
+        assert result["parsed_query"].occasion == "일상"
+        assert result["parsed_query"].style == "깔끔한"
+        assert len(result["response"].outfits) == 3
 
     @pytest.mark.asyncio
-    async def test_compose_handles_missing_parsed_query(
+    async def test_parse_error_triggers_fallback(
         self,
         compiled_graph: CompiledStateGraph,
         graph_config: dict,
         mock_query_parser: MagicMock,
     ) -> None:
-        """parsed_query가 없으면 빈 응답을 반환한다."""
         from app.outfit.exceptions import ParseError
 
         mock_query_parser.parse = AsyncMock(side_effect=ParseError("Parse failed"))
@@ -397,5 +392,5 @@ class TestOutfitGraph:
 
         result = await compiled_graph.ainvoke(initial_state, config=graph_config)
 
-        assert len(result["response"].outfits) == 0
-        assert "오류" in result["response"].query_summary
+        assert result.get("tpo_fallback_used") is True
+        assert len(result["response"].outfits) == 3

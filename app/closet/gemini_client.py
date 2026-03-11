@@ -112,21 +112,44 @@ class GeminiImageAnalyzer:
     async def generate_images(self, image_url: str) -> list[bytes]:
         """모델 착용 이미지에서 플랫레이/개별 아이템 이미지 생성.
 
+        1순위: vton_model (gemini-3-pro-image-preview)
+        2순위: vton_fallback_model (gemini-2.5-flash-image)
+
         Args:
             image_url: 원본 모델 이미지 URL
 
         Returns:
             생성된 이미지 bytes 리스트
         """
-        model_id = self.settings.vton_model
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
-
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(image_url)
             resp.raise_for_status()
             image_bytes = resp.content
 
         b64_image = base64.b64encode(image_bytes).decode("utf-8")
+
+        # 1순위: 메인 모델
+        primary = self.settings.vton_model
+        try:
+            return await self._call_gemini_api(primary, b64_image)
+        except Exception as primary_err:
+            fallback = self.settings.vton_fallback_model
+            if not fallback or fallback == primary:
+                raise
+            logger.warning(
+                f"Gemini 1순위 모델({primary}) 실패, "
+                f"2순위 모델({fallback})로 재시도: {primary_err}"
+            )
+
+        # 2순위: 폴백 모델
+        return await self._call_gemini_api(fallback, b64_image)
+
+    async def _call_gemini_api(self, model_id: str, b64_image: str) -> list[bytes]:
+        """Gemini API를 호출하여 이미지를 생성합니다."""
+        api_url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models"
+            f"/{model_id}:generateContent"
+        )
 
         payload = {
             "contents": [
@@ -150,7 +173,7 @@ class GeminiImageAnalyzer:
 
         headers = {"x-goog-api-key": self.settings.gemini_api_key}
 
-        async with httpx.AsyncClient(timeout=180.0) as client:
+        async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.post(api_url, json=payload, headers=headers)
 
             if response.status_code == 200:
@@ -165,18 +188,22 @@ class GeminiImageAnalyzer:
                                     part["inlineData"]["data"]
                                 )
                                 logger.info(
-                                    f"Collage/Item generated: {len(collage_bytes)} bytes"
+                                    f"Collage/Item generated ({model_id}): "
+                                    f"{len(collage_bytes)} bytes"
                                 )
                                 generated_images.append(collage_bytes)
 
                 if generated_images:
                     return generated_images
 
-                raise ValueError("No image in Gemini response")
+                raise ValueError(f"No image in Gemini response ({model_id})")
 
             else:
                 error_msg = response.text[:500]
                 logger.error(
-                    f"Collage generation failed ({response.status_code}): {error_msg}"
+                    f"Collage generation failed ({model_id}, "
+                    f"{response.status_code}): {error_msg}"
                 )
-                raise ValueError(f"Gemini API error: {response.status_code}")
+                raise ValueError(
+                    f"Gemini API error: {response.status_code} ({model_id})"
+                )

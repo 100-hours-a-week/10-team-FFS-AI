@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from langfuse.decorators import observe
+from langfuse import observe
 
 from app.common.llm_schemas import OutfitCompositionLLMResponse
 from app.common.metrics import measure_time
@@ -41,6 +41,7 @@ class OutfitComposer:
         num_outfits: int = 3,
         trace_id: str | None = None,
         user_id: int | None = None,
+        additional_instructions: str | None = None,
     ) -> OutfitResponse:
         log_context = f"trace_id={trace_id}" if trace_id else ""
         if user_id is not None:
@@ -55,7 +56,9 @@ class OutfitComposer:
             return self._empty_response(parsed_query)
 
         candidates_map = self._build_candidates_map(search_results)
-        prompt = self._build_prompt(parsed_query, search_results, num_outfits)
+        prompt = self._build_prompt(
+            parsed_query, search_results, num_outfits, additional_instructions
+        )
 
         logger.info(
             f"Composing outfits | {log_context} "
@@ -112,6 +115,7 @@ class OutfitComposer:
         parsed: ParsedQuery,
         results: list[SearchResult],
         num_outfits: int,
+        additional_instructions: str | None = None,
     ) -> str:
         lines = [
             f"상황: {parsed.occasion}",
@@ -137,6 +141,10 @@ class OutfitComposer:
                 )
 
         lines.append(f"\n{num_outfits}개의 코디를 추천해주세요.")
+
+        if additional_instructions:
+            lines.append(f"\n[추가 지침]\n{additional_instructions}")
+
         return "\n".join(lines)
 
     @staticmethod

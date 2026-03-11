@@ -22,26 +22,29 @@ class OutfitGraphState(TypedDict, total=False):
     parsed_query: ParsedQuery
     search_queries: list[SearchQuery]
     required_categories: list[str]
+    tpo_retry_count: int
+    tpo_fallback_used: bool
 
     search_results: list[SearchResult]
+    shop_results: list[SearchResult]
     category_coverage: dict[str, int]
+    search_retry_count: int
+    filter_level: str
+    shop_supplemented: bool
 
+    merged_candidates: list[SearchResult]
     outfits: list[Outfit]
-    response: OutfitResponse
+    outfit_confidence: float
+    compose_retry_count: int
+
+    quality_passed: bool
+    quality_issues: list[str]
+    critical_issues: list[str]
+    quality_retry_count: int
 
     vton_completed: bool
 
-    shop_results: list[SearchResult]
-    merged_candidates: list[SearchResult]
-    shop_supplemented: bool
-
-    search_retry_count: int
-    filter_level: str
-
-    compose_retry_count: int
-    outfit_confidence: float
-    quality_passed: bool
-    quality_issues: list[str]
+    response: OutfitResponse
 
     error: str | None
     fallback_used: bool

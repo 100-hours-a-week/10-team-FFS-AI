@@ -73,17 +73,43 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
         logger.info(f"요청 수신: batch={req.batch_id}, source={req.source_id}")
 
         try:
-            # ── ① 어뷰징 검사 (항상 통과) ──
+            # ── ① 어뷰징 검사 (Ray Serve 호출) ──
+            validation_result = await _get_service().validate_image(req.target_image)
+
+            passed = True
+            error_reason = None
+
+            if validation_result.get("error"):
+                passed = False
+                error_reason = f"VALIDATION_ERROR: {validation_result['error']}"
+            elif validation_result.get("nsfw") and validation_result["nsfw"]["is_nsfw"]:
+                passed = False
+                error_reason = "NSFW"
+            elif (
+                validation_result.get("fashion")
+                and not validation_result["fashion"]["is_fashion"]
+            ):
+                passed = False
+                error_reason = "NOT_FASHION"
+
             abusing_event = AbusingCompletedEvent(
                 requested_at=event.requested_at,
                 data=AbusingPayload(
                     batchId=req.batch_id,
                     sourceId=req.source_id,
-                    passed=True,
+                    passed=passed,
                 ),
             )
             key = req.source_id.encode("utf-8")
             await producer.send_and_wait(topic, serialize_event(abusing_event), key=key)
+
+            if not passed:
+                logger.warning(
+                    f"어뷰징 검사 실패: source={req.source_id}, reason={error_reason}"
+                )
+                await consumer.commit()
+                return
+
             logger.info(f"어뷰징 검사 통과: source={req.source_id}")
 
             # ── ② 세그멘테이션 + 전처리 ──

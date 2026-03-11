@@ -1,6 +1,6 @@
 import logging
 
-from langfuse.decorators import observe
+from langfuse import observe
 
 from app.common.llm_schemas import OutfitQueryLLMResponse
 from app.common.metrics import measure_time

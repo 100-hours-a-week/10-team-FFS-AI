@@ -114,10 +114,16 @@ export CAPTION_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/captio
 export GEMINI_API_KEY=$(get_secure_param "/klosetlab/${ENVIRONMENT}/fastapi/model/gemini-api-key")
 export GEMINI_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/gemini-model")
 
-export VTON_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vton-model")
-
 export OPENAI_API_KEY=$(get_secure_param "/klosetlab/${ENVIRONMENT}/fastapi/model/openai-api-key")
 export OPENAI_CHAT_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/openai-chat-model")
+
+export VTON_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vton-model")
+export VTON_FALLBACK_MODEL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vton-fallback-model")
+
+export VLLM_SERVER_URL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vllm-server-url")
+export VLLM_MODEL_NAME=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/vllm-model-name")
+
+export RAY_SERVER_URL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/ray-server-url")
 
 export LLM_TIMEOUT=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/llm-timeout")
 export LLM_MAX_RETRIES=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/model/llm-max-retries")
@@ -127,7 +133,7 @@ export USE_MOCK_ANALYZER=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-ana
 export LANGFUSE_ENABLED=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/langfuse-enabled")
 export LANGFUSE_SECRET_KEY=$(get_secure_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/langfuse-secret-key")
 export LANGFUSE_PUBLIC_KEY=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/langfuse-public-key")
-export LANGFUSE_HOST=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/langfuse-host")
+export LANGFUSE_BASE_URL=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/langfuse-base-url")
 export LANGFUSE_DEBUG=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/langfuse-debug")
 
 export NAVER_CLIENT_ID=$(get_param "/klosetlab/${ENVIRONMENT}/fastapi/mock-analyzer/naver-client-id")
