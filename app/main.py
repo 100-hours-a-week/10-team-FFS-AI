@@ -13,6 +13,9 @@ if _lf_public and _lf_secret:
         "OTEL_EXPORTER_OTLP_HEADERS",
         f"Authorization=Basic {_lf_token}",
     )
+    print(">>> OTEL ENV SET", flush=True)  # 임시 디버그
+else:
+    print(">>> OTEL ENV NOT SET - keys missing", flush=True)  # 임시 디버그
 
 
 import asyncio  # noqa: E402
