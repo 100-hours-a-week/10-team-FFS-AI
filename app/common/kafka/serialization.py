@@ -6,27 +6,15 @@ from typing import TypeVar
 
 from pydantic import ValidationError
 
+from app.common.kafka.exceptions import DeserializationError
 from app.common.schemas import BaseSchema
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseSchema)
 
-
-class DeserializationError(Exception):
-    def __init__(
-        self,
-        message: str,
-        original_data: bytes,
-        cause: Exception | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.original_data = original_data
-        self.cause = cause
-
-    def __str__(self) -> str:
-        cause_info = f" (원인: {self.cause})" if self.cause else ""
-        return f"{self.args[0]}{cause_info}"
+# Re-export for backward compatibility
+__all__ = ["serialize", "deserialize", "DeserializationError"]
 
 
 def serialize(model: BaseSchema) -> bytes:
