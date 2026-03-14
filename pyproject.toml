@@ -1,0 +1,101 @@
+[project]
+name = "klosetlab-ai"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi",
+    "uvicorn",
+    "pydantic-settings",
+    # Vector DB
+    "qdrant-client",
+    # Cache / State
+    "redis>=5.0.0",
+    # AWS
+    "boto3",
+    # Utilities
+    "aiofiles",
+    "httpx",
+    "python-dotenv",
+    "python-ulid>=3.1.0",
+    "pillow",
+    "tenacity",
+    # AI / LLM
+    "openai",
+    "google-genai",
+    "langchain",
+    "langfuse>=3.0",
+    "langgraph",
+    # Messaging
+    "aiokafka>=0.13.0",
+    # Observability
+    "prometheus-fastapi-instrumentator",
+]
+
+[dependency-groups]
+dev = [
+    # Testing
+    "pytest",
+    "pytest-asyncio",
+    "pytest-mock",
+    "pytest-cov",
+    # Linting / Formatting
+    "ruff",
+    # Git hooks
+    "pre-commit",
+    # Type checking
+    "mypy",
+    "types-redis",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+# =============================================================================
+# Ruff (ruff.toml에서 통합)
+# https://docs.astral.sh/ruff/configuration/
+# =============================================================================
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+exclude = [
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".git",
+    "models",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+    "ANN", # flake8-annotations
+]
+ignore = [
+    "E501",   # 줄 길이 (formatter가 처리)
+    "ANN101", # self 타입 힌트 — ruff 0.2.0+에서 deprecated
+    "ANN102", # cls 타입 힌트 — ruff 0.2.0+에서 deprecated
+]
+fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/common/metrics.py" = ["ANN"]
+"tests/**/*.py" = ["ANN"] # 테스트 코드는 타입 힌트 강제 불필요
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

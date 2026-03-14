@@ -1,5 +1,3 @@
-
-
 from app.workers.base import BaseWorker
 from app.workers.config import (
     OutfitWorkerConfig,

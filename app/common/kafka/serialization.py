@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 import json
@@ -16,8 +14,6 @@ T = TypeVar("T", bound=BaseSchema)
 
 
 class DeserializationError(Exception):
-
-
     def __init__(
         self,
         message: str,
@@ -34,12 +30,10 @@ class DeserializationError(Exception):
 
 
 def serialize(model: BaseSchema) -> bytes:
-
     return model.model_dump_json(by_alias=True).encode("utf-8")
 
 
 def deserialize(data: bytes, model_class: type[T]) -> T:
-
     try:
         json_dict = json.loads(data.decode("utf-8"))
         return model_class.model_validate(json_dict)

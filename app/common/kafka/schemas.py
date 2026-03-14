@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -11,11 +9,7 @@ from app.common.schemas import BaseSchema
 from app.outfit.schemas import Outfit, UploadSlot
 
 
-
-
 class OutfitRequestMessage(BaseSchema):
-
-
     request_id: str = Field(..., description="고유 요청 ID")
     user_id: int = Field(..., description="사용자 ID")
     query: str = Field(..., description="자연어 코디 요청")
@@ -29,8 +23,6 @@ class OutfitRequestMessage(BaseSchema):
 
 
 class ShopRequestMessage(BaseSchema):
-
-
     request_id: str = Field(..., description="고유 요청 ID")
     user_id: int = Field(..., description="사용자 ID")
     query: str = Field(..., description="자연어 쇼핑 요청")
@@ -40,18 +32,12 @@ class ShopRequestMessage(BaseSchema):
     )
 
 
-
-
 class ResponseMetadata(BaseSchema):
-
-
     processing_time_ms: int = Field(..., description="처리 시간 (밀리초)")
     model_version: str = Field(default="v1", description="모델 버전")
 
 
 class OutfitResponseMessage(BaseSchema):
-
-
     request_id: str = Field(..., description="원본 요청 ID")
     status: Literal["completed"] = Field(default="completed", description="처리 상태")
     outfits: list[Outfit] = Field(default_factory=list, description="추천 코디 목록")
@@ -63,12 +49,7 @@ class OutfitResponseMessage(BaseSchema):
     )
 
 
-
-
-
 class ProgressMessage(BaseSchema):
-
-
     request_id: str = Field(..., description="요청 ID")
     status: Literal["processing"] = Field(default="processing", description="처리 상태")
     step: int = Field(..., description="현재 단계 번호 (1-based)")
@@ -78,12 +59,7 @@ class ProgressMessage(BaseSchema):
     )
 
 
-
-
-
 class ErrorDetail(BaseSchema):
-
-
     code: str = Field(..., description="에러 코드 (예: PARSE_ERROR, LLM_TIMEOUT)")
     message: str = Field(..., description="에러 메시지")
     retry_after_seconds: int | None = Field(
@@ -92,8 +68,6 @@ class ErrorDetail(BaseSchema):
 
 
 class ErrorResponse(BaseSchema):
-
-
     request_id: str = Field(..., description="원본 요청 ID")
     status: Literal["failed"] = Field(default="failed", description="처리 상태")
     error: ErrorDetail = Field(..., description="에러 상세")
@@ -102,20 +76,13 @@ class ErrorResponse(BaseSchema):
     )
 
 
-
-
-
 class DLQErrorInfo(BaseSchema):
-
-
     type: str = Field(..., description="예외 타입 (예: DeserializationError)")
     message: str = Field(..., description="에러 메시지")
     stack_trace: str | None = Field(default=None, description="스택 트레이스")
 
 
 class DLQMessage(BaseSchema):
-
-
     original_topic: str = Field(..., description="원본 토픽 이름")
     original_message: str = Field(..., description="원본 메시지 (문자열)")
     error: DLQErrorInfo = Field(..., description="에러 정보")

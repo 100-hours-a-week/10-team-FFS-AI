@@ -1,5 +1,3 @@
-
-
 from app.common.kafka.schemas import (
     DLQErrorInfo,
     DLQMessage,
@@ -28,10 +26,8 @@ __all__ = [
     # 에러 처리
     "ErrorResponse",
     "ErrorDetail",
-
     "DLQMessage",
     "DLQErrorInfo",
-
     "serialize",
     "deserialize",
     "DeserializationError",

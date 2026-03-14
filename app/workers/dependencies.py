@@ -1,5 +1,3 @@
-
-
 import logging
 
 from app.core.database import close_databases, init_databases
@@ -11,14 +9,11 @@ _outfit_service: OutfitService | None = None
 
 
 async def init_worker_dependencies() -> None:
-
     global _outfit_service
 
     logger.info("Worker 의존성 초기화 시작...")
 
-
     await init_databases()
-
 
     _outfit_service = OutfitService()
 
@@ -26,7 +21,6 @@ async def init_worker_dependencies() -> None:
 
 
 async def close_worker_dependencies() -> None:
-
     global _outfit_service
 
     logger.info("Worker 의존성 정리 시작...")
@@ -38,7 +32,6 @@ async def close_worker_dependencies() -> None:
 
 
 def get_outfit_service_for_worker() -> OutfitService:
-
     if _outfit_service is None:
         raise RuntimeError("init_worker_dependencies()를 먼저 호출하세요")
     return _outfit_service
