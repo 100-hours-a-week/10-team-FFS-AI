@@ -243,15 +243,21 @@ def test_normalize_category_valid() -> None:
 
 
 def test_normalize_category_mapped() -> None:
-    assert ModelServerAnalyzer._normalize_category("JACKET") == "TOP"
+    # TOP 계열
+    assert ModelServerAnalyzer._normalize_category("SHIRT") == "TOP"
     assert ModelServerAnalyzer._normalize_category("SNEAKERS") == "SHOES"
     assert ModelServerAnalyzer._normalize_category("JEANS") == "BOTTOM"
     assert ModelServerAnalyzer._normalize_category("BAG") == "ACCESSORY"
+    # OUTER 계열 (기존 TOP에서 재매핑)
+    assert ModelServerAnalyzer._normalize_category("JACKET") == "OUTER"
+    assert ModelServerAnalyzer._normalize_category("COAT") == "OUTER"
+    assert ModelServerAnalyzer._normalize_category("CARDIGAN") == "OUTER"
+    assert ModelServerAnalyzer._normalize_category("BLAZER") == "OUTER"
 
 
 def test_normalize_category_case_insensitive() -> None:
     assert ModelServerAnalyzer._normalize_category("top") == "TOP"
-    assert ModelServerAnalyzer._normalize_category("Jacket") == "TOP"
+    assert ModelServerAnalyzer._normalize_category("Jacket") == "OUTER"  # OUTER 계열
 
 
 def test_normalize_category_unknown() -> None:
@@ -260,6 +266,11 @@ def test_normalize_category_unknown() -> None:
 
 def test_normalize_category_empty() -> None:
     assert ModelServerAnalyzer._normalize_category("") == "ETC"
+
+
+def test_normalize_category_outer_is_valid() -> None:
+    """OUTER가 VALID_CATEGORIES에 포함되어 CATEGORY_MAP 없이 직접 통과."""
+    assert ModelServerAnalyzer._normalize_category("OUTER") == "OUTER"
 
 
 # ── _to_list 테스트 ──
@@ -342,10 +353,58 @@ def test_normalize_full() -> None:
         },
     }
     result = ModelServerAnalyzer._normalize(data)
-    assert result["major"]["category"] == "TOP"  # JACKET → TOP
+    assert result["major"]["category"] == "OUTER"  # JACKET → OUTER
     assert result["major"]["color"] == ["검정"]  # str → list
     assert result["major"]["style_tags"] == []  # None → []
     assert result["extra"]["meta_data"]["season"] == ["겨울"]  # str → list
+
+
+def test_normalize_sub_category_valid() -> None:
+    """유효한 sub_category는 그대로 보존된다."""
+    data = {
+        "major": {
+            "category": "TOP",
+            "sub_category": "맨투맨_스웨트",
+            "color": [],
+            "material": [],
+            "style_tags": [],
+        },
+        "extra": {"caption": "테스트"},
+    }
+    result = ModelServerAnalyzer._normalize(data)
+    assert result["major"]["sub_category"] == "맨투맨_스웨트"
+
+
+def test_normalize_sub_category_invalid_for_category() -> None:
+    """카테고리에 맞지 않는 sub_category는 None으로 처리된다."""
+    data = {
+        "major": {
+            "category": "TOP",
+            "sub_category": "코트",  # OUTER 소속 — TOP에 유효하지 않음
+            "color": [],
+            "material": [],
+            "style_tags": [],
+        },
+        "extra": {"caption": "테스트"},
+    }
+    result = ModelServerAnalyzer._normalize(data)
+    assert result["major"]["sub_category"] is None
+
+
+def test_normalize_sub_category_none_for_etc() -> None:
+    """ETC 카테고리는 sub_category가 항상 None."""
+    data = {
+        "major": {
+            "category": "ETC",
+            "sub_category": "맨투맨_스웨트",
+            "color": [],
+            "material": [],
+            "style_tags": [],
+        },
+        "extra": {"caption": "테스트"},
+    }
+    result = ModelServerAnalyzer._normalize(data)
+    assert result["major"]["sub_category"] is None
 
 
 def test_normalize_empty_data() -> None:

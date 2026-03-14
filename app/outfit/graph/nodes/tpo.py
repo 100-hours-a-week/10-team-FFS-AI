@@ -9,7 +9,6 @@ from app.outfit.schemas import ParsedQuery
 
 logger = logging.getLogger(__name__)
 
-WINTER_KEYWORDS = ["겨울", "winter", "추운", "한파"]
 SEASON_KEYWORDS = {
     "봄": ["봄", "spring", "따뜻", "선선"],
     "여름": ["여름", "summer", "더운", "무더위", "시원"],
@@ -17,6 +16,11 @@ SEASON_KEYWORDS = {
     "겨울": ["겨울", "winter", "추운", "한파", "따뜻하게"],
 }
 DEFAULT_CATEGORIES = ["TOP", "BOTTOM", "SHOES"]
+
+# OUTER 포함 여부 기준 — parsed_query.season 값 기준 (집합 비교)
+OUTER_REQUIRED_SEASONS = {"겨울"}  # 반드시 OUTER 포함
+OUTER_OPTIONAL_SEASONS = {"봄", "가을"}  # 있으면 활용, 없어도 코디 성립
+
 MAX_TPO_RETRIES = 2
 
 
@@ -51,17 +55,21 @@ async def tpo_extract(state: OutfitGraphState, config: RunnableConfig) -> dict:
 
     if parsed_query.target_category:
         required_categories = [parsed_query.target_category]
+        optional_categories: list[str] = []
     else:
         required_categories = list(DEFAULT_CATEGORIES)
-        if parsed_query.season and any(
-            kw in parsed_query.season.lower() for kw in WINTER_KEYWORDS
-        ):
+        optional_categories = []
+        season = parsed_query.season
+        if season in OUTER_REQUIRED_SEASONS:
             required_categories.append("OUTER")
+        elif season in OUTER_OPTIONAL_SEASONS:
+            optional_categories.append("OUTER")
 
     return {
         "parsed_query": parsed_query,
         "search_queries": search_queries,
         "required_categories": required_categories,
+        "optional_categories": optional_categories,
     }
 
 
@@ -172,13 +180,17 @@ async def tpo_fallback(state: OutfitGraphState, config: RunnableConfig) -> dict:
     search_queries = search_builder.build(parsed_query)
 
     required_categories = list(DEFAULT_CATEGORIES)
-    if season and any(kw in season for kw in WINTER_KEYWORDS):
+    optional_categories: list[str] = []
+    if season in OUTER_REQUIRED_SEASONS:
         required_categories.append("OUTER")
+    elif season in OUTER_OPTIONAL_SEASONS:
+        optional_categories.append("OUTER")
 
     return {
         "parsed_query": parsed_query,
         "search_queries": search_queries,
         "required_categories": required_categories,
+        "optional_categories": optional_categories,
         "tpo_fallback_used": True,
         "error": None,
         "quality_passed": True,

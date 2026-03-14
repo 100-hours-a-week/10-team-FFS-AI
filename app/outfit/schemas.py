@@ -29,6 +29,10 @@ class ParsedQuery(BaseSchema):
     )
 
     constraints: list[str] = Field(default_factory=list, description="추가 제약사항")
+    sub_categories: dict[str, list[str]] | None = Field(
+        default=None,
+        description="카테고리별 세부 유형 (예: {'TOP': ['맨투맨_스웨트'], 'OUTER': ['패딩']})",
+    )
 
     def is_full_outfit_request(self: "ParsedQuery") -> bool:
         return self.target_category is None
@@ -69,6 +73,7 @@ class ClothingCandidate(BaseSchema):
     category: CategoryType = Field(
         ..., description="카테고리 (TOP, BOTTOM, DRESS, SHOES, ACCESSORY, ETC)"
     )
+    sub_category: str | None = Field(default=None, description="세부 카테고리 (L2)")
     color: list[str] = Field(default_factory=list, description="색상 목록")
     style_tags: list[str] = Field(default_factory=list, description="스타일 태그")
     caption: str | None = Field(default=None, description="캡션")

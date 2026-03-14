@@ -22,6 +22,7 @@ class OutfitGraphState(TypedDict, total=False):
     parsed_query: ParsedQuery
     search_queries: list[SearchQuery]
     required_categories: list[str]
+    optional_categories: list[str]  # 있으면 활용, 없어도 코디 성립 (봄/가을 OUTER 등)
     tpo_retry_count: int
     tpo_fallback_used: bool
 
