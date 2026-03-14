@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 
 import asyncio
@@ -28,7 +26,7 @@ from app.workers.config import WorkerConfig
 
 logger = logging.getLogger(__name__)
 
-# 메시지 타입 제네릭
+
 TRequest = TypeVar("TRequest", bound=BaseSchema)
 
 
