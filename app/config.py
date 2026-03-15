@@ -107,6 +107,15 @@ class Settings(BaseSettings):
         default=50, alias="KAFKA_MAX_CONCURRENT_TASKS"
     )
 
+    # ── Commerce Batch ──
+    batch_enabled: bool = Field(default=True, alias="BATCH_ENABLED")
+    batch_start_hour: int = Field(default=2, alias="BATCH_START_HOUR")
+    batch_end_hour: int = Field(default=6, alias="BATCH_END_HOUR")
+    batch_interval_hours: int = Field(default=1, alias="BATCH_INTERVAL_HOURS")
+    batch_max_products_per_keyword: int = Field(
+        default=1000, alias="BATCH_MAX_PRODUCTS_PER_KEYWORD"
+    )
+
     # ── Backend Internal API (presigned URL 발급용) ──
     backend_internal_url: str = Field(
         default="http://15.164.36.40", alias="BACKEND_INTERNAL_URL"
