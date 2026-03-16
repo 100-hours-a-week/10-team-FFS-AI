@@ -1,0 +1,59 @@
+name: Deploy FastAPI
+
+on:
+  push:
+    branches: [ dev ]
+
+env:
+  AWS_REGION: ${{ secrets.V3_AWS_REGION }}
+  ECR_REGISTRY: ${{ secrets.V3_ECR_REGISTRY }}
+  ECR_REPOSITORY: klosetlab/fastapi
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout app repo
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.V3_AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.V3_AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build and push Docker image
+      id: build-image
+      run: |
+        IMAGE_TAG=${{ github.sha }}
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: Checkout infra repo
+      uses: actions/checkout@v4
+      with:
+        repository: 100-hours-a-week/10-team-FFS-Cloud
+        token: ${{ secrets.V3_GITOPS_TOKEN }}
+        path: infra
+
+    - name: Update k8s manifest image tag
+      run: |
+        IMAGE_TAG=${{ steps.build-image.outputs.image_tag }}
+        sed -i "s|image: $ECR_REGISTRY/$ECR_REPOSITORY:.*|image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG|" \
+          infra/v3/k8s/fastapi/deployment.yaml
+
+    - name: Commit and push to infra repo
+      working-directory: infra
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add v3/k8s/fastapi/deployment.yaml
+        git commit -m "ci: update fastapi image tag to ${{ github.sha }}"
+        git push
