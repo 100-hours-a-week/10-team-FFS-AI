@@ -2,7 +2,7 @@ name: Deploy FastAPI
 
 on:
   push:
-    branches: [ dev ]
+    branches: [ main ]
 
 env:
   AWS_REGION: ${{ secrets.V3_AWS_REGION }}
