@@ -57,7 +57,7 @@ async def save_session_context(state: OutfitGraphState, config: RunnableConfig) 
             user_id=state["user_id"],
             history=[],
             previous_outfits=[],
-            confirmed_items=[],
+            confirmed_items={},
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )

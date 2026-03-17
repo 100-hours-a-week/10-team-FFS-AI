@@ -19,7 +19,7 @@ async def test_session_save_and_load(redis_client) -> None:
             Message(role="assistant", content="안녕하세요", outfits=None),
         ],
         previous_outfits=[],
-        confirmed_items=[],
+        confirmed_items={},
     )
 
     await manager.save_session(session_data)

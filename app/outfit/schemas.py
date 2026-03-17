@@ -154,8 +154,8 @@ class SessionData(BaseSchema):
     previous_outfits: list[Outfit] = Field(
         default_factory=list, description="이전 추천 코디 목록"
     )
-    confirmed_items: list[int] = Field(
-        default_factory=list, description="확정 아이템 ID 목록"
+    confirmed_items: dict[str, int] = Field(
+        default_factory=dict, description="고정 아이템 (카테고리 → clothes_id)"
     )
     created_at: datetime = Field(
         default_factory=datetime.utcnow, description="세션 생성 시각 (UTC)"
