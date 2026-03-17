@@ -135,13 +135,13 @@ class OutfitResponse(BaseSchema):
     fallback_used: bool = Field(default=False, description="Fallback 응답 사용 여부")
 
 
-class ConversationTurn(BaseSchema):
-    """멀티턴 대화의 1턴"""
+class Message(BaseSchema):
+    """멀티턴 대화 메시지 (V3)"""
 
     role: Literal["user", "assistant"] = Field(..., description="발화자")
     content: str = Field(..., description="발화 내용")
-    timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="발화 시각 (UTC)"
+    outfits: list[Outfit] | None = Field(
+        default=None, description="추천 코디 목록 (assistant 메시지에만 포함)"
     )
 
 
@@ -150,9 +150,7 @@ class SessionData(BaseSchema):
 
     session_id: str = Field(..., description="세션 ID")
     user_id: int = Field(..., description="사용자 ID")
-    history: list[ConversationTurn] = Field(
-        default_factory=list, description="대화 히스토리"
-    )
+    history: list[Message] = Field(default_factory=list, description="대화 히스토리")
     previous_outfits: list[Outfit] = Field(
         default_factory=list, description="이전 추천 코디 목록"
     )

@@ -92,7 +92,7 @@ class OutfitService:
                 "vton_processor": self.vton_processor,
                 "shop_repository": self.shop_repository,
                 "shop_search_builder": self.shop_search_builder,
-                "session_manager": self.session_manager,  # save_session_context용
+                "session_manager": self.session_manager,
                 "progress_callback": progress_callback,
             },
             "callbacks": [langfuse_handler],

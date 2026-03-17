@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.outfit.schemas import ConversationTurn, SessionData
+from app.outfit.schemas import Message, SessionData
 from app.outfit.session_manager import SessionManager
 
 
@@ -15,8 +15,8 @@ async def test_session_save_and_load(redis_client) -> None:
         session_id="sess-001",
         user_id=1,
         history=[
-            ConversationTurn(role="user", content="안녕"),
-            ConversationTurn(role="assistant", content="안녕하세요"),
+            Message(role="user", content="안녕", outfits=None),
+            Message(role="assistant", content="안녕하세요", outfits=None),
         ],
         previous_outfits=[],
         confirmed_items=[],

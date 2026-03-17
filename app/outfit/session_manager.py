@@ -9,7 +9,7 @@ from datetime import datetime
 from redis.asyncio import Redis
 
 from app.core.database import get_redis_client
-from app.outfit.schemas import ConversationTurn, Outfit, SessionData
+from app.outfit.schemas import Message, Outfit, SessionData
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class SessionManager:
             session_id=session_id,
             user_id=int(data[b"user_id"].decode("utf-8")),
             history=[
-                ConversationTurn(**turn)
+                Message(**turn)
                 for turn in json.loads(data.get(b"history", b"[]").decode("utf-8"))
             ],
             previous_outfits=[
@@ -142,9 +142,11 @@ class SessionManager:
                 user_id=user_id,
             )
 
-        session_data.history.append(ConversationTurn(role="user", content=user_message))
         session_data.history.append(
-            ConversationTurn(role="assistant", content=assistant_message)
+            Message(role="user", content=user_message, outfits=None)
+        )
+        session_data.history.append(
+            Message(role="assistant", content=assistant_message, outfits=None)
         )
 
         # 최대 5턴(10개 메시지)만 유지
