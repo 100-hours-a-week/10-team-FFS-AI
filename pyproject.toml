@@ -101,3 +101,11 @@ known-first-party = ["app"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+# =============================================================================
+# Pytest
+# =============================================================================
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests requiring external services (Kafka, etc.)",
+]

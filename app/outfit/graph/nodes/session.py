@@ -28,7 +28,6 @@ async def load_session_context(state: OutfitGraphState, config: RunnableConfig) 
         f"confirmed_items={confirmed_items}"
     )
 
-    # TODO: 6단계에서 실제 컨텍스트 주입 로직 구현
     return {
         "previous_outfits": previous_outfits,
         "confirmed_items": confirmed_items,

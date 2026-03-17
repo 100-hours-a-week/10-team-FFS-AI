@@ -4,6 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import pytest_asyncio
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 
 from app.common.kafka.exceptions import InfrastructureError
@@ -24,7 +25,7 @@ TEST_DLQ_TOPIC = "test-outfit-dlq"
 TEST_GROUP_ID = "test-outfit-worker-group"
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def kafka_producer() -> AIOKafkaProducer:
     producer = AIOKafkaProducer(bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
     await producer.start()
@@ -32,7 +33,7 @@ async def kafka_producer() -> AIOKafkaProducer:
     await producer.stop()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def kafka_consumer_response() -> AIOKafkaConsumer:
     consumer = AIOKafkaConsumer(
         TEST_RESPONSE_TOPIC,
@@ -46,7 +47,7 @@ async def kafka_consumer_response() -> AIOKafkaConsumer:
     await consumer.stop()
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def kafka_consumer_dlq() -> AIOKafkaConsumer:
     """DLQ 토픽을 구독하는 Kafka Consumer fixture."""
     consumer = AIOKafkaConsumer(
@@ -61,8 +62,8 @@ async def kafka_consumer_dlq() -> AIOKafkaConsumer:
     await consumer.stop()
 
 
-@pytest.fixture
-def worker_config() -> OutfitWorkerConfig:
+@pytest_asyncio.fixture
+async def worker_config() -> OutfitWorkerConfig:
     """테스트용 OutfitWorker 설정."""
     return OutfitWorkerConfig(
         kafka_bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
@@ -73,7 +74,7 @@ def worker_config() -> OutfitWorkerConfig:
     )
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def worker(worker_config: OutfitWorkerConfig) -> OutfitWorker:
     """OutfitWorker fixture."""
     worker = OutfitWorker(worker_config)
@@ -140,7 +141,7 @@ async def test_normal_flow_e2e(
 
         response = deserialize(response_data, OutfitResponseMessage)
         assert response.request_id == "test-e2e-123"
-        assert response.status == "completed"
+        assert response.status == "success"
         assert response.query_summary == "테스트 코디 추천"
 
 

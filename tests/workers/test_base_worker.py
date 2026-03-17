@@ -42,7 +42,7 @@ class MockWorker(BaseWorker[OutfitRequestMessage]):
         """Mock으로 대체될 메서드."""
         return OutfitResponseMessage(
             request_id=message.request_id,
-            status="completed",
+            status="success",
             outfits=[],
         )
 
@@ -94,7 +94,7 @@ class TestBaseWorkerRetryLogic:
         worker.process_message = AsyncMock(
             return_value=OutfitResponseMessage(
                 request_id="test-123",
-                status="completed",
+                status="success",
                 outfits=[],
             )
         )
@@ -142,7 +142,7 @@ class TestBaseWorkerRetryLogic:
                 InfrastructureError("Qdrant timeout", service="qdrant"),
                 OutfitResponseMessage(
                     request_id="test-123",
-                    status="completed",
+                    status="success",
                     outfits=[],
                 ),
             ]
@@ -200,7 +200,7 @@ class TestBaseWorkerRetryLogic:
                 RateLimitError("Rate limit exceeded", retry_after=3, service="openai"),
                 OutfitResponseMessage(
                     request_id="test-123",
-                    status="completed",
+                    status="success",
                     outfits=[],
                 ),
             ]
