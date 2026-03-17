@@ -51,17 +51,10 @@ class OutfitService:
         self.graph = None  # lazy initialization
 
     async def _ensure_graph(self) -> CompiledStateGraph:
-        """그래프 lazy 초기화"""
         if self.graph is None:
-            from app.outfit.graph import build_outfit_graph, build_outfit_graph_async
+            from app.outfit.graph import build_outfit_graph
 
-            try:
-                # Checkpointer가 초기화되어 있으면 async 버전 사용
-                self.graph = await build_outfit_graph_async()
-            except RuntimeError:
-                # 테스트 환경 등에서 Checkpointer 없을 경우 기본 버전 사용
-                logger.info("Checkpointer not initialized, using basic graph")
-                self.graph = build_outfit_graph()
+            self.graph = build_outfit_graph()
         return self.graph
 
     @measure_time(stage="total_pipeline", metric=OUTFIT_PIPELINE_TOTAL_DURATION)
@@ -83,10 +76,37 @@ class OutfitService:
             f'query="{request.query}"'
         )
 
-        # 그래프 초기화
+        # 세션 자동 로드
+        if session_data is None and request.session_id:
+            try:
+                session_data = await self.session_manager.load_session(
+                    request.session_id
+                )
+                if session_data:
+                    logger.info(
+                        f"Session loaded from Redis | "
+                        f"session_id={request.session_id} "
+                        f"trace_id={trace_id} "
+                        f"history_turns={len(session_data.history)} "
+                        f"previous_outfits={len(session_data.previous_outfits)} "
+                        f"confirmed_items={session_data.confirmed_items}"
+                    )
+                else:
+                    logger.info(
+                        f"Session not found in Redis, starting new session | "
+                        f"session_id={request.session_id} "
+                        f"trace_id={trace_id}"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to load session from Redis, proceeding without session data | "
+                    f"session_id={request.session_id} "
+                    f"trace_id={trace_id} "
+                    f"error={e}"
+                )
+
         graph = await self._ensure_graph()
 
-        # thread_id 설정 (session_id 활용)
         thread_id = request.session_id if request.session_id else str(uuid.uuid4())
 
         initial_state = {
@@ -105,7 +125,7 @@ class OutfitService:
 
         config = {
             "configurable": {
-                "thread_id": thread_id,  # Checkpointer용
+                "thread_id": thread_id,
                 "query_parser": self.query_parser,
                 "llm_client": self.llm_client,
                 "search_builder": self.search_builder,
