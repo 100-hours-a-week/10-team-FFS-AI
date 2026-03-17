@@ -5,6 +5,7 @@ from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
@@ -131,3 +132,14 @@ def mock_shop_service() -> Generator[AsyncMock, None, None]:
     app.dependency_overrides[get_shop_service] = lambda: mock_service
     yield mock_service
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def redis_client() -> Generator:
+    """Redis 클라이언트 fixture (fakeredis)"""
+    from fakeredis import aioredis
+
+    fake_redis = aioredis.FakeRedis(decode_responses=False)
+    yield fake_redis
+    await fake_redis.flushall()
+    await fake_redis.aclose()

@@ -38,7 +38,8 @@ permissions:
   contents: read
   checks: write
   pull-requests: write
-  id-token: write  # OIDC를 위한 권한 추가
+  id-token: write  # OIDC를 위한 권한
+  actions: write
 
 # ============================================================
 # 동시성 제어: 같은 PR 또는 브랜치에서 새 실행 시 이전 실행 취소
