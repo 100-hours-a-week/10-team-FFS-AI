@@ -188,8 +188,6 @@ class ShopCompositionLLMResponse(BaseModel):
 
 
 class IntentDetectionResult(BaseModel):
-    """멀티턴 대화 인텐트 판별 결과"""
-
     intent: Literal["new_outfit", "modify_previous", "confirm_item"] = Field(
         ...,
         description=(
@@ -197,4 +195,22 @@ class IntentDetectionResult(BaseModel):
             "modify_previous: 이전 추천 수정, "
             "confirm_item: 아이템 확정"
         ),
+    )
+
+
+class IntentDetectionLLMResponse(BaseModel):
+    intent_type: Literal["new", "item_change", "style_modify", "re_request"] = Field(
+        description="사용자 의도 유형"
+    )
+    target_outfit_index: int | None = Field(
+        default=None,
+        description="특정 코디 지칭 시 인덱스 (0-based). '첫 번째 코디'=0, '두 번째 코디'=1. 지칭 없으면 None",
+    )
+    target_category: CategoryType | None = Field(
+        default=None,
+        description="특정 카테고리 지칭 시 값 (TOP, BOTTOM, OUTER 등). 지칭 없으면 None",
+    )
+    style_direction: str | None = Field(
+        default=None,
+        description="스타일 변경 방향 ('더 캐주얼하게', '밝은 색으로' 등). 없으면 None",
     )

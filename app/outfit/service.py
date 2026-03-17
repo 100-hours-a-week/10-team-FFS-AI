@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 PIPELINE_TIMEOUT_SECONDS = 90
 
-# Progress 발행 콜백 타입
+
 ProgressCallback = Callable[[int, str], Awaitable[None]]
 
 
@@ -36,7 +36,8 @@ class OutfitService:
         shop_repository: ShopProductRepository | None = None,
         shop_search_builder: ShopSearchQueryBuilder | None = None,
     ) -> None:
-        self.query_parser = query_parser or QueryParser(llm_client=OpenAIClient())
+        self.llm_client = OpenAIClient()
+        self.query_parser = query_parser or QueryParser(llm_client=self.llm_client)
         self.search_builder = search_builder or SearchQueryBuilder()
         self.repository = repository or ClothingRepository()
         self.composer = composer or OutfitComposer()
@@ -72,7 +73,7 @@ class OutfitService:
             "weather": request.weather,
             "upload_slots": request.urls,
             "quality_retry_count": 0,
-            "session_data": session_data,  # 세션 데이터 추가
+            "session_data": session_data,
         }
         from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
 
@@ -81,13 +82,14 @@ class OutfitService:
         config = {
             "configurable": {
                 "query_parser": self.query_parser,
+                "llm_client": self.llm_client,
                 "search_builder": self.search_builder,
                 "clothing_repository": self.repository,
                 "outfit_composer": self.composer,
                 "vton_processor": self.vton_processor,
                 "shop_repository": self.shop_repository,
                 "shop_search_builder": self.shop_search_builder,
-                "progress_callback": progress_callback,  # Progress 콜백 추가
+                "progress_callback": progress_callback,
             },
             "callbacks": [langfuse_handler],
             "metadata": {
