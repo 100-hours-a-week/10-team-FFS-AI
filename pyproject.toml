@@ -46,6 +46,7 @@ dev = [
     # Type checking
     "mypy",
     "types-redis",
+    "fakeredis[lua]>=2.34.1",
 ]
 
 [build-system]

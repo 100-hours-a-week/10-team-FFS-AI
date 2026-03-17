@@ -28,6 +28,11 @@ async def tpo_extract(state: OutfitGraphState, config: RunnableConfig) -> dict:
     configurable = config.get("configurable", {})
     query_parser = configurable["query_parser"]
     search_builder = configurable["search_builder"]
+    progress_callback = configurable.get("progress_callback")
+
+    # Progress 발행
+    if progress_callback:
+        await progress_callback(step=2, step_label="의도 분석 중...")
 
     query = state["query"]
     user_id = state["user_id"]
