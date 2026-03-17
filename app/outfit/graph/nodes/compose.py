@@ -34,6 +34,18 @@ async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dic
             )
             return {"outfits": []}
 
+    # style_modify: 스타일 방향 프롬프트에 반영
+    if parsed_intent and parsed_intent["intent_type"] == "style_modify":
+        style_direction = parsed_intent.get("style_direction")
+        if style_direction:
+            trace_id = state.get("trace_id", "unknown")
+            logger.info(
+                f"Style modify: applying style_direction='{style_direction}' | "
+                f"trace_id={trace_id}"
+            )
+            # TODO: Phase 3 - style_direction을 조합 프롬프트에 반영
+            # 현재는 기본 조합 로직 사용
+
     configurable = config.get("configurable", {})
     outfit_composer = configurable["outfit_composer"]
 

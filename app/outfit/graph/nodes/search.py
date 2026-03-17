@@ -35,6 +35,18 @@ async def vector_search(state: OutfitGraphState, config: RunnableConfig) -> dict
         )
         return {"search_results": [], "category_coverage": {}}
 
+    # item_change: 특정 카테고리만 재검색
+    if parsed_intent and parsed_intent["intent_type"] == "item_change":
+        target_category = parsed_intent.get("target_category")
+        if target_category:
+            trace_id = state.get("trace_id", "unknown")
+            logger.info(
+                f"Item change: searching for category={target_category} | "
+                f"trace_id={trace_id}"
+            )
+            # TODO: Phase 3 - confirmed_items 활용한 재검색 로직 구현
+            # 현재는 기본 검색 로직 사용
+
     configurable = config.get("configurable", {})
     clothing_repository = configurable["clothing_repository"]
 
