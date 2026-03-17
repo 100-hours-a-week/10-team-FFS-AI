@@ -137,10 +137,9 @@ def mock_shop_service() -> Generator[AsyncMock, None, None]:
 
 @pytest_asyncio.fixture
 async def redis_client() -> Generator:
-    """Redis 클라이언트 fixture (fakeredis)"""
     from fakeredis import aioredis
 
-    fake_redis = aioredis.FakeRedis(decode_responses=False)
+    fake_redis = aioredis.FakeRedis(decode_responses=True)
     yield fake_redis
     await fake_redis.flushall()
     await fake_redis.aclose()
