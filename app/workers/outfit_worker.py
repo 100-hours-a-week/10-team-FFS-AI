@@ -12,6 +12,7 @@ from app.common.kafka.schemas import (
     ResponseMetadata,
 )
 from app.outfit.schemas import OutfitRequest
+from app.outfit.session_manager import SessionManager
 from app.workers.base import BaseWorker
 from app.workers.config import OutfitWorkerConfig, get_outfit_worker_config
 from app.workers.dependencies import (
@@ -36,6 +37,7 @@ class OutfitWorker(BaseWorker[OutfitRequestMessage]):
     def __init__(self, config: OutfitWorkerConfig) -> None:
         super().__init__(config)
         self.worker_config = config
+        self.session_manager = SessionManager()  # Redis 기반 세션 관리자
 
     @property
     def request_topic(self) -> str:
@@ -70,7 +72,8 @@ class OutfitWorker(BaseWorker[OutfitRequestMessage]):
         """
         logger.info(
             f"코디 추천 시작: request_id={message.request_id}, "
-            f"user_id={message.user_id}, query={message.query}"
+            f"user_id={message.user_id}, query={message.query}, "
+            f"session_id={message.session_id}"
         )
 
         # Progress 발행: 시작
@@ -80,25 +83,56 @@ class OutfitWorker(BaseWorker[OutfitRequestMessage]):
             step_label="코디 추천 요청 처리 시작",
         )
 
-        # OutfitRequestMessage → OutfitRequest 변환
+        # 1. 세션 로드
+        session_data = None
+        if message.session_id:
+            session_data = await self.session_manager.load_session(message.session_id)
+
+        # 2. Progress 발행 콜백 정의
+        async def send_progress_callback(step: int, step_label: str) -> None:
+            await self.send_progress(
+                request_id=message.request_id,
+                step=step,
+                step_label=step_label,
+            )
+
+        # 3. OutfitRequestMessage → OutfitRequest 변환
         outfit_request = OutfitRequest(
             user_id=message.user_id,
             query=message.query,
             session_id=message.session_id,
             urls=message.upload_slots,
-            weather=None,  # 현재 message에 weather 필드 없음
+            weather=None,
         )
 
-        # OutfitService 호출
+        # 4. OutfitService 호출 (실제 LangGraph)
         service = get_outfit_service_for_worker()
         start_time = time.time()
 
         response = await service.recommend(
             request=outfit_request,
-            trace_id=message.request_id,  # requestId를 trace_id로 사용 (Langfuse)
+            trace_id=message.request_id,
+            session_data=session_data,
+            progress_callback=send_progress_callback,
         )
 
         processing_time_ms = int((time.time() - start_time) * 1000)
+
+        # 5. 세션 저장
+        if message.session_id:
+            # 대화 히스토리에 추가
+            await self.session_manager.append_turn(
+                session_id=message.session_id,
+                user_id=message.user_id,
+                user_message=message.query,
+                assistant_message=response.query_summary,
+            )
+
+            # previous_outfits 업데이트
+            session_data = await self.session_manager.load_session(message.session_id)
+            if session_data:
+                session_data.previous_outfits = response.outfits
+                await self.session_manager.save_session(session_data)
 
         logger.info(
             f"코디 추천 완료: request_id={message.request_id}, "
@@ -106,7 +140,7 @@ class OutfitWorker(BaseWorker[OutfitRequestMessage]):
             f"outfit_count={len(response.outfits)}"
         )
 
-        # OutfitResponse → OutfitResponseMessage 변환
+        # 6. OutfitResponse → OutfitResponseMessage 변환
         return OutfitResponseMessage(
             request_id=message.request_id,
             status="completed",
@@ -116,6 +150,9 @@ class OutfitWorker(BaseWorker[OutfitRequestMessage]):
             metadata=ResponseMetadata(
                 processing_time_ms=processing_time_ms,
                 model_version="v1",
+                confidence=response.confidence
+                if hasattr(response, "confidence")
+                else None,
             ),
         )
 
