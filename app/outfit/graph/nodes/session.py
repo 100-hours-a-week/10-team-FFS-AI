@@ -82,8 +82,18 @@ async def save_session_context(state: OutfitGraphState, config: RunnableConfig) 
     if outfits:
         session_data.previous_outfits = outfits
 
-    # 3. confirmed_items 업데이트 (향후 구현)
-    # TODO: item_change 인텐트에서 확정된 아이템 ID를 confirmed_items에 추가
+        # 3. confirmed_items 업데이트: 첫 번째 outfit을 확정 아이템으로 설정
+        first_outfit = outfits[0]
+        new_confirmed_items = {}
+        for item in first_outfit.items:
+            new_confirmed_items[item.category] = item.clothes_id
+
+        session_data.confirmed_items = new_confirmed_items
+
+        logger.info(
+            f"Updated confirmed_items | trace_id={trace_id} "
+            f"confirmed_items={new_confirmed_items}"
+        )
 
     try:
         await session_manager.save_session(session_data)

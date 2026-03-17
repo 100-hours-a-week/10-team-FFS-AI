@@ -17,15 +17,14 @@ SEASON_KEYWORDS = {
 }
 DEFAULT_CATEGORIES = ["TOP", "BOTTOM", "SHOES"]
 
-# OUTER 포함 여부 기준 — parsed_query.season 값 기준 (집합 비교)
-OUTER_REQUIRED_SEASONS = {"겨울"}  # 반드시 OUTER 포함
-OUTER_OPTIONAL_SEASONS = {"봄", "가을"}  # 있으면 활용, 없어도 코디 성립
+
+OUTER_REQUIRED_SEASONS = {"겨울"}
+OUTER_OPTIONAL_SEASONS = {"봄", "가을"}
 
 MAX_TPO_RETRIES = 2
 
 
 async def tpo_extract(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    # 인텐트 체크: new가 아니면 스킵
     parsed_intent = state.get("parsed_intent")
     if parsed_intent and parsed_intent["intent_type"] != "new":
         trace_id = state.get("trace_id", "unknown")
@@ -40,7 +39,6 @@ async def tpo_extract(state: OutfitGraphState, config: RunnableConfig) -> dict:
     search_builder = configurable["search_builder"]
     progress_callback = configurable.get("progress_callback")
 
-    # Progress 발행
     if progress_callback:
         await progress_callback(step=2, step_label="의도 분석 중...")
 
@@ -89,7 +87,6 @@ async def tpo_extract(state: OutfitGraphState, config: RunnableConfig) -> dict:
 
 
 def _extract_season_from_query(query: str) -> str | None:
-    """쿼리에서 계절 키워드를 추출한다."""
     query_lower = query.lower()
     for season, keywords in SEASON_KEYWORDS.items():
         if any(kw in query_lower for kw in keywords):
@@ -98,7 +95,6 @@ def _extract_season_from_query(query: str) -> str | None:
 
 
 def _get_season_from_month() -> str:
-    """현재 월 기반으로 계절을 추론한다."""
     month = datetime.now().month
     if 3 <= month <= 5:
         return "봄"
@@ -111,15 +107,6 @@ def _get_season_from_month() -> str:
 
 
 async def tpo_validate(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    """TPO 파싱 결과를 검증한다.
-
-    검증 기준:
-    - error가 없는지
-    - parsed_query가 존재하는지
-    - occasion이 빈 문자열이 아닌지
-    - style이 빈 문자열이 아닌지
-    - 쿼리에 계절 키워드가 있으면 parsed_query.season도 있는지
-    """
     trace_id = state.get("trace_id", "unknown")
 
     if state.get("error"):
@@ -153,7 +140,6 @@ async def tpo_validate(state: OutfitGraphState, config: RunnableConfig) -> dict:
 
 
 async def tpo_retry(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    """TPO 재추출을 시도한다. retry_count를 증가시키고 tpo_extract를 다시 호출."""
     trace_id = state.get("trace_id", "unknown")
     current_retry = state.get("tpo_retry_count", 0)
 
@@ -169,7 +155,6 @@ async def tpo_retry(state: OutfitGraphState, config: RunnableConfig) -> dict:
 
 
 async def tpo_fallback(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    """규칙 기반 기본 TPO를 생성한다."""
     configurable = config.get("configurable", {})
     search_builder = configurable["search_builder"]
 

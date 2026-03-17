@@ -27,6 +27,7 @@ def setup_test_environment() -> Generator[None, None, None]:
         "REDIS_PORT": os.getenv("REDIS_PORT", "6380"),
         "REDIS_DB": os.getenv("REDIS_DB", "0"),
         "UPSTAGE_API_KEY": os.getenv("UPSTAGE_API_KEY", "test_upstage_key"),
+        "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "test_openai_key"),
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID", "test_access_key"),
         "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY", "test_secret_key"),
     }
