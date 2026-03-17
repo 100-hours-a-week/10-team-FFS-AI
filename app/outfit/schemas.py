@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Literal
+
 from pydantic import Field
 
 from app.common.llm_schemas import CategoryType
@@ -126,3 +129,38 @@ class OutfitResponse(BaseSchema):
     query_summary: str = Field(..., description="사용자 요청 요약")
     outfits: list[Outfit] = Field(default_factory=list, description="추천 코디 목록")
     session_id: str | None = Field(default=None, description="멀티턴 대화 세션 ID")
+    confidence: float | None = Field(
+        default=None, description="추천 신뢰도 (0~1, None이면 미측정)"
+    )
+
+
+class ConversationTurn(BaseSchema):
+    """멀티턴 대화의 1턴"""
+
+    role: Literal["user", "assistant"] = Field(..., description="발화자")
+    content: str = Field(..., description="발화 내용")
+    timestamp: datetime = Field(
+        default_factory=datetime.utcnow, description="발화 시각 (UTC)"
+    )
+
+
+class SessionData(BaseSchema):
+    """멀티턴 세션 데이터"""
+
+    session_id: str = Field(..., description="세션 ID")
+    user_id: int = Field(..., description="사용자 ID")
+    history: list[ConversationTurn] = Field(
+        default_factory=list, description="대화 히스토리"
+    )
+    previous_outfits: list[Outfit] = Field(
+        default_factory=list, description="이전 추천 코디 목록"
+    )
+    confirmed_items: list[int] = Field(
+        default_factory=list, description="확정 아이템 ID 목록"
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, description="세션 생성 시각 (UTC)"
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow, description="마지막 업데이트 시각 (UTC)"
+    )

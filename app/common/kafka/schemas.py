@@ -35,6 +35,9 @@ class ShopRequestMessage(BaseSchema):
 class ResponseMetadata(BaseSchema):
     processing_time_ms: int = Field(..., description="처리 시간 (밀리초)")
     model_version: str = Field(default="v1", description="모델 버전")
+    confidence: float | None = Field(
+        default=None, description="추천 신뢰도 (0~1, None이면 미측정)"
+    )
 
 
 class OutfitResponseMessage(BaseSchema):
