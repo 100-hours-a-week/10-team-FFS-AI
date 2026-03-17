@@ -12,6 +12,7 @@ from app.outfit.query_parser import QueryParser
 from app.outfit.repository import ClothingRepository
 from app.outfit.schemas import OutfitRequest, OutfitResponse, SessionData
 from app.outfit.search_query_builder import SearchQueryBuilder
+from app.outfit.session_manager import SessionManager
 from app.outfit.vton_processor import VTONProcessor
 from app.shop.repository import ShopProductRepository
 from app.shop.search_query_builder import ShopSearchQueryBuilder
@@ -35,6 +36,7 @@ class OutfitService:
         vton_processor: VTONProcessor | None = None,
         shop_repository: ShopProductRepository | None = None,
         shop_search_builder: ShopSearchQueryBuilder | None = None,
+        session_manager: SessionManager | None = None,
     ) -> None:
         self.llm_client = OpenAIClient()
         self.query_parser = query_parser or QueryParser(llm_client=self.llm_client)
@@ -44,6 +46,7 @@ class OutfitService:
         self.vton_processor = vton_processor or VTONProcessor()
         self.shop_repository = shop_repository or ShopProductRepository()
         self.shop_search_builder = shop_search_builder or ShopSearchQueryBuilder()
+        self.session_manager = session_manager or SessionManager()
         self.graph = build_outfit_graph()
 
     @measure_time(stage="total_pipeline", metric=OUTFIT_PIPELINE_TOTAL_DURATION)
@@ -89,6 +92,7 @@ class OutfitService:
                 "vton_processor": self.vton_processor,
                 "shop_repository": self.shop_repository,
                 "shop_search_builder": self.shop_search_builder,
+                "session_manager": self.session_manager,  # save_session_context용
                 "progress_callback": progress_callback,
             },
             "callbacks": [langfuse_handler],

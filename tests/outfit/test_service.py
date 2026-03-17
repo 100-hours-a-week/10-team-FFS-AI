@@ -235,6 +235,9 @@ def service(
     mock_shop_repository: MagicMock,
     mock_shop_search_builder: MagicMock,
 ) -> OutfitService:
+    # Mock SessionManager to avoid Redis initialization
+    mock_session_manager = MagicMock()
+
     service = OutfitService(
         query_parser=mock_query_parser,
         search_builder=mock_search_builder,
@@ -243,6 +246,7 @@ def service(
         vton_processor=mock_vton_processor,
         shop_repository=mock_shop_repository,
         shop_search_builder=mock_shop_search_builder,
+        session_manager=mock_session_manager,
     )
     return service
 
