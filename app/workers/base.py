@@ -26,6 +26,12 @@ from app.common.kafka.schemas import (
 from app.common.kafka.serialization import deserialize, serialize
 from app.common.schemas import BaseSchema
 from app.workers.config import WorkerConfig
+from app.workers.metrics import (
+    KAFKA_DLQ_MESSAGES_TOTAL,
+    KAFKA_MESSAGE_PROCESSING_SECONDS,
+    KAFKA_MESSAGES_PROCESSED_TOTAL,
+    KAFKA_RETRY_TOTAL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +162,7 @@ class BaseWorker(ABC, Generic[TRequest]):
 
     async def _process_record_once(self, record: ConsumerRecord) -> None:
         start_time = time.time()
+        worker_type = self.__class__.__name__
 
         message = deserialize(record.value, self.request_model_class)
         request_id = getattr(message, "request_id", None)
@@ -172,7 +179,17 @@ class BaseWorker(ABC, Generic[TRequest]):
         if self._consumer:
             await self._consumer.commit()
 
-        elapsed_ms = int((time.time() - start_time) * 1000)
+        elapsed_seconds = time.time() - start_time
+        elapsed_ms = int(elapsed_seconds * 1000)
+
+        # Prometheus 메트릭 기록
+        KAFKA_MESSAGE_PROCESSING_SECONDS.labels(
+            worker_type=worker_type, topic=self.request_topic
+        ).observe(elapsed_seconds)
+        KAFKA_MESSAGES_PROCESSED_TOTAL.labels(
+            worker_type=worker_type, topic=self.request_topic, status="success"
+        ).inc()
+
         logger.info(
             f"메시지 처리 완료: request_id={request_id}, elapsed_ms={elapsed_ms}"
         )
@@ -208,6 +225,15 @@ class BaseWorker(ABC, Generic[TRequest]):
                         f"Rate limit 발생: service={e.service}, "
                         f"retry_after={actual_wait}초, retry_count={retry_count}"
                     )
+
+                    # Prometheus 메트릭: 재시도 기록
+                    worker_type = self.__class__.__name__
+                    KAFKA_RETRY_TOTAL.labels(
+                        worker_type=worker_type,
+                        topic=self.request_topic,
+                        retry_number=str(retry_count + 1),
+                    ).inc()
+
                     await asyncio.sleep(actual_wait)
                     retry_count += 1
                     last_error = e
@@ -226,6 +252,15 @@ class BaseWorker(ABC, Generic[TRequest]):
                         f"재시도 가능한 오류 발생: {e.__class__.__name__}, "
                         f"retry_count={retry_count}, backoff={backoff_seconds}초"
                     )
+
+                    # Prometheus 메트릭: 재시도 기록
+                    worker_type = self.__class__.__name__
+                    KAFKA_RETRY_TOTAL.labels(
+                        worker_type=worker_type,
+                        topic=self.request_topic,
+                        retry_number=str(retry_count + 1),
+                    ).inc()
+
                     if backoff_seconds > 0:
                         await asyncio.sleep(backoff_seconds)
                     retry_count += 1
@@ -245,6 +280,15 @@ class BaseWorker(ABC, Generic[TRequest]):
                         f"예상치 못한 예외 발생: {e.__class__.__name__}: {e}, "
                         f"retry_count={retry_count}, backoff={backoff_seconds}초"
                     )
+
+                    # Prometheus 메트릭: 재시도 기록
+                    worker_type = self.__class__.__name__
+                    KAFKA_RETRY_TOTAL.labels(
+                        worker_type=worker_type,
+                        topic=self.request_topic,
+                        retry_number=str(retry_count + 1),
+                    ).inc()
+
                     if backoff_seconds > 0:
                         await asyncio.sleep(backoff_seconds)
                     retry_count += 1
@@ -407,4 +451,16 @@ class BaseWorker(ABC, Generic[TRequest]):
             self.dlq_topic,
             serialize(dlq_message),
         )
+
+        # Prometheus 메트릭: DLQ 발행 기록
+        worker_type = self.__class__.__name__
+        KAFKA_DLQ_MESSAGES_TOTAL.labels(
+            worker_type=worker_type,
+            original_topic=self.request_topic,
+            error_type=error_type,
+        ).inc()
+        KAFKA_MESSAGES_PROCESSED_TOTAL.labels(
+            worker_type=worker_type, topic=self.request_topic, status="failed"
+        ).inc()
+
         logger.info(f"DLQ 발행 완료: topic={self.dlq_topic}")

@@ -17,6 +17,13 @@ import time
 
 from redis.asyncio import Redis
 
+try:
+    from app.workers.metrics import RATE_LIMIT_HITS_TOTAL, RATE_LIMIT_WAIT_SECONDS
+
+    _METRICS_AVAILABLE = True
+except ImportError:
+    _METRICS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,6 +84,12 @@ class TokenBucket:
             logger.warning(
                 f"Rate limit reached | key={self.key} waiting={wait_time:.2f}s"
             )
+
+            # Prometheus 메트릭 기록 (optional)
+            if _METRICS_AVAILABLE:
+                RATE_LIMIT_HITS_TOTAL.labels(key=self.key).inc()
+                RATE_LIMIT_WAIT_SECONDS.labels(key=self.key).observe(wait_time)
+
             await asyncio.sleep(wait_time)
 
     async def _check_and_consume(self, current_time: float) -> float:
