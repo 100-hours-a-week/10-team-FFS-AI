@@ -3,9 +3,10 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.outfit.graph.edges import should_retry_or_fallback
 from app.outfit.graph.nodes.fallback import build_fallback_response
+from app.outfit.graph.nodes.intent import detect_intent
 from app.outfit.graph.nodes.quality import evaluate_quality
 from app.outfit.graph.nodes.response import format_response
-from app.outfit.graph.nodes.session import save_session_context
+from app.outfit.graph.nodes.session import load_session_context, save_session_context
 from app.outfit.graph.nodes.vton import vton_process
 from app.outfit.graph.state import OutfitGraphState
 from app.outfit.graph.subgraphs import (
@@ -22,6 +23,9 @@ def build_outfit_graph() -> CompiledStateGraph:
     search_subgraph = build_search_subgraph()
     compose_subgraph = build_compose_subgraph()
 
+    graph.add_node("detect_intent", detect_intent)
+    graph.add_node("load_session_context", load_session_context)
+
     graph.add_node("tpo_subgraph", tpo_subgraph)
     graph.add_node("search_subgraph", search_subgraph)
     graph.add_node("compose_subgraph", compose_subgraph)
@@ -33,7 +37,9 @@ def build_outfit_graph() -> CompiledStateGraph:
     graph.add_node("format_response", format_response)
     graph.add_node("save_session_context", save_session_context)
 
-    graph.add_edge(START, "tpo_subgraph")
+    graph.add_edge(START, "detect_intent")
+    graph.add_edge("detect_intent", "load_session_context")
+    graph.add_edge("load_session_context", "tpo_subgraph")
     graph.add_edge("tpo_subgraph", "search_subgraph")
     graph.add_edge("search_subgraph", "compose_subgraph")
     graph.add_edge("compose_subgraph", "evaluate_quality")
