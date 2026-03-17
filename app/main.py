@@ -120,6 +120,22 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
                     f"replica={i + 1}/{config.replicas}"
                 )
 
+    # 커머스 배치 스케줄러 시작
+    if settings.batch_enabled:
+        try:
+            from app.commerce.scheduler import CommerceBatchScheduler
+
+            scheduler = CommerceBatchScheduler()
+            batch_task = asyncio.create_task(
+                scheduler.run(), name="commerce-batch-scheduler"
+            )
+            _consumer_tasks.append(batch_task)
+            logger.info("커머스 배치 스케줄러 시작 완료")
+        except Exception as e:
+            logger.warning(
+                f"커머스 배치 스케줄러 시작 실패 (HTTP API는 정상 동작): {e}"
+            )
+
     logger.info("Application startup complete")
 
     yield

@@ -185,3 +185,16 @@ class ShopCompositionLLMResponse(BaseModel):
     outfits: list[ShopCombination] = Field(
         default_factory=list, description="추천 코디 목록"
     )
+
+
+class IntentDetectionResult(BaseModel):
+    """멀티턴 대화 인텐트 판별 결과"""
+
+    intent: Literal["new_outfit", "modify_previous", "confirm_item"] = Field(
+        ...,
+        description=(
+            "사용자 의도 - new_outfit: 새로운 코디 추천, "
+            "modify_previous: 이전 추천 수정, "
+            "confirm_item: 아이템 확정"
+        ),
+    )
