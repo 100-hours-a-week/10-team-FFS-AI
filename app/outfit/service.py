@@ -1,16 +1,19 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
 
+from langgraph.graph.state import CompiledStateGraph
+
 from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
-from app.outfit.graph import build_outfit_graph
 from app.outfit.llm_client import OpenAIClient
 from app.outfit.outfit_composer import OutfitComposer
 from app.outfit.query_parser import QueryParser
 from app.outfit.repository import ClothingRepository
-from app.outfit.schemas import OutfitRequest, OutfitResponse
+from app.outfit.schemas import OutfitRequest, OutfitResponse, SessionData
 from app.outfit.search_query_builder import SearchQueryBuilder
+from app.outfit.session_manager import SessionManager
 from app.outfit.vton_processor import VTONProcessor
 from app.shop.repository import ShopProductRepository
 from app.shop.search_query_builder import ShopSearchQueryBuilder
@@ -19,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 PIPELINE_TIMEOUT_SECONDS = 90
+
+
+ProgressCallback = Callable[[int, str], Awaitable[None]]
 
 
 class OutfitService:
@@ -31,19 +37,40 @@ class OutfitService:
         vton_processor: VTONProcessor | None = None,
         shop_repository: ShopProductRepository | None = None,
         shop_search_builder: ShopSearchQueryBuilder | None = None,
+        session_manager: SessionManager | None = None,
     ) -> None:
-        self.query_parser = query_parser or QueryParser(llm_client=OpenAIClient())
+        self.llm_client = OpenAIClient()
+        self.query_parser = query_parser or QueryParser(llm_client=self.llm_client)
         self.search_builder = search_builder or SearchQueryBuilder()
         self.repository = repository or ClothingRepository()
         self.composer = composer or OutfitComposer()
         self.vton_processor = vton_processor or VTONProcessor()
         self.shop_repository = shop_repository or ShopProductRepository()
         self.shop_search_builder = shop_search_builder or ShopSearchQueryBuilder()
-        self.graph = build_outfit_graph()
+        self.session_manager = session_manager or SessionManager()
+        self.graph = None  # lazy initialization
+
+    async def _ensure_graph(self) -> CompiledStateGraph:
+        """그래프 lazy 초기화"""
+        if self.graph is None:
+            from app.outfit.graph import build_outfit_graph, build_outfit_graph_async
+
+            try:
+                # Checkpointer가 초기화되어 있으면 async 버전 사용
+                self.graph = await build_outfit_graph_async()
+            except RuntimeError:
+                # 테스트 환경 등에서 Checkpointer 없을 경우 기본 버전 사용
+                logger.info("Checkpointer not initialized, using basic graph")
+                self.graph = build_outfit_graph()
+        return self.graph
 
     @measure_time(stage="total_pipeline", metric=OUTFIT_PIPELINE_TOTAL_DURATION)
     async def recommend(
-        self, request: OutfitRequest, trace_id: str | None = None
+        self,
+        request: OutfitRequest,
+        trace_id: str | None = None,
+        session_data: SessionData | None = None,
+        progress_callback: ProgressCallback | None = None,
     ) -> OutfitResponse:
         if trace_id is None:
             trace_id = str(uuid.uuid4())
@@ -56,6 +83,12 @@ class OutfitService:
             f'query="{request.query}"'
         )
 
+        # 그래프 초기화
+        graph = await self._ensure_graph()
+
+        # thread_id 설정 (session_id 활용)
+        thread_id = request.session_id if request.session_id else str(uuid.uuid4())
+
         initial_state = {
             "query": request.query,
             "user_id": request.user_id,
@@ -64,6 +97,7 @@ class OutfitService:
             "weather": request.weather,
             "upload_slots": request.urls,
             "quality_retry_count": 0,
+            "session_data": session_data,
         }
         from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
 
@@ -71,13 +105,17 @@ class OutfitService:
 
         config = {
             "configurable": {
+                "thread_id": thread_id,  # Checkpointer용
                 "query_parser": self.query_parser,
+                "llm_client": self.llm_client,
                 "search_builder": self.search_builder,
                 "clothing_repository": self.repository,
                 "outfit_composer": self.composer,
                 "vton_processor": self.vton_processor,
                 "shop_repository": self.shop_repository,
                 "shop_search_builder": self.shop_search_builder,
+                "session_manager": self.session_manager,
+                "progress_callback": progress_callback,
             },
             "callbacks": [langfuse_handler],
             "metadata": {
@@ -89,7 +127,7 @@ class OutfitService:
 
         try:
             result = await asyncio.wait_for(
-                self.graph.ainvoke(initial_state, config=config),
+                graph.ainvoke(initial_state, config=config),
                 timeout=PIPELINE_TIMEOUT_SECONDS,
             )
             return result["response"]

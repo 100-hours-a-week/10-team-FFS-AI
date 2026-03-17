@@ -12,6 +12,43 @@ MAX_COMPOSE_RETRIES = 2
 
 
 async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dict:
+    # 인텐트 체크: re_request는 조합 스킵, previous_outfits 반환
+    parsed_intent = state.get("parsed_intent")
+    if parsed_intent and parsed_intent["intent_type"] == "re_request":
+        trace_id = state.get("trace_id", "unknown")
+        logger.info(f"Skip compose for re_request | trace_id={trace_id}")
+
+        # previous_outfits를 outfits로 복사
+        session_data = state.get("session_data")
+        previous_outfits = session_data.previous_outfits if session_data else []
+
+        if previous_outfits:
+            logger.info(
+                f"Returning previous outfits | trace_id={trace_id} "
+                f"count={len(previous_outfits)}"
+            )
+            return {"outfits": previous_outfits}
+        else:
+            logger.warning(
+                f"No previous outfits found for re_request | trace_id={trace_id}"
+            )
+            return {"outfits": []}
+
+    # style_modify: 스타일 방향 프롬프트에 반영
+    style_direction_instruction = None
+    if parsed_intent and parsed_intent["intent_type"] == "style_modify":
+        style_direction = parsed_intent.get("style_direction")
+        if style_direction:
+            trace_id = state.get("trace_id", "unknown")
+            logger.info(
+                f"Style modify: applying style_direction='{style_direction}' | "
+                f"trace_id={trace_id}"
+            )
+            style_direction_instruction = (
+                f"사용자가 스타일 변경을 요청했습니다: '{style_direction}'\n"
+                f"이 방향에 맞게 코디를 재구성해주세요."
+            )
+
     configurable = config.get("configurable", {})
     outfit_composer = configurable["outfit_composer"]
 
@@ -55,12 +92,21 @@ async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dic
             f"trace_id={trace_id} critical_issues={critical_issues}"
         )
 
+    # style_direction과 quality_feedback 결합
+    additional_instructions = None
+    if style_direction_instruction and quality_feedback:
+        additional_instructions = f"{quality_feedback}\n\n{style_direction_instruction}"
+    elif style_direction_instruction:
+        additional_instructions = style_direction_instruction
+    elif quality_feedback:
+        additional_instructions = quality_feedback
+
     response = await outfit_composer.compose(
         parsed_query=parsed_query,
         search_results=candidates,
         trace_id=trace_id,
         user_id=user_id,
-        additional_instructions=quality_feedback,
+        additional_instructions=additional_instructions,
     )
 
     outfits_detail = []

@@ -1,30 +1,41 @@
+from __future__ import annotations
+
 import json
+import logging
 from typing import TypeVar
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
-T = TypeVar("T", bound=BaseModel)
+from app.common.kafka.exceptions import DeserializationError
+from app.common.schemas import BaseSchema
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseSchema)
+
+# Re-export for backward compatibility
+__all__ = ["serialize", "deserialize", "DeserializationError"]
 
 
-class DeserializationError(Exception):
-    def __init__(self, message: str, original_data: bytes) -> None:
-        super().__init__(message)
-        self.original_data = original_data
-
-
-def serialize(model: BaseModel) -> bytes:
+def serialize(model: BaseSchema) -> bytes:
     return model.model_dump_json(by_alias=True).encode("utf-8")
 
 
 def deserialize(data: bytes, model_class: type[T]) -> T:
     try:
-        decoded_data = data.decode("utf-8")
-        json_dict = json.loads(decoded_data)
-
+        json_dict = json.loads(data.decode("utf-8"))
         return model_class.model_validate(json_dict)
-
-    except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise DeserializationError(f"Invalid JSON format: {str(e)}", data) from e
-
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON 파싱 실패: {e}, 원본: {data[:200]}")
+        raise DeserializationError(
+            message=f"JSON 파싱 실패: {e}",
+            original_data=data,
+            cause=e,
+        ) from e
     except ValidationError as e:
-        raise DeserializationError(f"Schema validation failed: {str(e)}", data) from e
+        logger.error(f"스키마 검증 실패: {e}, 원본: {data[:200]}")
+        raise DeserializationError(
+            message=f"스키마 검증 실패: {e.error_count()}개 오류",
+            original_data=data,
+            cause=e,
+        ) from e

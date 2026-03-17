@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Literal
+
 from pydantic import Field
 
 from app.common.llm_schemas import CategoryType
@@ -126,3 +129,37 @@ class OutfitResponse(BaseSchema):
     query_summary: str = Field(..., description="사용자 요청 요약")
     outfits: list[Outfit] = Field(default_factory=list, description="추천 코디 목록")
     session_id: str | None = Field(default=None, description="멀티턴 대화 세션 ID")
+    shop_supplemented: bool = Field(
+        default=False, description="쇼핑 검색으로 아이템 보완 여부"
+    )
+    fallback_used: bool = Field(default=False, description="Fallback 응답 사용 여부")
+
+
+class Message(BaseSchema):
+    """멀티턴 대화 메시지 (V3)"""
+
+    role: Literal["user", "assistant"] = Field(..., description="발화자")
+    content: str = Field(..., description="발화 내용")
+    outfits: list[Outfit] | None = Field(
+        default=None, description="추천 코디 목록 (assistant 메시지에만 포함)"
+    )
+
+
+class SessionData(BaseSchema):
+    """멀티턴 세션 데이터"""
+
+    session_id: str = Field(..., description="세션 ID")
+    user_id: int = Field(..., description="사용자 ID")
+    history: list[Message] = Field(default_factory=list, description="대화 히스토리")
+    previous_outfits: list[Outfit] = Field(
+        default_factory=list, description="이전 추천 코디 목록"
+    )
+    confirmed_items: dict[str, int] = Field(
+        default_factory=dict, description="고정 아이템 (카테고리 → clothes_id)"
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow, description="세션 생성 시각 (UTC)"
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow, description="마지막 업데이트 시각 (UTC)"
+    )

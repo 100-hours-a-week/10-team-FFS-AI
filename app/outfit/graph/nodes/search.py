@@ -3,7 +3,7 @@ import logging
 from langgraph.types import RunnableConfig
 
 from app.outfit.graph.state import OutfitGraphState
-from app.outfit.schemas import SearchQuery
+from app.outfit.schemas import SearchQuery, SearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,87 @@ def get_min_count(category: str) -> int:
 
 
 async def vector_search(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    """검색 쿼리로 Qdrant에서 의류 후보를 검색한다."""
+    parsed_intent = state.get("parsed_intent")
+    if parsed_intent and parsed_intent["intent_type"] in ["re_request", "style_modify"]:
+        trace_id = state.get("trace_id", "unknown")
+        logger.info(
+            f"Skip vector search for intent: {parsed_intent['intent_type']} | "
+            f"trace_id={trace_id}"
+        )
+        return {"search_results": [], "category_coverage": {}}
+
+    if parsed_intent and parsed_intent["intent_type"] == "item_change":
+        target_category = parsed_intent.get("target_category")
+        if target_category:
+            configurable = config.get("configurable", {})
+            clothing_repository = configurable["clothing_repository"]
+
+            user_id = state["user_id"]
+            trace_id = state.get("trace_id", "unknown")
+            search_queries = state.get("search_queries", [])
+
+            logger.info(
+                f"Item change: searching for category={target_category} | "
+                f"trace_id={trace_id}"
+            )
+
+            confirmed_items = state.get("confirmed_items", {})
+            confirmed_ids = list(confirmed_items.values())
+
+            confirmed_results = {}
+            if confirmed_ids:
+                confirmed_candidates = await clothing_repository.get_by_ids(
+                    user_id=user_id,
+                    clothes_ids=confirmed_ids,
+                    trace_id=trace_id,
+                )
+
+                for candidate in confirmed_candidates:
+                    cat = candidate.category
+                    if cat not in confirmed_results:
+                        confirmed_results[cat] = []
+                    confirmed_results[cat].append(candidate)
+
+                logger.info(
+                    f"Loaded confirmed items | trace_id={trace_id} "
+                    f"count={len(confirmed_candidates)} "
+                    f"categories={list(confirmed_results.keys())}"
+                )
+
+            search_queries_filtered = [
+                q for q in search_queries if q.category_filter == target_category
+            ]
+
+            if search_queries_filtered:
+                new_search_results = await clothing_repository.search_multiple(
+                    user_id=user_id,
+                    queries=search_queries_filtered,
+                    trace_id=trace_id,
+                )
+            else:
+                new_search_results = []
+
+            all_results = list(new_search_results)
+            for cat, candidates in confirmed_results.items():
+                if cat != target_category:
+                    all_results.append(
+                        SearchResult(category=cat, candidates=candidates)
+                    )
+
+            category_coverage = {}
+            for result in all_results:
+                category_coverage[result.category] = len(result.candidates)
+
+            logger.info(
+                f"Item change search completed | trace_id={trace_id} "
+                f"target={target_category} coverage={category_coverage}"
+            )
+
+            return {
+                "search_results": all_results,
+                "category_coverage": category_coverage,
+            }
+
     configurable = config.get("configurable", {})
     clothing_repository = configurable["clothing_repository"]
 
@@ -65,15 +145,13 @@ async def vector_search(state: OutfitGraphState, config: RunnableConfig) -> dict
 async def evaluate_search(state: OutfitGraphState) -> dict:
     search_results = state.get("search_results", [])
     required_categories = state.get("required_categories", [])
-    # optional_categories는 insufficient 판정 제외
-    # — coverage에 있으면 merged_candidates에 자동 포함되어 코디에 활용됨
+
     optional_categories = state.get("optional_categories", [])
 
     category_coverage: dict[str, int] = {}
     for result in search_results:
         category_coverage[result.category] = len(result.candidates)
 
-    # required만 insufficient 체크 (optional은 부족해도 코디 성립)
     insufficient = [
         cat
         for cat in required_categories
