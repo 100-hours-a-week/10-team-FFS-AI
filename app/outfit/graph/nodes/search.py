@@ -3,7 +3,7 @@ import logging
 from langgraph.types import RunnableConfig
 
 from app.outfit.graph.state import OutfitGraphState
-from app.outfit.schemas import SearchQuery
+from app.outfit.schemas import SearchQuery, SearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +39,79 @@ async def vector_search(state: OutfitGraphState, config: RunnableConfig) -> dict
     if parsed_intent and parsed_intent["intent_type"] == "item_change":
         target_category = parsed_intent.get("target_category")
         if target_category:
+            configurable = config.get("configurable", {})
+            clothing_repository = configurable["clothing_repository"]
+
+            user_id = state["user_id"]
             trace_id = state.get("trace_id", "unknown")
+            search_queries = state.get("search_queries", [])
+
             logger.info(
                 f"Item change: searching for category={target_category} | "
                 f"trace_id={trace_id}"
             )
-            # TODO: Phase 3 - confirmed_items 활용한 재검색 로직 구현
-            # 현재는 기본 검색 로직 사용
+
+            # 1. confirmed_items에서 고정 아이템 조회
+            confirmed_items = state.get("confirmed_items", {})
+            confirmed_ids = list(confirmed_items.values())
+
+            confirmed_results = {}
+            if confirmed_ids:
+                confirmed_candidates = await clothing_repository.get_by_ids(
+                    user_id=user_id,
+                    clothes_ids=confirmed_ids,
+                    trace_id=trace_id,
+                )
+
+                # 카테고리별로 그룹화
+                for candidate in confirmed_candidates:
+                    cat = candidate.category
+                    if cat not in confirmed_results:
+                        confirmed_results[cat] = []
+                    confirmed_results[cat].append(candidate)
+
+                logger.info(
+                    f"Loaded confirmed items | trace_id={trace_id} "
+                    f"count={len(confirmed_candidates)} "
+                    f"categories={list(confirmed_results.keys())}"
+                )
+
+            # 2. target_category만 재검색
+            search_queries_filtered = [
+                q for q in search_queries if q.category_filter == target_category
+            ]
+
+            if search_queries_filtered:
+                new_search_results = await clothing_repository.search_multiple(
+                    user_id=user_id,
+                    queries=search_queries_filtered,
+                    trace_id=trace_id,
+                )
+            else:
+                new_search_results = []
+
+            # 3. 재검색 결과와 confirmed_items 병합
+            all_results = list(new_search_results)
+            for cat, candidates in confirmed_results.items():
+                if cat != target_category:  # 재검색하지 않은 카테고리만 추가
+                    all_results.append(
+                        SearchResult(category=cat, candidates=candidates)
+                    )
+
+            # 4. category_coverage 계산
+            category_coverage = {}
+            for result in all_results:
+                category_coverage[result.category] = len(result.candidates)
+
+            logger.info(
+                f"Item change search completed | trace_id={trace_id} "
+                f"target={target_category} coverage={category_coverage}"
+            )
+
+            return {
+                "search_results": all_results,
+                "category_coverage": category_coverage,
+            }
 
     configurable = config.get("configurable", {})
     clothing_repository = configurable["clothing_repository"]

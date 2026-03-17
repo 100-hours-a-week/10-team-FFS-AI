@@ -132,6 +132,63 @@ class ClothingRepository:
 
         return final_results
 
+    async def get_by_ids(
+        self,
+        user_id: int,
+        clothes_ids: list[int],
+        trace_id: str | None = None,
+    ) -> list[ClothingCandidate]:
+        """특정 clothes_id 리스트로 의류 아이템 조회
+
+        Args:
+            user_id: 사용자 ID
+            clothes_ids: 조회할 clothes_id 리스트
+            trace_id: 추적 ID
+
+        Returns:
+            조회된 아이템 리스트
+        """
+        if not clothes_ids:
+            return []
+
+        qdrant = await self._get_qdrant()
+        log_context = f"trace_id={trace_id} " if trace_id else ""
+
+        logger.info(
+            f"Fetching items by IDs | {log_context}"
+            f"user_id={user_id} clothes_ids={clothes_ids}"
+        )
+
+        must_conditions = [
+            qdrant_models.FieldCondition(
+                key="userId",
+                match=qdrant_models.MatchValue(value=user_id),
+            ),
+            qdrant_models.FieldCondition(
+                key="clothesId",
+                match=qdrant_models.MatchAny(any=clothes_ids),
+            ),
+        ]
+
+        query_filter = qdrant_models.Filter(must=must_conditions)
+
+        response = await qdrant.scroll(
+            collection_name=self.settings.qdrant_collection_name,
+            scroll_filter=query_filter,
+            limit=len(clothes_ids),
+            with_payload=True,
+        )
+
+        points = response[0]
+        candidates = [self._to_candidate_from_record(point) for point in points]
+
+        logger.info(
+            f"Fetched items by IDs | {log_context}"
+            f"user_id={user_id} requested={len(clothes_ids)} found={len(candidates)}"
+        )
+
+        return candidates
+
     @staticmethod
     def _to_candidate_from_record(record: Record) -> ClothingCandidate:
         payload = record.payload or {}
