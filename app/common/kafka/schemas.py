@@ -35,14 +35,15 @@ class ShopRequestMessage(BaseSchema):
 class ResponseMetadata(BaseSchema):
     processing_time_ms: int = Field(..., description="처리 시간 (밀리초)")
     model_version: str = Field(default="v1", description="모델 버전")
-    confidence: float | None = Field(
-        default=None, description="추천 신뢰도 (0~1, None이면 미측정)"
+    shop_supplemented: bool = Field(
+        default=False, description="쇼핑 검색으로 아이템 보완 여부"
     )
+    fallback_used: bool = Field(default=False, description="Fallback 응답 사용 여부")
 
 
 class OutfitResponseMessage(BaseSchema):
     request_id: str = Field(..., description="원본 요청 ID")
-    status: Literal["completed"] = Field(default="completed", description="처리 상태")
+    status: Literal["success"] = Field(default="success", description="처리 상태")
     outfits: list[Outfit] = Field(default_factory=list, description="추천 코디 목록")
     query_summary: str = Field(default="", description="요청 요약")
     session_id: str | None = Field(default=None, description="세션 ID")

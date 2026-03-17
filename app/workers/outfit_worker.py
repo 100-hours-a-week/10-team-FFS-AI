@@ -143,16 +143,19 @@ class OutfitWorker(BaseWorker[OutfitRequestMessage]):
         # 6. OutfitResponse → OutfitResponseMessage 변환
         return OutfitResponseMessage(
             request_id=message.request_id,
-            status="completed",
+            status="success",
             outfits=response.outfits,
             query_summary=response.query_summary,
             session_id=response.session_id,
             metadata=ResponseMetadata(
                 processing_time_ms=processing_time_ms,
                 model_version="v1",
-                confidence=response.confidence
-                if hasattr(response, "confidence")
-                else None,
+                shop_supplemented=response.shop_supplemented
+                if hasattr(response, "shop_supplemented")
+                else False,
+                fallback_used=response.fallback_used
+                if hasattr(response, "fallback_used")
+                else False,
             ),
         )
 

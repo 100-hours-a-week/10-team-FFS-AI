@@ -129,9 +129,10 @@ class OutfitResponse(BaseSchema):
     query_summary: str = Field(..., description="사용자 요청 요약")
     outfits: list[Outfit] = Field(default_factory=list, description="추천 코디 목록")
     session_id: str | None = Field(default=None, description="멀티턴 대화 세션 ID")
-    confidence: float | None = Field(
-        default=None, description="추천 신뢰도 (0~1, None이면 미측정)"
+    shop_supplemented: bool = Field(
+        default=False, description="쇼핑 검색으로 아이템 보완 여부"
     )
+    fallback_used: bool = Field(default=False, description="Fallback 응답 사용 여부")
 
 
 class ConversationTurn(BaseSchema):
