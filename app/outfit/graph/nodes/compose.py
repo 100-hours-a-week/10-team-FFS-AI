@@ -12,6 +12,28 @@ MAX_COMPOSE_RETRIES = 2
 
 
 async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dict:
+    # 인텐트 체크: re_request는 조합 스킵, previous_outfits 반환
+    parsed_intent = state.get("parsed_intent")
+    if parsed_intent and parsed_intent["intent_type"] == "re_request":
+        trace_id = state.get("trace_id", "unknown")
+        logger.info(f"Skip compose for re_request | trace_id={trace_id}")
+
+        # previous_outfits를 outfits로 복사
+        session_data = state.get("session_data")
+        previous_outfits = session_data.previous_outfits if session_data else []
+
+        if previous_outfits:
+            logger.info(
+                f"Returning previous outfits | trace_id={trace_id} "
+                f"count={len(previous_outfits)}"
+            )
+            return {"outfits": previous_outfits}
+        else:
+            logger.warning(
+                f"No previous outfits found for re_request | trace_id={trace_id}"
+            )
+            return {"outfits": []}
+
     configurable = config.get("configurable", {})
     outfit_composer = configurable["outfit_composer"]
 

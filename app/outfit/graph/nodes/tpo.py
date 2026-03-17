@@ -25,6 +25,16 @@ MAX_TPO_RETRIES = 2
 
 
 async def tpo_extract(state: OutfitGraphState, config: RunnableConfig) -> dict:
+    # 인텐트 체크: new가 아니면 스킵
+    parsed_intent = state.get("parsed_intent")
+    if parsed_intent and parsed_intent["intent_type"] != "new":
+        trace_id = state.get("trace_id", "unknown")
+        logger.info(
+            f"Skip TPO extraction for intent: {parsed_intent['intent_type']} | "
+            f"trace_id={trace_id}"
+        )
+        return {}
+
     configurable = config.get("configurable", {})
     query_parser = configurable["query_parser"]
     search_builder = configurable["search_builder"]

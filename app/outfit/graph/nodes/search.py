@@ -25,6 +25,16 @@ def get_min_count(category: str) -> int:
 
 async def vector_search(state: OutfitGraphState, config: RunnableConfig) -> dict:
     """검색 쿼리로 Qdrant에서 의류 후보를 검색한다."""
+    # 인텐트 체크: re_request나 style_modify는 검색 스킵
+    parsed_intent = state.get("parsed_intent")
+    if parsed_intent and parsed_intent["intent_type"] in ["re_request", "style_modify"]:
+        trace_id = state.get("trace_id", "unknown")
+        logger.info(
+            f"Skip vector search for intent: {parsed_intent['intent_type']} | "
+            f"trace_id={trace_id}"
+        )
+        return {"search_results": [], "category_coverage": {}}
+
     configurable = config.get("configurable", {})
     clothing_repository = configurable["clothing_repository"]
 
