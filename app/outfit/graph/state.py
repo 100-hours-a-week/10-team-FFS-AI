@@ -12,6 +12,15 @@ from app.outfit.schemas import (
 )
 
 
+class ParsedIntent(TypedDict):
+    """멀티턴 대화에서 파싱된 사용자 의도"""
+
+    intent_type: str  # "new" | "item_change" | "style_modify" | "re_request"
+    target_outfit_index: int | None  # 수정 대상 코디 인덱스 (0-based)
+    target_category: str | None  # 변경할 카테고리 (예: "TOP", "BOTTOM")
+    style_direction: str | None  # 스타일 변경 방향 (예: "더 캐주얼하게", "색상 밝게")
+
+
 class OutfitGraphState(TypedDict, total=False):
     query: str
     user_id: int
@@ -54,5 +63,8 @@ class OutfitGraphState(TypedDict, total=False):
 
     # 멀티턴 관련 필드
     session_data: SessionData | None  # 세션 데이터
-    intent: str | None  # "new_outfit" | "modify_previous" | "confirm_item"
+    intent: (
+        str | None
+    )  # "new_outfit" | "modify_previous" | "confirm_item" (간단한 문자열, 하위 호환)
+    parsed_intent: ParsedIntent | None  # 구조화된 인텐트 (V3 신규)
     reference_outfit_id: str | None  # 수정 대상 코디 ID (modify_previous일 때)
