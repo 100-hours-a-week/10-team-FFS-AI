@@ -1,25 +1,7 @@
-import base64
-import os
 
-_lf_public = os.environ.get("LANGFUSE_PUBLIC_KEY", "")
-_lf_secret = os.environ.get("LANGFUSE_SECRET_KEY", "")
-if _lf_public and _lf_secret:
-    _lf_token = base64.b64encode(f"{_lf_public}:{_lf_secret}".encode()).decode()
-    os.environ.setdefault(
-        "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "https://cloud.langfuse.com/api/public/otel",
-    )
-    os.environ.setdefault(
-        "OTEL_EXPORTER_OTLP_HEADERS",
-        f"Authorization=Basic {_lf_token}",
-    )
-    print(">>> OTEL ENV SET", flush=True)  # 임시 디버그
-else:
-    print(">>> OTEL ENV NOT SET - keys missing", flush=True)  # 임시 디버그
+import asyncio
+import logging
 
-
-import asyncio  # noqa: E402
-import logging  # noqa: E402
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
