@@ -22,6 +22,7 @@ google-genai
 langchain
 langfuse>=3.0
 langgraph
+langgraph-checkpoint-redis
 
 
 aiokafka>=0.13.0
