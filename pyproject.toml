@@ -26,6 +26,7 @@ dependencies = [
     "langchain",
     "langfuse>=3.0",
     "langgraph",
+    "langgraph-checkpoint-redis>=0.3.8",
     # Messaging
     "aiokafka>=0.13.0",
     # Observability

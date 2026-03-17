@@ -4,8 +4,9 @@ import uuid
 from collections.abc import Awaitable, Callable
 from functools import lru_cache
 
+from langgraph.graph.state import CompiledStateGraph
+
 from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
-from app.outfit.graph import build_outfit_graph
 from app.outfit.llm_client import OpenAIClient
 from app.outfit.outfit_composer import OutfitComposer
 from app.outfit.query_parser import QueryParser
@@ -47,7 +48,21 @@ class OutfitService:
         self.shop_repository = shop_repository or ShopProductRepository()
         self.shop_search_builder = shop_search_builder or ShopSearchQueryBuilder()
         self.session_manager = session_manager or SessionManager()
-        self.graph = build_outfit_graph()
+        self.graph = None  # lazy initialization
+
+    async def _ensure_graph(self) -> CompiledStateGraph:
+        """그래프 lazy 초기화"""
+        if self.graph is None:
+            from app.outfit.graph import build_outfit_graph, build_outfit_graph_async
+
+            try:
+                # Checkpointer가 초기화되어 있으면 async 버전 사용
+                self.graph = await build_outfit_graph_async()
+            except RuntimeError:
+                # 테스트 환경 등에서 Checkpointer 없을 경우 기본 버전 사용
+                logger.info("Checkpointer not initialized, using basic graph")
+                self.graph = build_outfit_graph()
+        return self.graph
 
     @measure_time(stage="total_pipeline", metric=OUTFIT_PIPELINE_TOTAL_DURATION)
     async def recommend(
@@ -68,6 +83,12 @@ class OutfitService:
             f'query="{request.query}"'
         )
 
+        # 그래프 초기화
+        graph = await self._ensure_graph()
+
+        # thread_id 설정 (session_id 활용)
+        thread_id = request.session_id if request.session_id else str(uuid.uuid4())
+
         initial_state = {
             "query": request.query,
             "user_id": request.user_id,
@@ -84,6 +105,7 @@ class OutfitService:
 
         config = {
             "configurable": {
+                "thread_id": thread_id,  # Checkpointer용
                 "query_parser": self.query_parser,
                 "llm_client": self.llm_client,
                 "search_builder": self.search_builder,
@@ -105,7 +127,7 @@ class OutfitService:
 
         try:
             result = await asyncio.wait_for(
-                self.graph.ainvoke(initial_state, config=config),
+                graph.ainvoke(initial_state, config=config),
                 timeout=PIPELINE_TIMEOUT_SECONDS,
             )
             return result["response"]
