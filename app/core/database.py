@@ -2,6 +2,7 @@ import logging
 
 from langgraph.checkpoint.redis.aio import AsyncRedisSaver
 from qdrant_client import AsyncQdrantClient
+from qdrant_client.http import models as qdrant_models
 from redis.asyncio import ConnectionPool, Redis
 from tenacity import retry, stop_after_attempt, wait_fixed
 
@@ -13,6 +14,7 @@ _qdrant_client: AsyncQdrantClient | None = None
 _redis_pool: ConnectionPool | None = None
 _redis_client: Redis | None = None
 _checkpointer: AsyncRedisSaver | None = None
+_checkpointer_cm = None
 
 
 async def get_qdrant_client() -> AsyncQdrantClient:
@@ -32,7 +34,6 @@ def get_redis_client() -> Redis:
 
 
 async def get_checkpointer() -> AsyncRedisSaver:
-    """LangGraph용 Redis Checkpointer 반환"""
     if _checkpointer is None:
         raise RuntimeError(
             "Checkpointer is not initialized. Call init_databases() first."
@@ -42,7 +43,7 @@ async def get_checkpointer() -> AsyncRedisSaver:
 
 @retry(stop=stop_after_attempt(5), wait=wait_fixed(2))
 async def init_databases() -> None:
-    global _qdrant_client, _redis_pool, _redis_client, _checkpointer
+    global _qdrant_client, _redis_pool, _redis_client, _checkpointer, _checkpointer_cm
 
     settings = get_settings()
 
@@ -58,8 +59,6 @@ async def init_databases() -> None:
             https=settings.qdrant_use_https,
             prefer_grpc=settings.qdrant_prefer_grpc,
         )
-
-        from qdrant_client.http import models as qdrant_models
 
         collections = await _qdrant_client.get_collections()
         logger.info(
@@ -133,19 +132,25 @@ async def init_databases() -> None:
         if settings.redis_password:
             redis_url = f"redis://:{settings.redis_password}@{settings.redis_host}:{settings.redis_port}/{settings.redis_db}"
 
-        _checkpointer = AsyncRedisSaver.from_conn_string(redis_url)
+        _checkpointer_cm = AsyncRedisSaver.from_conn_string(redis_url)
+        _checkpointer = await _checkpointer_cm.__aenter__()
         await _checkpointer.asetup()
 
         logger.info("Checkpointer initialized successfully")
+
     except Exception as e:
         logger.error(f"Failed to initialize Checkpointer: {e}")
+        if _checkpointer_cm:
+            await _checkpointer_cm.__aexit__(None, None, None)
+            _checkpointer_cm = None
+            _checkpointer = None
         raise
 
     logger.info("All database connections initialized successfully")
 
 
 async def close_databases() -> None:
-    global _qdrant_client, _redis_pool, _redis_client, _checkpointer
+    global _qdrant_client, _redis_pool, _redis_client, _checkpointer, _checkpointer_cm
 
     if _qdrant_client:
         try:
@@ -156,13 +161,14 @@ async def close_databases() -> None:
         finally:
             _qdrant_client = None
 
-    if _checkpointer:
+    if _checkpointer_cm:
         try:
-            await _checkpointer.__aexit__(None, None, None)
+            await _checkpointer_cm.__aexit__(None, None, None)
             logger.info("Checkpointer closed")
         except Exception as e:
             logger.error(f"Error closing Checkpointer: {e}")
         finally:
+            _checkpointer_cm = None
             _checkpointer = None
 
     if _redis_client:

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from aiokafka import ConsumerRecord
 
 from app.common.kafka.exceptions import InfrastructureError
 from app.common.kafka.schemas import (
@@ -18,6 +17,7 @@ from app.common.kafka.serialization import deserialize, serialize
 from app.workers.config import OutfitWorkerConfig
 from app.workers.outfit_worker import OutfitWorker
 
+# 테스트용 설정 상수
 KAFKA_BOOTSTRAP_SERVERS = "localhost:9094"
 TEST_REQUEST_TOPIC = "test-outfit-request"
 TEST_RESPONSE_TOPIC = "test-outfit-response"
@@ -25,41 +25,26 @@ TEST_DLQ_TOPIC = "test-outfit-dlq"
 TEST_GROUP_ID = "test-outfit-worker-group"
 
 
-@pytest_asyncio.fixture
-async def kafka_producer() -> AIOKafkaProducer:
-    producer = AIOKafkaProducer(bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
-    await producer.start()
-    yield producer
-    await producer.stop()
+def make_consumer_record(
+    value: bytes, topic: str = TEST_REQUEST_TOPIC
+) -> ConsumerRecord:
+    """테스트용 ConsumerRecord를 생성하는 헬퍼 함수.
 
-
-@pytest_asyncio.fixture
-async def kafka_consumer_response() -> AIOKafkaConsumer:
-    consumer = AIOKafkaConsumer(
-        TEST_RESPONSE_TOPIC,
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        auto_offset_reset="earliest",
-        group_id=f"{TEST_GROUP_ID}-response-consumer",
-        enable_auto_commit=True,
+    실제 Kafka 연결 없이 ConsumerRecord 객체를 직접 생성합니다.
+    """
+    return ConsumerRecord(
+        topic=topic,
+        partition=0,
+        offset=0,
+        timestamp=0,
+        timestamp_type=0,
+        key=None,
+        value=value,
+        checksum=None,
+        serialized_key_size=-1,
+        serialized_value_size=len(value),
+        headers=(),
     )
-    await consumer.start()
-    yield consumer
-    await consumer.stop()
-
-
-@pytest_asyncio.fixture
-async def kafka_consumer_dlq() -> AIOKafkaConsumer:
-    """DLQ 토픽을 구독하는 Kafka Consumer fixture."""
-    consumer = AIOKafkaConsumer(
-        TEST_DLQ_TOPIC,
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        auto_offset_reset="earliest",
-        group_id=f"{TEST_GROUP_ID}-dlq-consumer",
-        enable_auto_commit=True,
-    )
-    await consumer.start()
-    yield consumer
-    await consumer.stop()
 
 
 @pytest_asyncio.fixture
@@ -75,155 +60,241 @@ async def worker_config() -> OutfitWorkerConfig:
 
 
 @pytest_asyncio.fixture
-async def worker(worker_config: OutfitWorkerConfig) -> OutfitWorker:
-    """OutfitWorker fixture."""
-    worker = OutfitWorker(worker_config)
-    await worker.start()
-    yield worker
-    await worker.stop()
+async def mock_producer() -> AsyncMock:
+    """Kafka Producer mock fixture.
+
+    실제 Kafka 연결 없이 Producer 동작을 시뮬레이션합니다.
+    """
+    producer = AsyncMock()
+    producer.start = AsyncMock()
+    producer.stop = AsyncMock()
+    producer.send_and_wait = AsyncMock()
+    return producer
 
 
-async def consume_one_message(
-    consumer: AIOKafkaConsumer, timeout_seconds: int = 10
-) -> bytes | None:
-    try:
-        async with asyncio.timeout(timeout_seconds):
-            async for msg in consumer:
-                return msg.value
-    except TimeoutError:
-        return None
+@pytest_asyncio.fixture
+async def worker(
+    worker_config: OutfitWorkerConfig, mock_producer: AsyncMock
+) -> OutfitWorker:
+    """OutfitWorker fixture.
+
+    모든 외부 의존성(Kafka, Qdrant, Redis, SessionManager)을 mock하여
+    인프라 없이 Worker 동작을 테스트합니다.
+    """
+    # SessionManager는 __init__에서 get_redis_client()를 호출하므로,
+    # OutfitWorker 생성 후 session_manager를 AsyncMock으로 교체합니다.
+    mock_session_manager = AsyncMock()
+    mock_session_manager.load_session = AsyncMock(return_value=None)
+    mock_session_manager.save_session = AsyncMock()
+    mock_session_manager.append_turn = AsyncMock()
+
+    # AIOKafkaConsumer는 start()/stop()이 async이므로 AsyncMock 필요
+    mock_consumer = AsyncMock()
+    mock_consumer.start = AsyncMock()
+    mock_consumer.stop = AsyncMock()
+    mock_consumer.commit = AsyncMock()
+
+    with (
+        # DB 초기화 mock (init_databases 안에서 Qdrant/Redis/Checkpointer 연결 방지)
+        patch("app.workers.dependencies.init_databases", new_callable=AsyncMock),
+        patch("app.workers.dependencies.close_databases", new_callable=AsyncMock),
+        # SessionManager 생성 시 get_redis_client() 호출 방지
+        patch("app.outfit.session_manager.get_redis_client", return_value=AsyncMock()),
+        # BaseWorker.start()의 Kafka 연결 mock
+        # return_value를 지정하여 AIOKafkaProducer()/AIOKafkaConsumer() 호출 시 mock 반환
+        patch("app.workers.base.AIOKafkaProducer", return_value=mock_producer),
+        patch("app.workers.base.AIOKafkaConsumer", return_value=mock_consumer),
+    ):
+        # Worker 의존성 초기화 (mock된 init_databases 호출)
+        from app.workers.dependencies import init_worker_dependencies
+
+        await init_worker_dependencies()
+
+        outfit_worker = OutfitWorker(worker_config)
+
+        # Redis 없이 세션 처리 가능하도록 session_manager 교체
+        outfit_worker.session_manager = mock_session_manager
+
+        # signal handler 등록은 pytest 루프에서 문제가 없으나,
+        # 실제 루프의 add_signal_handler를 no-op mock으로 교체하여 안전하게 처리
+        import asyncio as _asyncio
+
+        loop = _asyncio.get_event_loop()
+        original_add_signal_handler = loop.add_signal_handler
+        loop.add_signal_handler = MagicMock()  # type: ignore[method-assign]
+
+        try:
+            await outfit_worker.start()
+
+            # mock_producer를 _producer에 직접 주입 (send_and_wait 캡쳐용)
+            outfit_worker._producer = mock_producer
+            # mock_consumer를 _consumer에 직접 주입 (commit 캡쳐용)
+            outfit_worker._consumer = mock_consumer
+
+            yield outfit_worker
+
+            await outfit_worker.stop()
+
+            from app.workers.dependencies import close_worker_dependencies
+
+            await close_worker_dependencies()
+        finally:
+            # 루프의 signal handler 복구
+            loop.add_signal_handler = original_add_signal_handler  # type: ignore[method-assign]
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_normal_flow_e2e(
-    kafka_producer: AIOKafkaProducer,
-    kafka_consumer_response: AIOKafkaConsumer,
     worker: OutfitWorker,
+    mock_producer: AsyncMock,
 ) -> None:
+    """정상 요청 → OutfitResponseMessage 발행 확인.
+
+    실제 Kafka 없이 _process_record() 직접 호출 방식으로 검증합니다.
+    """
     mock_service = AsyncMock()
     mock_service.recommend = AsyncMock(
-        return_value=AsyncMock(
+        return_value=MagicMock(
             outfits=[],
             query_summary="테스트 코디 추천",
             session_id="test-session",
+            shop_supplemented=False,
+            fallback_used=False,
         )
     )
+
+    request_message = OutfitRequestMessage(
+        request_id="test-e2e-123",
+        user_id=1,
+        query="캐주얼 코디 추천해줘",
+        session_id="test-session",
+    )
+    record = make_consumer_record(serialize(request_message))
 
     with patch(
         "app.workers.outfit_worker.get_outfit_service_for_worker",
         return_value=mock_service,
     ):
-        # 1. 메시지 발행
-        request_message = OutfitRequestMessage(
-            request_id="test-e2e-123",
-            user_id=1,
-            query="캐주얼 코디 추천해줘",
-            session_id="test-session",
-        )
+        await worker._process_record(record)
 
-        await kafka_producer.send_and_wait(
-            TEST_REQUEST_TOPIC,
-            serialize(request_message),
-            key=request_message.request_id.encode("utf-8"),
-        )
+    # send_and_wait 호출 내역에서 OutfitResponseMessage 찾기
+    # 환경변수 override 가능성: 상수 대신 worker.response_topic 사용
+    response_call = None
+    for call in mock_producer.send_and_wait.call_args_list:
+        args = call[0]
+        if args[0] == worker.response_topic:
+            try:
+                candidate = deserialize(args[1], OutfitResponseMessage)
+                if (
+                    candidate.request_id == "test-e2e-123"
+                    and candidate.status == "success"
+                ):
+                    response_call = candidate
+                    break
+            except Exception:
+                continue
 
-        # 2. Worker가 메시지를 처리할 시간 대기 (짧은 시간)
-        # Worker.run()은 별도 태스크에서 실행되어야 하지만,
-        # 여기서는 단순화하여 _process_record를 직접 호출
-        # (실제 E2E는 Worker를 별도 프로세스로 실행해야 함)
-
-        response_data = await consume_one_message(
-            kafka_consumer_response, timeout_seconds=5
-        )
-
-        assert response_data is not None, "응답 메시지를 받지 못했습니다"
-
-        response = deserialize(response_data, OutfitResponseMessage)
-        assert response.request_id == "test-e2e-123"
-        assert response.status == "success"
-        assert response.query_summary == "테스트 코디 추천"
+    assert response_call is not None, "OutfitResponseMessage를 발행하지 않았습니다"
+    assert response_call.request_id == "test-e2e-123"
+    assert response_call.status == "success"
+    assert response_call.query_summary == "테스트 코디 추천"
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_invalid_json_to_dlq(
-    kafka_producer: AIOKafkaProducer,
-    kafka_consumer_dlq: AIOKafkaConsumer,
     worker: OutfitWorker,
+    mock_producer: AsyncMock,
 ) -> None:
+    """잘못된 JSON 메시지 → DLQ 발행 확인.
+
+    역직렬화 실패 시 DLQ에 DeserializationError 메시지가 발행되어야 합니다.
+    """
     invalid_json = b'{"invalid json without closing brace'
+    record = make_consumer_record(invalid_json)
 
-    await kafka_producer.send_and_wait(
-        TEST_REQUEST_TOPIC,
-        invalid_json,
-    )
+    await worker._process_record(record)
 
-    # 2. Worker가 처리할 시간 대기
-    # (실제로는 Worker.run()이 별도 태스크에서 실행 중이어야 함)
+    # send_and_wait 호출 내역에서 DLQMessage 찾기
+    # 환경변수 override 가능성: 상수 대신 worker.dlq_topic 사용
+    dlq_call = None
+    for call in mock_producer.send_and_wait.call_args_list:
+        args = call[0]
+        if args[0] == worker.dlq_topic:
+            dlq_call = deserialize(args[1], DLQMessage)
+            break
 
-    dlq_data = await consume_one_message(kafka_consumer_dlq, timeout_seconds=5)
-
-    assert dlq_data is not None, "DLQ 메시지를 받지 못했습니다"
-
-    dlq_message = deserialize(dlq_data, DLQMessage)
-    assert dlq_message.original_topic == TEST_REQUEST_TOPIC
-    assert dlq_message.error.type == "DeserializationError"
-    assert dlq_message.retry_count == 0  # 재시도 없이 즉시 DLQ
-    assert "JSON" in dlq_message.error.message or "json" in dlq_message.error.message
+    assert dlq_call is not None, "DLQ 메시지를 발행하지 않았습니다"
+    assert dlq_call.original_topic == worker.request_topic
+    assert dlq_call.error.type == "DeserializationError"
+    assert dlq_call.retry_count == 0  # 영구 실패 → 재시도 없이 즉시 DLQ
+    assert "JSON" in dlq_call.error.message or "json" in dlq_call.error.message
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_process_failure_to_dlq_and_error_response(
-    kafka_producer: AIOKafkaProducer,
-    kafka_consumer_response: AIOKafkaConsumer,
-    kafka_consumer_dlq: AIOKafkaConsumer,
     worker: OutfitWorker,
+    mock_producer: AsyncMock,
 ) -> None:
-    """3. process_message 강제 실패 → DLQ + ErrorResponse 확인.
+    """process_message 강제 실패 → DLQ + ErrorResponse 확인.
 
-    OutfitService가 InfrastructureError를 발생시키도록 Mock 설정 →
+    OutfitService가 InfrastructureError를 발생시키도록 mock →
     재시도 2회 후 DLQ + ErrorResponse 발행 확인
     """
-
     mock_service = AsyncMock()
     mock_service.recommend = AsyncMock(
         side_effect=InfrastructureError("Qdrant timeout", service="qdrant")
     )
 
+    request_message = OutfitRequestMessage(
+        request_id="test-failure-456",
+        user_id=2,
+        query="실패 테스트",
+        session_id="test-session-2",
+    )
+    record = make_consumer_record(serialize(request_message))
+
     with patch(
         "app.workers.outfit_worker.get_outfit_service_for_worker",
         return_value=mock_service,
     ):
-        request_message = OutfitRequestMessage(
-            request_id="test-failure-456",
-            user_id=2,
-            query="실패 테스트",
-            session_id="test-session-2",
-        )
+        await worker._process_record(record)
 
-        await kafka_producer.send_and_wait(
-            TEST_REQUEST_TOPIC,
-            serialize(request_message),
-            key=request_message.request_id.encode("utf-8"),
-        )
+    # recommend가 3번 호출되어야 함 (첫 시도 + 재시도 2회)
+    assert mock_service.recommend.call_count == 3
 
-        dlq_data = await consume_one_message(kafka_consumer_dlq, timeout_seconds=15)
-        assert dlq_data is not None, "DLQ 메시지를 받지 못했습니다"
+    # DLQ 메시지 검증
+    # 환경변수 override 가능성: 상수 대신 worker.dlq_topic 사용
+    dlq_call = None
+    for call in mock_producer.send_and_wait.call_args_list:
+        args = call[0]
+        if args[0] == worker.dlq_topic:
+            dlq_call = deserialize(args[1], DLQMessage)
+            break
 
-        dlq_message = deserialize(dlq_data, DLQMessage)
-        assert dlq_message.original_topic == TEST_REQUEST_TOPIC
-        assert dlq_message.error.type == "InfrastructureError"
-        assert dlq_message.retry_count == 2
+    assert dlq_call is not None, "DLQ 메시지를 발행하지 않았습니다"
+    assert dlq_call.original_topic == worker.request_topic
+    assert dlq_call.error.type == "InfrastructureError"
+    assert dlq_call.retry_count == 2
 
-        response_data = await consume_one_message(
-            kafka_consumer_response, timeout_seconds=5
-        )
-        assert response_data is not None, "ErrorResponse를 받지 못했습니다"
+    # ErrorResponse 메시지 검증
+    # 환경변수 override 가능성: 상수 대신 worker.response_topic 사용
+    error_response_call = None
+    for call in mock_producer.send_and_wait.call_args_list:
+        args = call[0]
+        if args[0] == worker.response_topic:
+            try:
+                candidate = deserialize(args[1], ErrorResponse)
+                if candidate.request_id == "test-failure-456":
+                    error_response_call = candidate
+                    break
+            except Exception:
+                continue
 
-        error_response = deserialize(response_data, ErrorResponse)
-        assert error_response.request_id == "test-failure-456"
-        assert error_response.status == "failed"
-        assert error_response.error.code == "INFRASTRUCTURE_ERROR"
-        assert error_response.error.retry_after_seconds == 30
+    assert error_response_call is not None, "ErrorResponse를 발행하지 않았습니다"
+    assert error_response_call.request_id == "test-failure-456"
+    assert error_response_call.status == "failed"
+    assert error_response_call.error.code == "INFRASTRUCTURE_ERROR"
+    assert error_response_call.error.retry_after_seconds == 30
