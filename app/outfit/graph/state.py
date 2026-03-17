@@ -6,6 +6,7 @@ from app.outfit.schemas import (
     ParsedQuery,
     SearchQuery,
     SearchResult,
+    SessionData,
     UploadSlot,
     Weather,
 )
@@ -50,3 +51,8 @@ class OutfitGraphState(TypedDict, total=False):
     error: str | None
     fallback_used: bool
     fallback_reason: str | None
+
+    # 멀티턴 관련 필드
+    session_data: SessionData | None  # 세션 데이터
+    intent: str | None  # "new_outfit" | "modify_previous" | "confirm_item"
+    reference_outfit_id: str | None  # 수정 대상 코디 ID (modify_previous일 때)
