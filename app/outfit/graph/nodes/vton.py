@@ -14,7 +14,7 @@ async def vton_process(state: OutfitGraphState, config: RunnableConfig) -> dict:
     vton_processor = configurable["vton_processor"]
 
     response = state["response"]
-    upload_slots = state.get("upload_slots", [])
+    upload_slots = state.get("upload_slots")
 
     if upload_slots:
         await vton_processor.process(response, upload_slots)

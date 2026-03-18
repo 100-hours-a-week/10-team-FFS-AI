@@ -65,8 +65,8 @@ class OutfitRequest(BaseSchema):
     query: str = Field(..., description="사용자 자연어 요청")
     session_id: str | None = Field(default=None, description="멀티턴 대화 세션 ID")
     weather: Weather | None = Field(default=None, description="날씨 정보")
-    urls: list[UploadSlot] = Field(
-        default_factory=list, description="VTON용 업로드 슬롯 정보"
+    urls: list[UploadSlot] | None = Field(
+        default=None, description="VTON용 업로드 슬롯 정보"
     )
 
 
