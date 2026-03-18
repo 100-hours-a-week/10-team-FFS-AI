@@ -49,40 +49,40 @@ class WorkerConfig(BaseSettings):
 
 class OutfitWorkerConfig(WorkerConfig):
     request_topic: str = Field(
-        default="ai.outfit.request",
+        default="outfit-request",
         alias="KAFKA_OUTFIT_REQUEST_TOPIC",
     )
     response_topic: str = Field(
-        default="ai.outfit.response",
+        default="outfit-response",
         alias="KAFKA_OUTFIT_RESPONSE_TOPIC",
     )
     dlq_topic: str = Field(
-        default="ai.outfit.dlq",
+        default="outfit-dlq",
         alias="KAFKA_OUTFIT_DLQ_TOPIC",
     )
 
     group_id: str = Field(
-        default="ai_outfit_worker_group",
+        default="outfit-consumer-group",
         alias="KAFKA_OUTFIT_CONSUMER_GROUP",
     )
 
 
 class ShopWorkerConfig(WorkerConfig):
     request_topic: str = Field(
-        default="ai.shop.request",
+        default="shop-request",
         alias="KAFKA_SHOP_REQUEST_TOPIC",
     )
     response_topic: str = Field(
-        default="ai.shop.response",
+        default="shop-response",
         alias="KAFKA_SHOP_RESPONSE_TOPIC",
     )
     dlq_topic: str = Field(
-        default="ai.shop.dlq",
+        default="shop-dlq",
         alias="KAFKA_SHOP_DLQ_TOPIC",
     )
 
     group_id: str = Field(
-        default="ai_shop_worker_group",
+        default="shop-consumer-group",
         alias="KAFKA_SHOP_CONSUMER_GROUP",
     )
 
