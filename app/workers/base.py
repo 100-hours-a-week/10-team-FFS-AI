@@ -182,7 +182,6 @@ class BaseWorker(ABC, Generic[TRequest]):
         elapsed_seconds = time.time() - start_time
         elapsed_ms = int(elapsed_seconds * 1000)
 
-        # Prometheus 메트릭 기록
         KAFKA_MESSAGE_PROCESSING_SECONDS.labels(
             worker_type=worker_type, topic=self.request_topic
         ).observe(elapsed_seconds)
@@ -226,7 +225,6 @@ class BaseWorker(ABC, Generic[TRequest]):
                         f"retry_after={actual_wait}초, retry_count={retry_count}"
                     )
 
-                    # Prometheus 메트릭: 재시도 기록
                     worker_type = self.__class__.__name__
                     KAFKA_RETRY_TOTAL.labels(
                         worker_type=worker_type,
@@ -253,7 +251,6 @@ class BaseWorker(ABC, Generic[TRequest]):
                         f"retry_count={retry_count}, backoff={backoff_seconds}초"
                     )
 
-                    # Prometheus 메트릭: 재시도 기록
                     worker_type = self.__class__.__name__
                     KAFKA_RETRY_TOTAL.labels(
                         worker_type=worker_type,
@@ -281,7 +278,6 @@ class BaseWorker(ABC, Generic[TRequest]):
                         f"retry_count={retry_count}, backoff={backoff_seconds}초"
                     )
 
-                    # Prometheus 메트릭: 재시도 기록
                     worker_type = self.__class__.__name__
                     KAFKA_RETRY_TOTAL.labels(
                         worker_type=worker_type,
@@ -361,7 +357,8 @@ class BaseWorker(ABC, Generic[TRequest]):
             traceback.format_exception(type(error), error, error.__traceback__)
         )
 
-    def _map_error_code(self, error: Exception) -> str:
+    @staticmethod
+    def _map_error_code(error: Exception) -> str:
         if isinstance(error, DeserializationError):
             return "DESERIALIZATION_ERROR"
         elif isinstance(error, RateLimitError):
@@ -371,7 +368,8 @@ class BaseWorker(ABC, Generic[TRequest]):
         else:
             return "PROCESSING_ERROR"
 
-    def _get_retry_after(self, error: Exception) -> int | None:
+    @staticmethod
+    def _get_retry_after(error: Exception) -> int | None:
         if isinstance(error, RateLimitError):
             return 60
         elif isinstance(error, InfrastructureError):
@@ -452,7 +450,6 @@ class BaseWorker(ABC, Generic[TRequest]):
             serialize(dlq_message),
         )
 
-        # Prometheus 메트릭: DLQ 발행 기록
         worker_type = self.__class__.__name__
         KAFKA_DLQ_MESSAGES_TOTAL.labels(
             worker_type=worker_type,

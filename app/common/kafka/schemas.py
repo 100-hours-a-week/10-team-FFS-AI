@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import Field
@@ -18,7 +18,7 @@ class OutfitRequestMessage(BaseSchema):
         default_factory=list, description="VTON용 업로드 슬롯 정보"
     )
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="요청 시각 (UTC)"
+        default_factory=lambda: datetime.now(UTC), description="요청 시각 (UTC)"
     )
 
 
@@ -28,7 +28,7 @@ class ShopRequestMessage(BaseSchema):
     query: str = Field(..., description="자연어 쇼핑 요청")
     session_id: str = Field(..., description="멀티턴 대화 세션 ID")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="요청 시각 (UTC)"
+        default_factory=lambda: datetime.now(UTC), description="요청 시각 (UTC)"
     )
 
 
@@ -49,7 +49,7 @@ class OutfitResponseMessage(BaseSchema):
     session_id: str | None = Field(default=None, description="세션 ID")
     metadata: ResponseMetadata | None = Field(default=None, description="메타데이터")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="응답 시각 (UTC)"
+        default_factory=lambda: datetime.now(UTC), description="응답 시각 (UTC)"
     )
 
 
@@ -59,7 +59,7 @@ class ProgressMessage(BaseSchema):
     step: int = Field(..., description="현재 단계 번호 (1-based)")
     step_label: str = Field(..., description="단계 레이블 (예: 쿼리 분석 중)")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="이벤트 시각 (UTC)"
+        default_factory=lambda: datetime.now(UTC), description="이벤트 시각 (UTC)"
     )
 
 
@@ -76,7 +76,7 @@ class ErrorResponse(BaseSchema):
     status: Literal["failed"] = Field(default="failed", description="처리 상태")
     error: ErrorDetail = Field(..., description="에러 상세")
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="에러 발생 시각 (UTC)"
+        default_factory=lambda: datetime.now(UTC), description="에러 발생 시각 (UTC)"
     )
 
 
@@ -92,5 +92,5 @@ class DLQMessage(BaseSchema):
     error: DLQErrorInfo = Field(..., description="에러 정보")
     retry_count: int = Field(default=0, description="재시도 횟수")
     failed_at: datetime = Field(
-        default_factory=datetime.utcnow, description="실패 시각 (UTC)"
+        default_factory=lambda: datetime.now(UTC), description="실패 시각 (UTC)"
     )

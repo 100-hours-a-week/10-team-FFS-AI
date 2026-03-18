@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from langgraph.types import RunnableConfig
 
@@ -57,8 +57,8 @@ async def save_session_context(state: OutfitGraphState, config: RunnableConfig) 
             history=[],
             previous_outfits=[],
             confirmed_items={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
         )
 
     query = state["query"]
@@ -81,7 +81,6 @@ async def save_session_context(state: OutfitGraphState, config: RunnableConfig) 
     if outfits:
         session_data.previous_outfits = outfits
 
-        # 3. confirmed_items 업데이트: 첫 번째 outfit을 확정 아이템으로 설정
         first_outfit = outfits[0]
         new_confirmed_items = {}
         for item in first_outfit.items:

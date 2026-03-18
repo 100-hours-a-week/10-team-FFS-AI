@@ -140,7 +140,6 @@ async def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
 
-    # Prometheus 메트릭 서버 시작 (포트 8001)
     start_http_server(8001)
     logger.info("Prometheus 메트릭 서버 시작: http://0.0.0.0:8001/metrics")
 

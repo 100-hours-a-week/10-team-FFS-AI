@@ -68,8 +68,6 @@ class OutfitWorkerConfig(WorkerConfig):
 
 
 class ShopWorkerConfig(WorkerConfig):
-    """Shop Worker 설정"""
-
     request_topic: str = Field(
         default="ai.shop.request",
         alias="KAFKA_SHOP_REQUEST_TOPIC",
@@ -83,7 +81,6 @@ class ShopWorkerConfig(WorkerConfig):
         alias="KAFKA_SHOP_DLQ_TOPIC",
     )
 
-    # Consumer Group
     group_id: str = Field(
         default="ai_shop_worker_group",
         alias="KAFKA_SHOP_CONSUMER_GROUP",

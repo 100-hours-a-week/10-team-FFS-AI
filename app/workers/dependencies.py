@@ -18,7 +18,6 @@ async def init_worker_dependencies() -> None:
 
     await init_databases()
 
-    # Rate Limiter 생성 (Redis 기반 분산 토큰 버킷)
     settings = get_settings()
     redis_client = get_redis_client()
     rate_limiter = TokenBucket(
@@ -30,10 +29,8 @@ async def init_worker_dependencies() -> None:
         f"Rate limiter created | rate={settings.openai_rate_limit_rpm or 60}RPM"
     )
 
-    # LLM Client에 rate limiter 주입
     llm_client = OpenAIClient(rate_limiter=rate_limiter)
 
-    # OutfitService에 llm_client 주입
     _outfit_service = OutfitService(llm_client=llm_client)
 
     logger.info("Worker 의존성 초기화 완료")
