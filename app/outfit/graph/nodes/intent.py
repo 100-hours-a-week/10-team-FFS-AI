@@ -103,7 +103,6 @@ async def detect_intent(state: OutfitGraphState, config: RunnableConfig) -> dict
             "style_direction": response.style_direction,
         }
 
-        # 하위 호환용 intent 문자열 (기존 코드에서 사용 중)
         intent_str = f"{response.intent_type}_outfit"
         if response.intent_type == "item_change":
             intent_str = "modify_previous"
@@ -121,7 +120,7 @@ async def detect_intent(state: OutfitGraphState, config: RunnableConfig) -> dict
 
     except LLMError as e:
         logger.error(f"LLM error in intent detection | trace_id={trace_id} | error={e}")
-        # LLM 실패 시 new로 폴백
+
         return {"intent": "new_outfit", "parsed_intent": default_intent}
 
     except Exception:
@@ -130,10 +129,8 @@ async def detect_intent(state: OutfitGraphState, config: RunnableConfig) -> dict
 
 
 def _build_intent_messages(query: str, session_data: SessionData) -> list[dict]:
-    """대화 히스토리를 포함한 LLM 메시지 구성"""
     messages = [{"role": "system", "content": INTENT_SYSTEM_PROMPT}]
 
-    # 최근 5턴 히스토리 추가 (설계서 Section 9.4)
     for turn in session_data.history[-5:]:
         messages.append(
             {
@@ -142,7 +139,6 @@ def _build_intent_messages(query: str, session_data: SessionData) -> list[dict]:
             }
         )
 
-    # 현재 쿼리
     messages.append({"role": "user", "content": query})
 
     return messages

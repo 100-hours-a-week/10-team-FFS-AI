@@ -30,6 +30,7 @@ ProgressCallback = Callable[[int, str], Awaitable[None]]
 class OutfitService:
     def __init__(
         self,
+        llm_client: OpenAIClient | None = None,
         query_parser: QueryParser | None = None,
         search_builder: SearchQueryBuilder | None = None,
         repository: ClothingRepository | None = None,
@@ -39,7 +40,7 @@ class OutfitService:
         shop_search_builder: ShopSearchQueryBuilder | None = None,
         session_manager: SessionManager | None = None,
     ) -> None:
-        self.llm_client = OpenAIClient()
+        self.llm_client = llm_client or OpenAIClient()
         self.query_parser = query_parser or QueryParser(llm_client=self.llm_client)
         self.search_builder = search_builder or SearchQueryBuilder()
         self.repository = repository or ClothingRepository()

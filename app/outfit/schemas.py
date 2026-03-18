@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import Field
@@ -136,8 +136,6 @@ class OutfitResponse(BaseSchema):
 
 
 class Message(BaseSchema):
-    """멀티턴 대화 메시지 (V3)"""
-
     role: Literal["user", "assistant"] = Field(..., description="발화자")
     content: str = Field(..., description="발화 내용")
     outfits: list[Outfit] | None = Field(
@@ -146,8 +144,6 @@ class Message(BaseSchema):
 
 
 class SessionData(BaseSchema):
-    """멀티턴 세션 데이터"""
-
     session_id: str = Field(..., description="세션 ID")
     user_id: int = Field(..., description="사용자 ID")
     history: list[Message] = Field(default_factory=list, description="대화 히스토리")
@@ -158,8 +154,9 @@ class SessionData(BaseSchema):
         default_factory=dict, description="고정 아이템 (카테고리 → clothes_id)"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow, description="세션 생성 시각 (UTC)"
+        default_factory=lambda: datetime.now(UTC), description="세션 생성 시각 (UTC)"
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow, description="마지막 업데이트 시각 (UTC)"
+        default_factory=lambda: datetime.now(UTC),
+        description="마지막 업데이트 시각 (UTC)",
     )

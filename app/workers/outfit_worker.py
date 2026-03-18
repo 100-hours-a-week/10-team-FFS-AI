@@ -133,10 +133,15 @@ class OutfitWorker(BaseWorker[OutfitRequestMessage]):
 
 
 async def main() -> None:
+    from prometheus_client import start_http_server
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+
+    start_http_server(8001)
+    logger.info("Prometheus 메트릭 서버 시작: http://0.0.0.0:8001/metrics")
 
     logger.info("OutfitWorker 초기화 시작...")
 

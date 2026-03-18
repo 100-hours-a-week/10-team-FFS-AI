@@ -100,6 +100,9 @@ async def worker(
         patch("app.workers.dependencies.close_databases", new_callable=AsyncMock),
         # SessionManager 생성 시 get_redis_client() 호출 방지
         patch("app.outfit.session_manager.get_redis_client", return_value=AsyncMock()),
+        # dependencies의 get_redis_client와 TokenBucket Mock
+        patch("app.workers.dependencies.get_redis_client", return_value=MagicMock()),
+        patch("app.workers.dependencies.TokenBucket", return_value=MagicMock()),
         # BaseWorker.start()의 Kafka 연결 mock
         # return_value를 지정하여 AIOKafkaProducer()/AIOKafkaConsumer() 호출 시 mock 반환
         patch("app.workers.base.AIOKafkaProducer", return_value=mock_producer),

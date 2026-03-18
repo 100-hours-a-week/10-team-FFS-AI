@@ -1,10 +1,8 @@
-"""멀티턴 대화 세션 관리"""
-
 from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from redis.asyncio import Redis
 
@@ -56,7 +54,7 @@ class SessionManager:
     async def save_session(self, session_data: SessionData) -> None:
         key = self._session_key(session_data.session_id)
 
-        session_data.updated_at = datetime.utcnow()
+        session_data.updated_at = datetime.now(UTC)
 
         data = {
             "user_id": str(session_data.user_id),
@@ -103,7 +101,6 @@ class SessionManager:
             Message(role="assistant", content=assistant_message, outfits=None)
         )
 
-        # 최대 5턴(10개 메시지)만 유지
         if len(session_data.history) > 10:
             session_data.history = session_data.history[-10:]
 

@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import openai
 from langfuse import get_client, observe
@@ -8,6 +8,9 @@ from pydantic import BaseModel
 
 from app.config import Settings, get_settings
 from app.outfit.exceptions import LLMError
+
+if TYPE_CHECKING:
+    from app.common.rate_limit import TokenBucket
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +27,13 @@ class LLMClient(ABC):
 
 
 class OpenAIClient(LLMClient):
-    def __init__(self: "OpenAIClient", settings: Settings | None = None) -> None:
+    def __init__(
+        self: "OpenAIClient",
+        settings: Settings | None = None,
+        rate_limiter: "TokenBucket | None" = None,
+    ) -> None:
         self.settings = settings or get_settings()
+        self.rate_limiter = rate_limiter
 
         if not self.settings.openai_api_key:
             raise LLMError("OPENAI_API_KEY is not configured")
@@ -46,6 +54,10 @@ class OpenAIClient(LLMClient):
         temperature: float = 0.7,
         max_tokens: int = 2000,
     ) -> BaseModel | dict[str, Any]:
+        # Rate limiting 적용
+        if self.rate_limiter:
+            await self.rate_limiter.acquire()
+
         get_client().update_current_generation(
             input=messages,
             model=self.model,
