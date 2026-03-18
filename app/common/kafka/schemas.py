@@ -14,8 +14,8 @@ class OutfitRequestMessage(BaseSchema):
     user_id: int = Field(..., description="사용자 ID")
     query: str = Field(..., description="자연어 코디 요청")
     session_id: str = Field(..., description="멀티턴 대화 세션 ID")
-    upload_slots: list[UploadSlot] = Field(
-        default_factory=list, description="VTON용 업로드 슬롯 정보"
+    upload_slots: list[UploadSlot] | None = Field(
+        default=None, description="VTON용 업로드 슬롯 정보"
     )
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(UTC), description="요청 시각 (UTC)"

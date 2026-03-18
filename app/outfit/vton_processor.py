@@ -21,9 +21,13 @@ class VTONProcessor:
     async def process(
         self,
         response: OutfitResponse,
-        upload_slots: list[UploadSlot],
+        upload_slots: list[UploadSlot] | None,
     ) -> None:
         """각 코디에 대해 VTON 이미지 생성 및 S3 업로드 (병렬 처리)"""
+        if not upload_slots:
+            logger.info("No upload slots provided, skipping VTON processing")
+            return
+
         # 병렬 처리할 태스크 목록 생성
         tasks = []
         for i, outfit in enumerate(response.outfits):

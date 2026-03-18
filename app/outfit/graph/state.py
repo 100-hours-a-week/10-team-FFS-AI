@@ -25,7 +25,7 @@ class OutfitGraphState(TypedDict, total=False):
     session_id: str | None
     trace_id: str
     weather: Weather | None
-    upload_slots: list[UploadSlot]
+    upload_slots: list[UploadSlot] | None
 
     parsed_query: ParsedQuery
     search_queries: list[SearchQuery]
