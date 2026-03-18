@@ -15,10 +15,19 @@ async def vton_process(state: OutfitGraphState, config: RunnableConfig) -> dict:
 
     response = state["response"]
     upload_slots = state.get("upload_slots")
+    trace_id = state.get("trace_id", "unknown")
 
     if upload_slots:
+        logger.info(
+            f"VTON processing started | trace_id={trace_id} "
+            f"upload_slots_count={len(upload_slots)} outfits_count={len(response.outfits)}"
+        )
         await vton_processor.process(response, upload_slots)
     else:
+        logger.info(
+            f"VTON skipped: no upload_slots provided | trace_id={trace_id} "
+            f"outfits_count={len(response.outfits)}"
+        )
         for outfit in response.outfits:
             outfit.vton_error = "VTON 미요청 (urls 없음)"
 
