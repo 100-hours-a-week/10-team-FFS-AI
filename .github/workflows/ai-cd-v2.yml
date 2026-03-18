@@ -452,7 +452,7 @@ jobs:
           done
 
           echo "❌ Timed out waiting for worker deployment"
-          exit 1 
+          exit 1
 
   # ============================================================
   # Production 환경 배포
