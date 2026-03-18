@@ -1097,7 +1097,7 @@ jobs:
               "docker pull '"${IMAGE_URI}"'",
               "docker stop ai-worker || true",
               "docker rm ai-worker || true",
-              "docker run -d --name ai-worker --restart always --env-file /home/ec2-user/.env '"${IMAGE_URI}"' python -m app.workers.outfit_worker",
+              "docker run -d --name ai-worker --restart always --env-file /home/ubuntu/.env '"${IMAGE_URI}"' python -m app.workers.outfit_worker",
               "echo done"
             ]' \
             --query 'Command.CommandId' \
