@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import os
 
 from langgraph.types import RunnableConfig
 
@@ -12,13 +14,11 @@ MAX_COMPOSE_RETRIES = 2
 
 
 async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dict:
-    # 인텐트 체크: re_request는 조합 스킵, previous_outfits 반환
     parsed_intent = state.get("parsed_intent")
     if parsed_intent and parsed_intent["intent_type"] == "re_request":
         trace_id = state.get("trace_id", "unknown")
         logger.info(f"Skip compose for re_request | trace_id={trace_id}")
 
-        # previous_outfits를 outfits로 복사
         session_data = state.get("session_data")
         previous_outfits = session_data.previous_outfits if session_data else []
 
@@ -34,7 +34,6 @@ async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dic
             )
             return {"outfits": []}
 
-    # style_modify: 스타일 방향 프롬프트에 반영
     style_direction_instruction = None
     if parsed_intent and parsed_intent["intent_type"] == "style_modify":
         style_direction = parsed_intent.get("style_direction")
@@ -92,7 +91,6 @@ async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dic
             f"trace_id={trace_id} critical_issues={critical_issues}"
         )
 
-    # style_direction과 quality_feedback 결합
     additional_instructions = None
     if style_direction_instruction and quality_feedback:
         additional_instructions = f"{quality_feedback}\n\n{style_direction_instruction}"
@@ -127,6 +125,16 @@ async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dic
         f"outfits={' '.join(outfits_detail)}"
     )
 
+    # Chaos injection for testing
+    chaos_delay = os.getenv("CHAOS_DELAY_AFTER_COMPOSE")
+    if chaos_delay:
+        delay_seconds = float(chaos_delay)
+        logger.warning(
+            f"[CHAOS] Injecting delay after compose | "
+            f"delay={delay_seconds}s | trace_id={trace_id}"
+        )
+        await asyncio.sleep(delay_seconds)
+
     return {
         "response": response,
         "outfits": response.outfits,
@@ -134,7 +142,6 @@ async def outfit_compose(state: OutfitGraphState, config: RunnableConfig) -> dic
 
 
 def _calculate_jaccard(outfit_a: Outfit, outfit_b: Outfit) -> float:
-    """두 코디의 clothes_ids Jaccard 유사도를 계산한다."""
     set_a = set(outfit_a.clothes_ids)
     set_b = set(outfit_b.clothes_ids)
     if not set_a or not set_b:
