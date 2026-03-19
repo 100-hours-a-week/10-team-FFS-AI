@@ -59,6 +59,7 @@ async def save_session_context(state: OutfitGraphState, config: RunnableConfig) 
             history=[],
             previous_outfits=[],
             confirmed_items={},
+            processed_requests=[],
             created_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
         )
@@ -66,6 +67,13 @@ async def save_session_context(state: OutfitGraphState, config: RunnableConfig) 
     query = state["query"]
     response = state.get("response")
     outfits = state.get("outfits", [])
+
+    if trace_id in session_data.processed_requests:
+        logger.warning(
+            f"Duplicate request detected, skip history append | "
+            f"trace_id={trace_id} session_id={session_id}"
+        )
+        return {}
 
     if response:
         session_data.history.append(Message(role="user", content=query, outfits=None))
@@ -94,6 +102,11 @@ async def save_session_context(state: OutfitGraphState, config: RunnableConfig) 
             f"Updated confirmed_items | trace_id={trace_id} "
             f"confirmed_items={new_confirmed_items}"
         )
+
+    session_data.processed_requests.append(trace_id)
+
+    if len(session_data.processed_requests) > 50:
+        session_data.processed_requests = session_data.processed_requests[-50:]
 
     try:
         await session_manager.save_session(session_data)
