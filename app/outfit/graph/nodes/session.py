@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from datetime import UTC, datetime
 
 from langgraph.types import RunnableConfig
@@ -101,6 +103,18 @@ async def save_session_context(state: OutfitGraphState, config: RunnableConfig) 
             f"previous_outfits={len(session_data.previous_outfits)} | "
             f"trace_id={trace_id}"
         )
+
+        # === CHAOS INJECTION POINT ===
+        # 테스트용: 세션 저장 후 ~ 오프셋 커밋 전 크래시 시뮬레이션
+        chaos_delay = os.getenv("CHAOS_DELAY_AFTER_SESSION_SAVE")
+        if chaos_delay:
+            delay_seconds = float(chaos_delay)
+            logger.warning(
+                f"[CHAOS] Injecting delay after session save | "
+                f"delay={delay_seconds}s | trace_id={trace_id}"
+            )
+            await asyncio.sleep(delay_seconds)
+
     except Exception as e:
         logger.exception(
             f"Failed to save session | session_id={session_id} | "
