@@ -52,10 +52,10 @@ Generate a single image of a white mannequin wearing ALL of these items as a coo
 
         self.api_key = settings.gemini_api_key
         self.model_id = settings.vton_model
-        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model_id}:generateContent"
+        self.fallback_model_id = settings.vton_fallback_model
 
         if self.api_key:
-            logger.info(f"VTONClient initialized with model: {self.model_id}")
+            logger.info(f"VTONClient initialized with primary model: {self.model_id}")
         else:
             logger.error("GOOGLE_API_KEY not found!")
 
@@ -91,10 +91,41 @@ Generate a single image of a white mannequin wearing ALL of these items as a coo
 
         return image_parts
 
+    async def _invoke_api(self, payload: dict, model_id: str) -> VTONResponse:
+        """단일 모델에 대해 API 호출을 수행합니다."""
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent"
+        headers = {"x-goog-api-key": self.api_key}
+
+        try:
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                response = await client.post(api_url, json=payload, headers=headers)
+
+                if response.status_code == 200:
+                    result = response.json()
+                    if "candidates" in result:
+                        for candidate in result["candidates"]:
+                            for part in candidate.get("content", {}).get("parts", []):
+                                if "inlineData" in part:
+                                    image_data = base64.b64decode(
+                                        part["inlineData"]["data"]
+                                    )
+                                    return VTONResponse(
+                                        status="completed", image_data=image_data
+                                    )
+                    return VTONResponse(status="failed", error="No image in response")
+                else:
+                    error_msg = response.text[:500]
+                    return VTONResponse(
+                        status="failed",
+                        error=f"API Error ({response.status_code}): {error_msg}",
+                    )
+        except Exception as e:
+            return VTONResponse(status="failed", error=str(e))
+
     @observe(as_type="generation", name="vton_generate_image")
     async def generate_outfit_image(self, request: VTONRequest) -> VTONResponse:
         """
-        여러 패션 아이템 이미지로 코디된 모델 이미지 생성
+        여러 패션 아이템 이미지로 코디된 모델 이미지 생성 (Fallback 적용)
 
         Args:
             request: VTONRequest (이미지 URL 목록)
@@ -128,45 +159,34 @@ Generate a single image of a white mannequin wearing ALL of these items as a coo
             },
         }
 
-        # 3. API 호출
-        try:
-            headers = {"x-goog-api-key": self.api_key}
+        # 3. 1순위 모델 호출
+        response = await self._invoke_api(payload, self.model_id)
+        if response.status == "completed":
+            logger.info(
+                f"Outfit image generated successfully using primary model: {self.model_id}"
+            )
+            return response
 
-            async with httpx.AsyncClient(timeout=180.0) as client:
-                response = await client.post(
-                    self.api_url, json=payload, headers=headers
-                )
+        # 4. 2순위 (Fallback) 모델 우회 시도
+        logger.warning(
+            f"메인 모델({self.model_id}) 실패: {response.error}. Fallback 우회 시도..."
+        )
 
-                if response.status_code == 200:
-                    result = response.json()
+        if not self.fallback_model_id or self.fallback_model_id == self.model_id:
+            logger.error(
+                "Fallback 모델이 설정되지 않았거나 메인 모델과 동일하여 재시도를 포기합니다."
+            )
+            return response
 
-                    # 응답에서 이미지 추출
-                    if "candidates" in result:
-                        for candidate in result["candidates"]:
-                            for part in candidate.get("content", {}).get("parts", []):
-                                if "inlineData" in part:
-                                    image_data = base64.b64decode(
-                                        part["inlineData"]["data"]
-                                    )
-                                    logger.info(
-                                        f"Outfit image generated! Size: "
-                                        f"{len(image_data) / 1024:.1f} KB"
-                                    )
+        fallback_response = await self._invoke_api(payload, self.fallback_model_id)
 
-                                    return VTONResponse(
-                                        status="completed", image_data=image_data
-                                    )
+        if fallback_response.status == "completed":
+            logger.info(
+                f"Outfit image generated successfully using fallback model: {self.fallback_model_id}"
+            )
+        else:
+            logger.error(
+                f"Fallback 모델({self.fallback_model_id})도 실패: {fallback_response.error}"
+            )
 
-                    # 이미지 없음
-                    return VTONResponse(status="failed", error="No image in response")
-
-                else:
-                    error_msg = response.text[:500]
-                    logger.error(f"API Error ({response.status_code}): {error_msg}")
-                    return VTONResponse(
-                        status="failed", error=f"API Error: {response.status_code}"
-                    )
-
-        except Exception as e:
-            logger.error(f"Exception during API call: {e}")
-            return VTONResponse(status="failed", error=str(e))
+        return fallback_response
