@@ -67,7 +67,7 @@ class OutfitWorker(BaseWorker[OutfitRequestMessage]):
         if message.session_id:
             session_data = await self.session_manager.load_session(message.session_id)
 
-        async def send_progress_callback(step: int, step_label: str) -> None:
+        async def send_progress_callback(step: str, step_label: str) -> None:
             await self.send_progress(
                 request_id=message.request_id,
                 step=step,
