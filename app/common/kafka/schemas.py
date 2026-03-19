@@ -8,6 +8,9 @@ from pydantic import Field
 from app.common.schemas import BaseSchema
 from app.outfit.schemas import Outfit, UploadSlot
 
+# Progress step 타입 정의
+ProgressStep = Literal["query_parsing", "vector_search", "composing", "vton"]
+
 
 class OutfitRequestMessage(BaseSchema):
     request_id: str = Field(..., description="고유 요청 ID")
@@ -56,8 +59,8 @@ class OutfitResponseMessage(BaseSchema):
 class ProgressMessage(BaseSchema):
     request_id: str = Field(..., description="요청 ID")
     status: Literal["processing"] = Field(default="processing", description="처리 상태")
-    step: int = Field(..., description="현재 단계 번호 (1-based)")
-    step_label: str = Field(..., description="단계 레이블 (예: 쿼리 분석 중)")
+    step: ProgressStep = Field(..., description="현재 단계")
+    step_label: str = Field(..., description="단계 레이블 (예: 의도 분석 중...)")
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(UTC), description="이벤트 시각 (UTC)"
     )
