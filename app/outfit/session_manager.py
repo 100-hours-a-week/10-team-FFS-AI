@@ -38,6 +38,7 @@ class SessionManager:
                 for outfit in json.loads(data.get("previous_outfits", "[]"))
             ],
             confirmed_items=json.loads(data.get("confirmed_items", "{}")),
+            processed_requests=json.loads(data.get("processed_requests", "[]")),
             created_at=datetime.fromisoformat(data["created_at"]),
             updated_at=datetime.fromisoformat(data["updated_at"]),
         )
@@ -67,6 +68,7 @@ class SessionManager:
                 default=str,
             ),
             "confirmed_items": json.dumps(session_data.confirmed_items),
+            "processed_requests": json.dumps(session_data.processed_requests),
             "created_at": session_data.created_at.isoformat(),
             "updated_at": session_data.updated_at.isoformat(),
         }

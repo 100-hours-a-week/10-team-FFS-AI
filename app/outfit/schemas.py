@@ -152,6 +152,9 @@ class SessionData(BaseSchema):
     confirmed_items: dict[str, int] = Field(
         default_factory=dict, description="고정 아이템 (카테고리 → clothes_id)"
     )
+    processed_requests: list[str] = Field(
+        default_factory=list, description="처리 완료된 request_id 목록 (멱등성 보장용)"
+    )
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC), description="세션 생성 시각 (UTC)"
     )
