@@ -94,19 +94,6 @@ class OutfitWorker(BaseWorker[OutfitRequestMessage]):
 
         processing_time_ms = int((time.time() - start_time) * 1000)
 
-        if message.session_id:
-            await self.session_manager.append_turn(
-                session_id=message.session_id,
-                user_id=message.user_id,
-                user_message=message.query,
-                assistant_message=response.query_summary,
-            )
-
-            session_data = await self.session_manager.load_session(message.session_id)
-            if session_data:
-                session_data.previous_outfits = response.outfits
-                await self.session_manager.save_session(session_data)
-
         logger.info(
             f"코디 추천 완료: request_id={message.request_id}, "
             f"processing_time_ms={processing_time_ms}, "
