@@ -6,6 +6,7 @@ from functools import lru_cache
 
 from langgraph.graph.state import CompiledStateGraph
 
+from app.common.kafka.schemas import ProgressStep
 from app.common.metrics import OUTFIT_PIPELINE_TOTAL_DURATION, measure_time
 from app.outfit.llm_client import OpenAIClient
 from app.outfit.outfit_composer import OutfitComposer
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 PIPELINE_TIMEOUT_SECONDS = 90
 
 
-ProgressCallback = Callable[[int, str], Awaitable[None]]
+ProgressCallback = Callable[[ProgressStep, str], Awaitable[None]]
 
 
 class OutfitService:

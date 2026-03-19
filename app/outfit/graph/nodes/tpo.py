@@ -40,7 +40,7 @@ async def tpo_extract(state: OutfitGraphState, config: RunnableConfig) -> dict:
     progress_callback = configurable.get("progress_callback")
 
     if progress_callback:
-        await progress_callback(step=2, step_label="의도 분석 중...")
+        await progress_callback(step="vector_search", step_label="옷장 검색 중...")
 
     query = state["query"]
     user_id = state["user_id"]
