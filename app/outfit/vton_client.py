@@ -155,7 +155,7 @@ Generate a single image of a white mannequin wearing ALL of these items as a coo
             "contents": [{"parts": parts}],
             "generationConfig": {
                 "responseModalities": ["IMAGE", "TEXT"],
-                "temperature": 0.8,
+                "temperature": 0.1,
             },
         }
 
