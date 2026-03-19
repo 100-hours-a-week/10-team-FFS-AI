@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 
@@ -159,12 +160,15 @@ def create_handler(consumer: AIOKafkaConsumer) -> MessageHandler:
                     f"file={preprocess_result.file_ids[i]}"
                 )
 
-            # ── ④ 아이템별 분석 + ANALYZING_COMPLETED 발행 ──
-            for i in range(item_count):
-                analysis_result = await _get_service().analyze(
-                    preprocess_result.item_images[i],
-                )
+            # ── ④ 아이템별 분석 (Gemma-3 VLM) - 병렬 처리 ──
+            analysis_tasks = [
+                _get_service().analyze(preprocess_result.item_images[i])
+                for i in range(item_count)
+            ]
+            analysis_results = await asyncio.gather(*analysis_tasks)
 
+            # ── ⑤ 분석 결과 이벤트 발행 (순서 보장을 위해 순차 발행) ──
+            for i, analysis_result in enumerate(analysis_results):
                 analyze_event = AnalyzingCompletedEvent(
                     requested_at=event.requested_at,
                     data=AnalyzedPayload(

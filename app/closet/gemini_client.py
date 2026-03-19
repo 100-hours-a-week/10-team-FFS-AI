@@ -11,14 +11,19 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 SEGMENTATION_PROMPT = """
+[Core Task]
 Identify all fashion items in the image (dress, shoes, bag, sunglasses, etc.).
 You must call the image generation function MULTIPLE TIMES - once for each item found.
-For each individual item, generate a separate product photo with:
-Only that single item segmented and isolated
-Human body parts and background completely removed
-Light gray background (#E5E5E5)
-Professional studio product shot style
-Sharp edges and soft drop shadow
+
+[Strict Constraints (Negative Prompt)]
+- ABSOLUTELY NO human body parts (NO faces, NO hands, NO skin, NO hair, NO limbs).
+- ABSOLUTELY NO clothing hangers, NO mannequins, and NO background props.
+- DO NOT alter the original texture, exact shape, or proportions of the item.
+
+[Visual Style]
+- Render each item perfectly isolated as a strict "FLAT-LAY" (neatly spread out on a flat solid surface).
+- Background MUST be exactly solid Light Gray (#E5E5E5) without any gradient.
+- Maintain sharp edges and a soft, realistic drop shadow.
 IMPORTANT: Present ALL generated images in your final response. Do not hide them in your thinking process.
 """
 
@@ -174,7 +179,7 @@ class GeminiImageAnalyzer:
             ],
             "generationConfig": {
                 "responseModalities": ["IMAGE", "TEXT"],
-                "temperature": 0.8,
+                "temperature": 0.0,
             },
         }
 
