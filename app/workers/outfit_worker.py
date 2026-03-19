@@ -59,8 +59,8 @@ class OutfitWorker(BaseWorker[OutfitRequestMessage]):
 
         await self.send_progress(
             request_id=message.request_id,
-            step=1,
-            step_label="코디 추천 요청 처리 시작",
+            step="query_parsing",
+            step_label="의도 분석 중...",
         )
 
         session_data = None

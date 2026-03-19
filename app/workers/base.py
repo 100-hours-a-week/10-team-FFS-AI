@@ -22,6 +22,7 @@ from app.common.kafka.schemas import (
     ErrorDetail,
     ErrorResponse,
     ProgressMessage,
+    ProgressStep,
 )
 from app.common.kafka.serialization import deserialize, serialize
 from app.common.schemas import BaseSchema
@@ -380,7 +381,7 @@ class BaseWorker(ABC, Generic[TRequest]):
     async def send_progress(
         self,
         request_id: str,
-        step: int,
+        step: ProgressStep,
         step_label: str,
     ) -> None:
         progress = ProgressMessage(

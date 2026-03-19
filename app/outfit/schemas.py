@@ -56,8 +56,7 @@ class Weather(BaseSchema):
 
 class UploadSlot(BaseSchema):
     file_id: int = Field(..., description="파일 ID")
-    object_key: str = Field(..., description="S3에 저장할 이미지 파일의 키")
-    presigned_url: str = Field(..., description="S3에 저장할 이미지 파일의 URL")
+    presigned_url: str = Field(..., description="S3 presigned URL")
 
 
 class OutfitRequest(BaseSchema):
